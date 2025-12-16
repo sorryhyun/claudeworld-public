@@ -201,7 +201,17 @@ def main():
     # Run environment setup (including first-time wizard if needed)
     setup_was_run = setup_environment()
 
-    # Import uvicorn and app after setting up paths
+    # Load .env file into os.environ BEFORE importing any modules that use os.getenv()
+    # This is critical because database.py uses os.getenv("DATABASE_URL") at module level
+    from dotenv import load_dotenv
+
+    work_dir = get_work_dir()
+    env_file = work_dir / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=True)
+        print(f"Environment loaded from: {env_file}")
+
+    # Import uvicorn and app after setting up paths and loading environment
     import uvicorn
 
     print("=" * 60)
