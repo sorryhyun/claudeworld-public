@@ -1,0 +1,258 @@
+# Gameplay Tools Configuration
+# This file defines tools specific to TRPG gameplay agents (Action Manager, Narrator)
+# and onboarding tools for world initialization.
+# Changes to this file apply immediately (hot-reloaded)
+#
+# NOTE: Input schemas are now defined in Pydantic models (gameplay_inputs.py, onboarding_inputs.py)
+# and automatically generated via model_json_schema()
+
+# =============================================================================
+# ONBOARDING TOOLS (world initialization)
+# =============================================================================
+onboarding:
+  complete:
+    name: "mcp__onboarding__complete"
+    enabled: true
+    description: |
+      Complete the onboarding phase and transition the world to active.
+      Only Onboarding Manager should use this tool after gathering player preferences.
+
+      This tool:
+      1. Sets the world's genre, theme, and lore
+      2. Transitions the world phase from "onboarding" to "active"
+
+      Note: Stat system and initial location are created by World Seed Generator
+      using structured output after this tool completes.
+    response: |
+      World initialized successfully.
+      Player: {player_name}
+      Genre: {genre}
+      Theme: {theme}
+      Phase: active
+
+      World Seed Generator will now design the stat system and starting location.
+
+# =============================================================================
+# ACTION MANAGER TOOLS (sub-agent invocation for TRPG gameplay)
+# =============================================================================
+# These tools allow Action Manager to invoke sub-agents (Stat Calculator,
+# Character Designer, Location Designer) and persist results to the game state.
+
+action_manager:
+  remove_character:
+    name: "mcp__action_manager__remove_character"
+    enabled: true
+    description: |
+      Remove an NPC from the game.
+      Use this when an NPC dies, 실종, or is removed by magic.
+      Reasons: 'death', '실종', 'magic'
+    response: |
+      {removal_result}
+
+
+  travel:
+    name: "mcp__action_manager__travel"
+    enabled: true
+    description: |
+      Move the player to an existing location. This is the most comprehensive tool -
+      it combines travel, narration, action suggestions, AND chat summary into a single call.
+
+      When you use this tool:
+      1. The chat summary is saved to world history (what happened at the current location)
+      2. The player is moved to the destination
+      3. Your narration is displayed to the player (like the 'narration' tool)
+      4. Your action suggestions appear as clickable buttons (like 'suggest_options')
+
+      **REQUIRED Parameters:**
+      - destination: Location name to travel to (must already exist)
+      - user_action: The player's original action that triggered this travel
+        (e.g., "Go to the tavern"). Provides continuity for the next scene.
+      - chat_summary: A 2-4 sentence summary of what happened at the current
+        location before leaving. Focus on key events, decisions, and outcomes. This is
+        saved to the world's history.md file.
+      - narration: The narrative text describing the journey and arrival.
+        Make it vivid and engaging, describing what the player experiences.
+      - action_1: First suggested action at the new location
+      - action_2: Second suggested action at the new location
+
+      **Optional Parameters:**
+      - bring_characters: List of NPC names to bring along
+
+      Use Task tool with location_designer to create new locations before traveling there.
+    response: |
+      {travel_result}
+
+  inject_memory:
+    name: "mcp__action_manager__inject_memory"
+    enabled: true
+    description: |
+      Inject a memory into a specific character's recent_events.
+      Use this when external events should implant memories into NPCs,
+      such as hypnosis, mind control, illusions, or similar supernatural effects.
+      The character will remember this as if it actually happened or regard as commonsense.
+    response: |
+      {inject_memory_result}
+
+  move_character:
+    name: "mcp__action_manager__move_character"
+    enabled: true
+    description: |
+      Move an existing character to a different location.
+      Use this when an NPC needs to relocate (e.g., following the player,
+      fleeing, returning home, or being summoned elsewhere).
+      The character must already exist in the game.
+    response: |
+      {move_result}
+
+  list_locations:
+    name: "mcp__action_manager__list_locations"
+    enabled: true
+    description: |
+      List all available locations in the current world.
+      Returns location names, display names, and brief descriptions.
+      Use this to see where characters can travel or be moved to.
+    response: |
+      {locations_list}
+
+  list_characters:
+    name: "mcp__action_manager__list_characters"
+    enabled: true
+    description: |
+      List all characters in the current world or at a specific location.
+      Returns exact character names for use with other tools.
+      Use this before move_character or remove_character to get exact names.
+    response: |
+      {characters_list}
+
+  persist_new_item:
+    name: "mcp__action_manager__persist_new_item"
+    enabled: true
+    description: |
+      Create a new item template in the world's items/ directory.
+      Use this BEFORE calling stat_calc to add items to the player's inventory.
+
+      **Workflow:**
+      1. Call persist_new_item to define the item (creates items/[item_id].yaml)
+      2. Call Task with stat_calculator to add the item to player inventory
+
+      **Parameters:**
+      - item_id: Unique identifier (snake_case, e.g., "rusty_sword", "health_potion")
+      - name: Display name (e.g., "Rusty Sword", "Health Potion")
+      - description: Item description (optional)
+      - properties: Item properties dict (e.g., damage: 5, durability: 50)
+
+      **Returns error if:**
+      - Item ID already exists (use existing item instead)
+      - Item ID contains invalid characters
+    response: |
+      {persist_result}
+
+  roll_the_dice:
+    name: "mcp__action_manager__roll_the_dice"
+    enabled: true
+    description: |
+      Roll the dice to determine a random outcome for uncertain events.
+      Use this when an action's success depends on chance or luck.
+
+      **Probability Distribution:**
+      - very_lucky (1%): Exceptional success, bonus rewards
+      - lucky (5%): Better than expected outcome
+      - nothing_happened (88%): Standard outcome, no bonus
+      - bad_luck (5%): Worse than expected outcome
+      - worst_day_of_game (1%): Critical failure, negative consequences
+
+      **Usage:**
+      Call this tool when the player attempts something risky or uncertain.
+      Use the result to inform how you narrate the outcome and what
+      stat changes to request from stat_calculator.
+
+      No parameters required - just call to get a random result.
+    response: |
+      {roll_result}
+
+  narration:
+    name: "mcp__action_manager__narration"
+    enabled: true
+    description: |
+      REQUIRED: Create a visible narrative message describing the outcome of the player's action.
+
+      This is the text the player will see in the chat. It should be:
+      - Vivid and engaging with sensory details
+      - Appropriate to the world's genre and tone
+      - Focused on the outcome of their action
+      - Natural continuation of the story
+
+      **Writing Guidelines:**
+      - Use present tense for immediacy
+      - Engage multiple senses (sight, sound, smell)
+      - Show NPC emotions through actions and dialogue
+      - Keep paragraphs focused and punchy
+      - End on a moment of tension or choice
+
+      **DO NOT:**
+      - Write the player's actions or feelings
+      - Use purple prose or overwrite
+      - Resolve situations too quickly
+
+      Call this AFTER resolving mechanics (stat changes via Task + stat_calculator, travel, etc.) to describe what happened.
+    response: |
+      ✓ Narrative message created and displayed to player.
+
+  suggest_options:
+    name: "mcp__action_manager__suggest_options"
+    enabled: true
+    description: |
+      REQUIRED: Provide two suggested actions for the player at the end of your turn.
+      These suggestions appear as clickable buttons in the UI.
+
+      Good suggestions:
+      - Are contextually relevant to the current situation
+      - Offer meaningful choices (not just "go left" / "go right")
+      - Can include dialogue options, actions, or exploration
+      - Should feel natural given what just happened
+    response: |
+      **Suggested Actions:**
+      1. {action_1}
+      2. {action_2}
+
+  # ===========================================================================
+  # PERSISTENCE TOOLS (used by sub-agents to persist their designs)
+  # These tools are exposed via the action_manager MCP server
+  # ===========================================================================
+
+  persist_character_design:
+    name: "mcp__action_manager__persist_character_design"
+    enabled: true
+    description: |
+      Persist a character design to the game world.
+      Used by Character Designer sub-agent after designing a character.
+      Creates the character in filesystem and database.
+    response: |
+      {persist_result}
+
+  persist_location_design:
+    name: "mcp__action_manager__persist_location_design"
+    enabled: true
+    description: |
+      Persist a location design to the game world.
+      Used by Location Designer sub-agent after designing a location.
+      Creates the location in filesystem and database.
+    response: |
+      {persist_result}
+
+  persist_stat_changes:
+    name: "mcp__action_manager__persist_stat_changes"
+    enabled: true
+    description: |
+      Apply stat and inventory changes to player state.
+      Used by Stat Calculator sub-agent after calculating changes.
+      Persists changes to filesystem and syncs to database.
+
+      **IMPORTANT: Item Handling**
+      - Items can ONLY be added if they already exist in the world's items/ directory.
+      - Action Manager must create new item templates using `persist_new_item` BEFORE
+        calling stat_calculator to add items to inventory.
+      - If an item doesn't exist, it will be SKIPPED and reported in the response.
+      - Removing items always works (no template required).
+    response: |
+      {persist_result}

@@ -1,0 +1,1 @@
+The Summarizer is a system agent that creates concise summaries of events at a location when the player leaves. It distills key encounters, discoveries, and outcomes into memorable log entries that inform future visits.

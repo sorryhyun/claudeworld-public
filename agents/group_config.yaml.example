@@ -1,0 +1,95 @@
+# Group Configuration Template
+# Place this file as `group_config.yaml` in group folders (e.g., agents/group_trpg/group_config.yaml)
+# to configure tool access and override tool configurations for agents in this group.
+#
+# Tool groups available: action, guidelines, onboarding, game
+# Default tools for all agents: action (skip, memorize, recall), guidelines (read, anthropic)
+
+# =============================================================================
+# GROUP-WIDE BEHAVIOR SETTINGS
+# =============================================================================
+
+# Enable interrupt_every_turn for all agents in this group
+# When true, agents in this group will always get a turn immediately after any response
+# interrupt_every_turn: false  # Default: false
+
+# Set priority for all agents in this group (higher = responds first)
+# priority: 0  # Default: 0
+
+# Make agents "transparent" - their responses don't trigger other agents to reply
+# transparent: false  # Default: false
+
+# =============================================================================
+# TOOL ACCESS CONTROL (NEW)
+# =============================================================================
+# Control which tool groups are available to agents in this group.
+# By default, all agents get: action, guidelines
+# Use these settings to add or remove tool groups.
+
+# Add tool groups for ALL agents in this group
+# enabled_tool_groups:
+#   - onboarding  # Add onboarding tools (handoff, complete)
+#   - game        # Add game tools (update_stats, travel, etc.)
+
+# Remove tool groups for ALL agents in this group
+# disabled_tool_groups:
+#   - action      # Remove action tools (skip, memorize, recall)
+
+# =============================================================================
+# PER-AGENT TOOL CONFIGURATION (NEW)
+# =============================================================================
+# Configure tools for specific agents within this group.
+# Agent names should match the folder names exactly.
+
+# agents:
+#   Onboarding_Manager:
+#     enabled_tool_groups:
+#       - onboarding  # Only Onboarding_Manager gets onboarding tools
+#     disabled_tools:
+#       - memorize    # Don't allow memorize (use handoff instead)
+#
+#   World_Seed_Generator:
+#     enabled_tool_groups:
+#       - onboarding  # Gets onboarding tools for complete
+#       - game        # Gets game tools for creating locations
+#     disabled_tools:
+#       - memorize
+#
+#   Action_Manager:
+#     enabled_tool_groups:
+#       - game
+#
+#   Narrator:
+#     enabled_tool_groups:
+#       - game
+#     enabled_tools:
+#       - suggest_actions  # Specifically enable this tool
+
+# =============================================================================
+# TOOL OVERRIDES (Response/Description customization)
+# =============================================================================
+# Override tool responses or descriptions for all agents in this group.
+# Structure mirrors backend/config/tools/tools.yaml
+
+# Example: Override action tools
+# action:
+#   recall:
+#     response: "{memory_content}"  # Return memories verbatim
+#   skip:
+#     response: "Custom skip message for this group."
+
+# Example: Override onboarding tools
+# onboarding:
+#   handoff:
+#     response: "World brief received. Proceeding to world creation..."
+
+# =============================================================================
+# LEGACY FORMAT (Still Supported)
+# =============================================================================
+# Flat structure with just tool names (auto-detected by the system)
+
+# tools:
+#   recall:
+#     response: "{memory_content}"
+#   skip:
+#     response: "Group-specific skip message."

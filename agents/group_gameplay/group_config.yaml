@@ -1,0 +1,83 @@
+# Gameplay Phase Agents Configuration
+# These agents handle the turn-based gameplay loop after world is created.
+#
+# ARCHITECTURE: 1-Agent System
+# Action Manager handles all gameplay: interprets player actions, invokes sub-agents
+# (stat_calculator, character_designer, location_designer) via Task tool,
+# and creates visible output via narration and suggest_options tools.
+
+# =============================================================================
+# GROUP-WIDE BEHAVIOR SETTINGS
+# =============================================================================
+
+# Turn behavior - strictly controlled by TRPGTapeGenerator, not interrupt-based
+interrupt_every_turn: false
+
+# Default priority (individual agents may override)
+priority: 5
+
+# System messages are visible and can affect game state
+transparent: false
+
+# =============================================================================
+# GROUP-WIDE TOOL SETTINGS
+# =============================================================================
+# These settings apply to ALL agents in this group.
+# Per-agent settings extend (not replace) these lists.
+
+disabled_tools:
+  - memorize  # Gameplay agents don't use memorize
+  - recall    # Gameplay agents don't need memory recall
+  - skip
+# =============================================================================
+# PER-AGENT TOOL CONFIGURATION
+# =============================================================================
+# 1-agent system: Action_Manager handles all gameplay via tools
+# Sub-agents are invoked via Task tool, not separate tape cells
+
+agents:
+  Action_Manager:
+    # Interprets player actions, invokes sub-agents via Task tool
+    enabled_tool_groups:
+      - action_manager  # For gameplay tools
+    enabled_tools:
+      # Game state tools
+      - get_game_state
+      - get_location
+      - travel
+      - narration
+      - suggest_options
+      - remove_character  # Direct NPC removal
+      - persist_character_design
+      - persist_stat_changes
+      - persist_location_design
+
+  # ===========================================================================
+  # SUB-AGENTS (invoked via Task tool)
+  # These agents use persist tools to save their results
+  # ===========================================================================
+
+  Character_Designer:
+    # Creates NPCs when invoked via Task tool with character_designer
+    # Uses persist_character_design tool to save the character
+    enabled_tool_groups:
+      - action_manager  # For persist_character_design tool
+    enabled_tools:
+      - persist_character_design
+
+  Stat_Calculator:
+    # Processes mechanical game effects when invoked via Task tool
+    # Uses persist_stat_changes tool to save the changes
+    enabled_tool_groups:
+      - action_manager  # For persist_stat_changes tool
+    enabled_tools:
+      - persist_stat_changes
+
+  Location_Designer:
+    # Creates locations when invoked via Task tool with location_designer
+    # Uses persist_location_design tool to save the location
+    enabled_tool_groups:
+      - action_manager  # For persist_location_design tool
+    enabled_tools:
+      - persist_location_design
+

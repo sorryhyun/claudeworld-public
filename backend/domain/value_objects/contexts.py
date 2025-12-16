@@ -1,0 +1,140 @@
+"""
+Consolidated context data structures.
+
+Contains all context dataclasses for operations throughout the application.
+"""
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
+
+from domain.entities.agent_config import AgentConfigData
+
+from .task_identifier import TaskIdentifier
+
+if TYPE_CHECKING:
+    import models
+    from sdk import AgentManager
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@dataclass
+class MessageContext:
+    """
+    Context for message operations.
+
+    This dataclass groups parameters for message-related operations,
+    reducing parameter count in handler functions.
+
+    Attributes:
+        db: Database session
+        room_id: Room ID
+        agent: Agent object
+        chat_session_id: Optional chat session ID for chat mode messages
+    """
+
+    db: "AsyncSession"
+    room_id: int
+    agent: "models.Agent"
+    chat_session_id: Optional[int] = None
+
+
+@dataclass
+class AgentMessageData:
+    """
+    Data for agent message to broadcast.
+
+    Attributes:
+        content: The message content
+        thinking: Optional thinking text from the agent
+        anthropic_calls: Optional list of anthropic tool call situations
+    """
+
+    content: str
+    thinking: Optional[str] = None
+    anthropic_calls: Optional[list[str]] = None
+
+
+@dataclass
+class OrchestrationContext:
+    """
+    Shared context for orchestration operations.
+
+    This dataclass groups the common parameters passed through
+    orchestration methods, reducing repetition.
+
+    Attributes:
+        db: Database session
+        room_id: Room ID
+        agent_manager: AgentManager for generating responses
+        world_id: Optional world ID (for TRPG game tools)
+        world_name: Optional world name (for TRPG game tools)
+        chat_session_id: Optional chat session ID for separating chat mode context
+    """
+
+    db: "AsyncSession"
+    room_id: int
+    agent_manager: "AgentManager"
+    world_id: Optional[int] = None
+    world_name: Optional[str] = None
+    chat_session_id: Optional[int] = None
+
+
+@dataclass
+class ImageAttachment:
+    """
+    Image attachment data for multimodal messages.
+
+    Attributes:
+        data: Base64-encoded image data (without data URL prefix)
+        media_type: MIME type (e.g., 'image/png', 'image/jpeg')
+    """
+
+    data: str
+    media_type: str
+
+
+@dataclass
+class AgentResponseContext:
+    """
+    Context required for generating agent responses.
+
+    This dataclass groups all parameters needed by AgentManager.generate_sdk_response(),
+    reducing the parameter count from 11 to 1.
+
+    Attributes:
+        system_prompt: The system prompt that defines the agent's behavior
+        user_message: The user's message to respond to
+        agent_name: The name of the agent (used for dynamic agent settings)
+        config: Agent configuration data (grouped)
+        room_id: Room ID where this response is being generated
+        agent_id: Agent ID generating the response
+        group_name: Optional group name for applying group-specific tool config overrides
+        session_id: Optional session ID to resume a previous conversation
+        conversation_history: Optional recent conversation context for multi-agent rooms
+        task_id: Optional unique identifier for tracking this task (for interruption)
+        conversation_started: Optional timestamp when the conversation started
+        has_situation_builder: Whether the room has a situation builder participant
+        image: Optional image attachment for multimodal messages
+        output_format: Optional structured output format (e.g., {"type": "json_schema", "schema": ...})
+        world_name: Optional world name for TRPG mode (used by WorldSeedManager)
+        db: Optional database session for TRPG game tools
+        world_id: Optional world ID for TRPG game tools
+    """
+
+    system_prompt: str
+    user_message: str
+    agent_name: str
+    config: AgentConfigData
+    room_id: int
+    agent_id: int
+    group_name: Optional[str] = None
+    session_id: Optional[str] = None
+    conversation_history: Optional[str] = None
+    task_id: Optional[TaskIdentifier] = None
+    conversation_started: Optional[str] = None
+    has_situation_builder: bool = False
+    image: Optional[ImageAttachment] = None
+    output_format: Optional[dict] = None
+    world_name: Optional[str] = None
+    db: Optional["AsyncSession"] = None
+    world_id: Optional[int] = None

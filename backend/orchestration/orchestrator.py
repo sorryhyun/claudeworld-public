@@ -1,0 +1,469 @@
+"""
+Chat orchestrator for managing multi-agent conversations.
+
+This module handles the logic for multi-round conversations between agents,
+including context building, response generation, and message broadcasting.
+"""
+
+import asyncio
+import logging
+import time
+from typing import List
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger("ChatOrchestrator")
+
+import crud
+import models
+import schemas
+from domain.value_objects.contexts import OrchestrationContext
+from sdk import AgentManager
+
+from .agent_ordering import separate_interrupt_agents
+from .response_generator import ResponseGenerator
+from .tape import TapeExecutor, TapeGenerator
+
+# Multi-round conversation settings
+MAX_FOLLOW_UP_ROUNDS = 5  # Number of follow-up rounds after initial responses
+MAX_TOTAL_MESSAGES = 30  # Safety limit to prevent infinite loops
+PROCESSING_TIMEOUT = 300  # 5 minutes timeout for agent processing tasks
+
+
+class ChatOrchestrator:
+    """
+    Orchestrates multi-agent conversations with follow-up rounds.
+    Supports priority agent system where specific agents get first chance to respond.
+    """
+
+    # Default max age for stale entry cleanup (1 hour)
+    DEFAULT_MAX_AGE_SECONDS = 3600
+
+    def __init__(
+        self,
+        max_follow_up_rounds: int = MAX_FOLLOW_UP_ROUNDS,
+        max_total_messages: int = MAX_TOTAL_MESSAGES,
+        priority_agent_names: List[str] = None,
+    ):
+        self.max_follow_up_rounds = max_follow_up_rounds
+        self.max_total_messages = max_total_messages
+        self.priority_agent_names = priority_agent_names or []
+        # Track active processing tasks per room for interruption
+        self.active_room_tasks: dict[int, asyncio.Task] = {}
+        # Used to skip broadcasting responses that were started before the interruption
+        self.last_user_message_time: dict[int, float] = {}
+        # Initialize response generator
+        self.response_generator = ResponseGenerator(self.last_user_message_time)
+
+    def cleanup_stale_entries(self, max_age_seconds: int = None) -> int:
+        """
+        Remove stale entries from last_user_message_time and completed tasks from active_room_tasks.
+
+        This prevents memory leaks from accumulating entries over the application lifetime.
+
+        Args:
+            max_age_seconds: Maximum age in seconds before an entry is considered stale.
+                           Defaults to DEFAULT_MAX_AGE_SECONDS (1 hour).
+
+        Returns:
+            Number of entries removed.
+        """
+        if max_age_seconds is None:
+            max_age_seconds = self.DEFAULT_MAX_AGE_SECONDS
+
+        now = time.time()
+        removed_count = 0
+
+        # Clean up stale entries from last_user_message_time
+        stale_rooms = [
+            room_id for room_id, timestamp in self.last_user_message_time.items() if now - timestamp > max_age_seconds
+        ]
+        for room_id in stale_rooms:
+            del self.last_user_message_time[room_id]
+            removed_count += 1
+            logger.debug(f"Cleaned up stale entry for room {room_id} from last_user_message_time")
+
+        # Clean up completed tasks from active_room_tasks
+        completed_rooms = [room_id for room_id, task in self.active_room_tasks.items() if task.done()]
+        for room_id in completed_rooms:
+            del self.active_room_tasks[room_id]
+            removed_count += 1
+            logger.debug(f"Cleaned up completed task for room {room_id}")
+
+        if removed_count > 0:
+            logger.info(f"🧹 Cleaned up {removed_count} stale orchestrator entries")
+
+        return removed_count
+
+    def get_chatting_agents(self, room_id: int, agent_manager: AgentManager) -> list[int]:
+        """
+        Get list of agent IDs currently chatting (generating responses) in a room.
+
+        Args:
+            room_id: Room ID
+            agent_manager: AgentManager instance
+
+        Returns:
+            List of agent IDs currently processing in this room
+        """
+        chatting_agent_ids = []
+
+        for task_id in agent_manager.active_clients.keys():
+            if task_id.room_id == room_id:
+                chatting_agent_ids.append(task_id.agent_id)
+
+        return chatting_agent_ids
+
+    async def interrupt_room_processing(
+        self,
+        room_id: int,
+        agent_manager: AgentManager,
+        db: AsyncSession = None,
+        save_partial_responses: bool = True,
+    ):
+        """
+        Interrupt all agents currently processing in a room.
+        Optionally saves any partial responses that were in-progress.
+
+        Args:
+            room_id: Room ID to interrupt
+            agent_manager: AgentManager instance
+            db: Database session (required if save_partial_responses=True)
+            save_partial_responses: If True, save any in-progress responses to DB
+        """
+        # Capture streaming state BEFORE interrupting (contains partial responses)
+        partial_responses = await agent_manager.get_and_clear_streaming_state_for_room(room_id)
+
+        # Cancel any active processing task for this room
+        if room_id in self.active_room_tasks:
+            task = self.active_room_tasks[room_id]
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass  # Expected
+
+        # Interrupt all agents in this room via the agent manager
+        await agent_manager.interrupt_room(room_id)
+
+        # Save any partial responses that have content
+        if save_partial_responses and db and partial_responses:
+            for agent_id, state in partial_responses.items():
+                response_text = state.get("response_text", "").strip()
+                thinking_text = state.get("thinking_text", "")
+
+                # Only save if there's actual response content
+                if response_text:
+                    logger.info(
+                        f"💾 Saving partial response | Room: {room_id} | Agent: {agent_id} | "
+                        f"Length: {len(response_text)} chars"
+                    )
+                    message = schemas.MessageCreate(
+                        content=response_text,
+                        role="assistant",
+                        agent_id=agent_id,
+                        thinking=thinking_text if thinking_text else None,
+                    )
+                    await crud.create_message(db, room_id, message, update_room_activity=False)
+
+    async def cleanup_room_state(self, room_id: int, agent_manager: AgentManager):
+        """
+        Clean up all state associated with a room.
+        This should be called when a room is deleted to prevent memory leaks.
+
+        Args:
+            room_id: Room ID to clean up
+            agent_manager: AgentManager instance for interrupting any active processing
+        """
+        logger.info(f"🧹 Cleaning up room state | Room: {room_id}")
+
+        # First, interrupt any ongoing processing (don't save since room is being deleted)
+        await self.interrupt_room_processing(room_id, agent_manager, save_partial_responses=False)
+
+        # Remove from active tasks tracking (may already be removed by interrupt, but ensure it's gone)
+        if room_id in self.active_room_tasks:
+            del self.active_room_tasks[room_id]
+            logger.info(f"✅ Removed room {room_id} from active_room_tasks")
+
+        # Remove from last user message time tracking
+        if room_id in self.last_user_message_time:
+            del self.last_user_message_time[room_id]
+            logger.info(f"✅ Removed room {room_id} from last_user_message_time")
+
+        logger.info(f"✅ Room state cleanup complete | Room: {room_id}")
+
+    async def handle_user_message(
+        self,
+        db: AsyncSession,
+        room_id: int,
+        message_data: dict,
+        _manager,  # Deprecated, kept for backward compatibility (always None)
+        agent_manager: AgentManager,
+        saved_user_message_id: int = None,  # Optional: ID of already-saved message to avoid duplication
+    ):
+        """
+        Handle a user message and orchestrate agent responses.
+        Interrupts any ongoing agent processing in this room.
+
+        Args:
+            db: Database session
+            room_id: Room ID
+            message_data: Message data from client
+            _manager: Deprecated parameter (kept for backward compatibility, always None)
+            agent_manager: AgentManager for generating responses
+            saved_user_message_id: Optional ID of pre-saved message (used by REST API to avoid duplication)
+        """
+        logger.info(f"🔵 USER MESSAGE RECEIVED | Room: {room_id} | Content: {message_data.get('content', '')[:50]}")
+
+        # Record the timestamp of this user message for interruption tracking
+        self.last_user_message_time[room_id] = time.time()
+
+        # Save user message FIRST (only if not already saved)
+        if saved_user_message_id is None:
+            user_message = schemas.MessageCreate(
+                content=message_data["content"],
+                role="user",
+                participant_type=message_data.get("participant_type"),
+                participant_name=message_data.get("participant_name"),
+            )
+            # Create message and update room activity atomically
+            saved_user_msg = await crud.create_message(db, room_id, user_message, update_room_activity=True)
+        else:
+            # Fetch the already-saved message in this session
+            saved_user_msg = await db.get(models.Message, saved_user_message_id)
+
+        # Note: User message broadcasting removed - not needed with HTTP polling architecture
+        # Clients poll /api/rooms/{room_id}/messages to get new messages
+        # The user message is already saved to database above, so polling will pick it up
+        logger.info(
+            f"💾 USER MESSAGE SAVED | Room: {room_id} | ID: {saved_user_msg.id} | Content: {saved_user_msg.content[:50]}"
+        )
+
+        # NOW interrupt any ongoing agent processing for this room
+        # Save any partial responses that were in-progress
+        await self.interrupt_room_processing(room_id, agent_manager, db=db)
+        logger.info(f"🛑 INTERRUPTED | Room: {room_id}")
+
+        # Get all agents for the room (use cache for performance)
+        all_agents = await crud.get_agents_cached(db, room_id)
+
+        # Filter by mentioned agents if specified (@ mention feature)
+        mentioned_agent_ids = message_data.get("mentioned_agent_ids")
+        if mentioned_agent_ids:
+            mentioned_set = set(mentioned_agent_ids)
+            room_agent_ids = {agent.id for agent in all_agents}
+            # Validate: only keep mentions that are actually in the room
+            valid_mentions = mentioned_set & room_agent_ids
+            if valid_mentions != mentioned_set:
+                invalid = mentioned_set - room_agent_ids
+                logger.warning(f"⚠️ Invalid @mentions (not in room): {invalid}")
+            if valid_mentions:
+                all_agents = [a for a in all_agents if a.id in valid_mentions]
+                logger.info(f"🎯 MENTION FILTER | Room: {room_id} | Only responding: {[a.name for a in all_agents]}")
+
+        # Separate interrupt agents from regular agents
+        interrupt_agents, non_interrupt_agents = separate_interrupt_agents(all_agents)
+
+        # Create orchestration context
+        orch_context = OrchestrationContext(db=db, room_id=room_id, agent_manager=agent_manager)
+
+        # Create a processing task for this room
+        logger.info(
+            f"🚀 STARTING AGENT PROCESSING | Room: {room_id} | Agents: {len(non_interrupt_agents)} "
+            f"| Interrupt Agents: {len(interrupt_agents)}"
+        )
+        processing_task = asyncio.create_task(
+            self._process_agent_responses(
+                orch_context=orch_context,
+                agents=non_interrupt_agents,
+                interrupt_agents=interrupt_agents,
+                user_message_content=message_data["content"],
+            )
+        )
+
+        # Track this task so we can cancel it if a new message arrives
+        self.active_room_tasks[room_id] = processing_task
+
+        try:
+            await asyncio.wait_for(processing_task, timeout=PROCESSING_TIMEOUT)
+            logger.info(f"✅ AGENT PROCESSING COMPLETE | Room: {room_id}")
+        except asyncio.TimeoutError:
+            logger.error(f"⏰ AGENT PROCESSING TIMEOUT | Room: {room_id} | Timeout after {PROCESSING_TIMEOUT}s")
+            processing_task.cancel()
+            try:
+                await processing_task
+            except asyncio.CancelledError:
+                pass
+        except asyncio.CancelledError:
+            # Task was cancelled by a new message, this is expected
+            logger.info(f"❌ AGENT PROCESSING CANCELLED | Room: {room_id}")
+            pass
+        except Exception as e:
+            logger.error(f"💥 ERROR IN AGENT PROCESSING | Room: {room_id} | Error: {e}")
+            import traceback
+
+            traceback.print_exc()
+        finally:
+            # Clean up task tracking
+            if room_id in self.active_room_tasks and self.active_room_tasks[room_id] == processing_task:
+                del self.active_room_tasks[room_id]
+
+    async def _process_agent_responses(
+        self,
+        orch_context: OrchestrationContext,
+        agents: List,
+        interrupt_agents: List,
+        user_message_content: str,
+    ):
+        """
+        Internal method to process all agent responses using tape-based scheduling.
+
+        This can be cancelled if a new user message arrives.
+        Interrupt agents respond after every single message.
+        """
+        logger.info(f"📝 _process_agent_responses called | Room: {orch_context.room_id}")
+
+        # Build agent lookup dict
+        all_agents = agents + interrupt_agents
+        agents_by_id = {a.id: a for a in all_agents}
+
+        # Create tape generator and executor
+        generator = TapeGenerator(agents, interrupt_agents)
+        executor = TapeExecutor(
+            response_generator=self.response_generator,
+            agents_by_id=agents_by_id,
+            max_total_messages=self.max_total_messages,
+        )
+
+        # Generate and execute initial round tape
+        logger.info(f"🎬 Generating initial tape for {len(agents)} agent(s)...")
+        initial_tape = generator.generate_initial_round()
+        result = await executor.execute(
+            tape=initial_tape,
+            orch_context=orch_context,
+            user_message_content=user_message_content,
+        )
+        logger.info(f"✅ Initial tape complete | Responses: {result.total_responses} | Skips: {result.total_skips}")
+
+        # Stop if paused, interrupted, or limit reached
+        if result.was_paused or result.was_interrupted or result.reached_limit:
+            return
+
+        # Follow-up rounds: Agents respond to each other (only in multi-agent rooms)
+        # Skip if all interrupt agents are transparent
+        all_interrupt_transparent = interrupt_agents and all(
+            getattr(a, "transparent", 0) == 1 for a in interrupt_agents
+        )
+
+        if all_interrupt_transparent:
+            logger.info("👻 All interrupt agents are transparent, skipping follow-up rounds")
+        elif len(all_agents) > 1:
+            total_messages = result.total_responses
+
+            for round_num in range(self.max_follow_up_rounds):
+                logger.info(f"🔄 Follow-up round {round_num + 1}...")
+                follow_up_tape = generator.generate_follow_up_round(round_num)
+
+                result = await executor.execute(
+                    tape=follow_up_tape,
+                    orch_context=orch_context,
+                    user_message_content=None,
+                    current_total=total_messages,
+                )
+
+                total_messages += result.total_responses
+
+                # Stop conditions
+                if result.was_paused or result.was_interrupted or result.reached_limit:
+                    break
+
+                if result.all_skipped:
+                    logger.info(f"🏁 All agents skipped in room {orch_context.room_id}. Marking as finished.")
+                    await crud.mark_room_as_finished(orch_context.db, orch_context.room_id)
+                    break
+
+    async def process_autonomous_round(
+        self,
+        db: AsyncSession,
+        room: models.Room,
+        agent_manager: AgentManager,
+    ) -> bool:
+        """
+        Process one autonomous follow-up round for a room.
+
+        Used by BackgroundScheduler to enable agent-to-agent conversations
+        without user interaction. This delegates to the same tape-based
+        orchestration logic used for user-triggered conversations.
+
+        Args:
+            db: Database session
+            room: Room model with agents already loaded
+            agent_manager: AgentManager for generating responses
+
+        Returns:
+            True if conversation should continue, False if finished/paused
+        """
+        logger.info(f"🤖 Processing autonomous round | Room: {room.id} ({room.name})")
+
+        # Check if room is already being processed
+        if room.id in self.active_room_tasks:
+            task = self.active_room_tasks[room.id]
+            if not task.done():
+                logger.debug(f"Room {room.id} is already processing, skipping")
+                return True
+            else:
+                del self.active_room_tasks[room.id]
+
+        # Get all agents (use cache for performance)
+        all_agents = await crud.get_agents_cached(db, room.id)
+
+        if len(all_agents) < 2:
+            logger.debug(f"Room {room.id} has less than 2 agents, skipping")
+            return True
+
+        # Check if room has hit max interactions
+        if room.max_interactions is not None:
+            from sqlalchemy import func
+            from sqlalchemy.future import select
+
+            result = await db.execute(
+                select(func.count(models.Message.id)).where(
+                    models.Message.room_id == room.id,
+                    models.Message.role == "assistant",
+                )
+            )
+            current_count = result.scalar() or 0
+            if current_count >= room.max_interactions:
+                logger.debug(f"Room {room.id} reached max interactions ({room.max_interactions})")
+                return False
+
+        # Separate interrupt agents from regular agents
+        interrupt_agents, non_interrupt_agents = separate_interrupt_agents(all_agents)
+
+        # Create orchestration context
+        orch_context = OrchestrationContext(db=db, room_id=room.id, agent_manager=agent_manager)
+
+        # Build agent lookup dict
+        all_room_agents = non_interrupt_agents + interrupt_agents
+        agents_by_id = {a.id: a for a in all_room_agents}
+
+        # Create tape generator and executor
+        generator = TapeGenerator(non_interrupt_agents, interrupt_agents)
+        executor = TapeExecutor(
+            response_generator=self.response_generator,
+            agents_by_id=agents_by_id,
+            max_total_messages=self.max_total_messages,
+        )
+
+        # Generate and execute one follow-up round tape
+        tape = generator.generate_follow_up_round(round_num=0)
+        result = await executor.execute(tape=tape, orch_context=orch_context, user_message_content=None)
+
+        if result.all_skipped:
+            logger.info(f"🏁 All agents skipped in room {room.id}. Marking as finished.")
+            await crud.mark_room_as_finished(db, room.id)
+            return False
+
+        logger.info(f"✅ Autonomous round complete | Room: {room.id} | Responses: {result.total_responses}")
+        return True
