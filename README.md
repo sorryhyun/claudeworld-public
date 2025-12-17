@@ -1,5 +1,7 @@
 # ClaudeWorld
 
+*251207: Update will be delayed until claude agent sdk fixes bug where tool calling for background agents be broken*
+
 A turn-based text adventure (TRPG) powered by Claude AI agents that collaborate to create and run interactive worlds.
 
 ## Features
