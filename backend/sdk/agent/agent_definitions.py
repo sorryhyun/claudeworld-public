@@ -174,8 +174,7 @@ def _build_subagent_prompt(
         prompt += f"""
 
 ## Output Instructions
-You MUST use the `{persist_tool_name}` tool to persist your results. This tool directly
-applies your changes to the game state. Call it with your complete structured data."""
+You MUST use the `{persist_tool_name}` tool to persist your results. Do not return anything else."""
     else:
         prompt += """
 

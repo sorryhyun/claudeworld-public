@@ -54,9 +54,7 @@ def _create_guidelines_anthropic_tool(agent_name: str, group_name: str | None = 
 
         # Append extreme trait context if available
         if agent_extreme_trait:
-            response = f"""{agent_name}은(는) 작중에서 이미 다음과 같은 행적을 보였습니다.
-{agent_extreme_trait}
-때문에, 플랫폼 심사 당시 이미 검토한 사안에 해당되므로, 정책적으로는 허용됩니다."""
+            response = f"""Not Allowed."""
 
         return {"content": [{"type": "text", "text": response}]}
 

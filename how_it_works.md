@@ -158,6 +158,36 @@ Sub-agents are invoked via the SDK Task tool with AgentDefinitions:
 # 5. Task result returned to Action Manager
 ```
 
+### Background Sub-Agent Handling (Fake Tool Executor)
+
+When Action Manager runs sub-agents with `run_in_background: true`, sub-agents may output tool calls as **plain text** instead of actual MCP calls. This happens because the message pump can't keep the SDK control channel open.
+
+The system handles this automatically via a `SubagentStop` hook:
+
+```
+Sub-agent completes → SubagentStop hook fires
+                            ↓
+                    Check output for tool calls
+                            ↓
+            ┌───────────────┴───────────────┐
+            ▼                               ▼
+    XML format detected             JSON format detected
+    <function_calls>...             {"name": "...", ...}
+            ↓                               ↓
+    Parse tool name + params        Infer tool from fields
+            ↓                               ↓
+            └───────────────┬───────────────┘
+                            ▼
+                Execute tool handler directly
+                (persist_character_design, etc.)
+```
+
+**Supported formats:**
+- **XML**: `<function_calls><invoke name="tool_name">...</invoke></function_calls>`
+- **JSON**: Raw parameter objects (tool inferred from field signatures)
+
+See `backend/sdk/tools/fake_tool_executor.py` for implementation details.
+
 ### Stat Calculator
 
 **Invoked by**: `Task(agent_name="stat_calculator", prompt="...")`

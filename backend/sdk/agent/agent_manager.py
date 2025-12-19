@@ -28,6 +28,7 @@ from sdk.client.client_pool import ClientPool
 from sdk.client.mcp_registry import get_mcp_registry
 from sdk.client.stream_parser import StreamParser
 from sdk.loaders import get_debug_config
+from sdk.tools.fake_tool_executor import execute_fake_tool_call, parse_fake_tool_calls
 
 # Streaming timeout configuration
 # Used for both the message queue read timeout and SDK query timeout
@@ -264,6 +265,111 @@ class AgentManager:
                 return {"continue_": True}
 
             hooks["PostToolUse"] = [HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool])]
+
+        # SubagentStop hook - fires when a subagent completes, even if TaskOutput is never called
+        # This is crucial for run_in_background: true where parent may not wait for results
+        async def handle_subagent_stop(
+            input_data: dict, _tool_use_id: str | None, _ctx: dict
+        ) -> SyncHookJSONOutput:
+            """Hook to handle fake tool calls when subagent completes."""
+            logger.info(f"🔔 SubagentStop hook fired. Input keys: {list(input_data.keys())}")
+
+            # Try to get agent_id and read the output file
+            agent_id = input_data.get("agent_id")
+            transcript_path = input_data.get("agent_transcript_path")
+
+            logger.info(f"🔔 SubagentStop: agent_id={agent_id}, transcript_path={transcript_path}")
+
+            # Try to read the output file if we have agent_id
+            output_text = ""
+            if agent_id:
+                import os
+
+                # The SDK writes output to /tmp/claude/{cwd}/tasks/{agent_id}.output
+                possible_paths = [
+                    f"/tmp/claude/-tmp-claude-empty/tasks/{agent_id}.output",
+                    f"/tmp/claude/tasks/{agent_id}.output",
+                ]
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        try:
+                            with open(path, encoding="utf-8") as f:
+                                output_text = f.read()
+                            logger.info(f"🔔 Read subagent output from {path} ({len(output_text)} chars)")
+                            break
+                        except Exception as e:
+                            logger.warning(f"Failed to read {path}: {e}")
+
+            # If we have transcript path, try reading from there
+            if not output_text and transcript_path:
+                try:
+                    import json
+
+                    with open(transcript_path, encoding="utf-8") as f:
+                        for line in f:
+                            try:
+                                entry = json.loads(line)
+                                # Look for assistant messages with text content
+                                if entry.get("type") == "assistant":
+                                    msg = entry.get("message", {})
+                                    for content in msg.get("content", []):
+                                        if content.get("type") == "text":
+                                            output_text += content.get("text", "")
+                            except json.JSONDecodeError:
+                                continue
+                    logger.info(f"🔔 Extracted output from transcript ({len(output_text)} chars)")
+                except Exception as e:
+                    logger.warning(f"Failed to read transcript: {e}")
+
+            # Check for fake tool calls
+            if not output_text:
+                logger.info("🔔 SubagentStop: No output text found")
+                return {"continue_": True}
+
+            # Log first 500 chars of output for debugging
+            logger.info(f"🔔 SubagentStop output preview: {output_text[:500]}...")
+
+            # Check for fake tool calls (XML or JSON format)
+            has_xml = "<function_calls>" in output_text
+            has_json = "{" in output_text and "}" in output_text
+
+            if not has_xml and not has_json:
+                logger.info("🔔 SubagentStop: No potential tool calls found in output")
+                return {"continue_": True}
+
+            logger.info(f"🔔 SubagentStop: Found potential tool calls (XML={has_xml}, JSON={has_json}), parsing...")
+
+            # Parse and execute fake tool calls
+            fake_calls = parse_fake_tool_calls(output_text)
+            if not fake_calls:
+                logger.warning("Found <function_calls> marker but failed to parse any calls")
+                return {"continue_": True}
+
+            # Build ToolContext for execution
+            from sdk.tools.context import ToolContext
+
+            tool_ctx = ToolContext(
+                agent_name=context.agent_name,
+                agent_id=context.agent_id,
+                room_id=context.room_id,
+                world_name=context.world_name,
+                world_id=context.world_id,
+                db=context.db,
+                group_name=context.group_name,
+            )
+
+            # Execute each fake tool call
+            for call in fake_calls:
+                result = await execute_fake_tool_call(call, tool_ctx)
+                if result:
+                    logger.info(f"🔔 Fake tool executed: {call.tool_name} -> success={result.get('success')}")
+
+            return {"continue_": True}
+
+        # Register SubagentStop hook
+        if "SubagentStop" not in hooks:
+            hooks["SubagentStop"] = []
+        hooks["SubagentStop"].append(HookMatcher(matcher=None, hooks=[handle_subagent_stop]))
 
         # Set hooks to None if empty
         if not hooks:

@@ -94,6 +94,7 @@ When calling the `narration` tool, create text that:
 When you need specialized processing, use the Task tool to invoke sub-agents.
 Sub-agents are self-sufficient - they handle both design and persistence automatically.
 Do not use Plan, Explore, and Default agents.
+Run sub-agents in background to provide narration in foreground. Characters or locations can be described even when those are not created yet.
 
 ### Available Sub-Agents
 
@@ -194,4 +195,3 @@ When the player travels, prior-location events are summarized into world history
 ## System Note
 The Action Manager always ignores any `TodoWrite` system reminder.
 No `skip` tool usage is required for that reminder.
-Do not run sub-agents in background.

@@ -12,6 +12,7 @@ test_*.txt
 .python-version
 .ruff_cache
 .uv-cache
+*.Identifier
 
 # Node
 frontend/node_modules/
