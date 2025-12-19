@@ -12,7 +12,7 @@ from typing import Dict, Optional
 import yaml
 from domain.entities.agent_config import AgentConfigData
 
-from sdk.memory_parser import parse_long_term_memory
+from sdk.parsing.memory_parser import parse_long_term_memory
 
 logger = logging.getLogger("ConfigParser")
 

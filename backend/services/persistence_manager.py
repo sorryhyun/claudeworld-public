@@ -125,6 +125,84 @@ class PersistenceManager:
 
         return db_location.id
 
+    async def create_draft_location(
+        self,
+        name: str,
+        display_name: str,
+        description: str,
+        position: tuple[int, int],
+        adjacent_hints: Optional[list[str]] = None,
+    ) -> int:
+        """
+        Create a draft location for immediate travel.
+
+        Draft locations have is_draft=True and will be enriched by
+        Location Designer when it completes via persist_location_design.
+
+        Args:
+            name: Internal location name (snake_case)
+            display_name: Human-readable name
+            description: Initial brief description
+            position: (x, y) map coordinates
+            adjacent_hints: Names of adjacent locations to connect
+
+        Returns:
+            Database ID of the created location
+        """
+        # Check if location already exists (idempotency)
+        db_locations = await crud.get_locations(self.db, self.world_id)
+        existing = next((loc for loc in db_locations if loc.name == name), None)
+        if existing:
+            logger.info(f"Location '{name}' already exists (is_draft={existing.is_draft})")
+            return existing.id
+
+        # 1. Create in filesystem with is_draft flag
+        LocationService.create_location(
+            self.world_name,
+            name,
+            display_name,
+            description,
+            position,
+            adjacent=adjacent_hints,
+            is_draft=True,
+        )
+        logger.info(f"Created draft location '{name}' in filesystem")
+
+        # 2. Create in database with is_draft=True
+        location_create = schemas.LocationCreate(
+            name=name,
+            display_name=display_name,
+            description=description,
+            position_x=position[0],
+            position_y=position[1],
+            adjacent_to=None,  # Linked separately
+            is_discovered=True,
+            is_draft=True,  # Mark as draft
+        )
+        db_location = await crud.create_location(self.db, self.world_id, location_create)
+        logger.info(f"Created draft location '{name}' in database (id={db_location.id})")
+
+        # 3. Store room mapping
+        if db_location.room_id:
+            room_key = LocationService.location_to_room_key(name)
+            LocationService.set_room_mapping(
+                world_name=self.world_name,
+                room_key=room_key,
+                db_room_id=db_location.room_id,
+                agents=[],
+            )
+
+        # 4. Connect to adjacent locations
+        if adjacent_hints:
+            for adj_name in adjacent_hints:
+                adj_loc = next((loc for loc in db_locations if loc.name == adj_name), None)
+                if adj_loc:
+                    await crud.add_adjacent_location(self.db, db_location.id, adj_loc.id)
+                    await crud.add_adjacent_location(self.db, adj_loc.id, db_location.id)
+                    logger.info(f"Connected '{name}' <-> '{adj_name}'")
+
+        return db_location.id
+
     async def sync_player_state_from_filesystem(self) -> None:
         """
         Sync player state from filesystem to database.
@@ -220,6 +298,7 @@ class PersistenceManager:
                 position_y=position[1],
                 adjacent_to=None,
                 is_discovered=loc_config.is_discovered,
+                is_draft=loc_config.is_draft,  # Preserve draft status from filesystem
             )
 
             db_location = await crud.create_location(self.db, self.world_id, location_create)

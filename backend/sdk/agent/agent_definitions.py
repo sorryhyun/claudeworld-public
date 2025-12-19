@@ -174,7 +174,7 @@ def _build_subagent_prompt(
         prompt += f"""
 
 ## Output Instructions
-You MUST use the `{persist_tool_name}` tool to persist your results. Do not return anything else."""
+You MUST use the `{persist_tool_name}` tool to persist your results. Do not return anything else or follow-up like 'I'll...', just use the tool."""
     else:
         prompt += """
 

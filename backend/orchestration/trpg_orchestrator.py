@@ -16,6 +16,7 @@ import models
 from domain.value_objects.contexts import OrchestrationContext
 from domain.value_objects.enums import WorldPhase
 from sdk import AgentManager
+from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .response_generator import ResponseGenerator
@@ -185,6 +186,12 @@ class TRPGOrchestrator:
                 f"[TRPG] Processing complete | Room: {room_id} | "
                 f"Responses: {result.total_responses} | Skips: {result.total_skips}"
             )
+
+            # Apply any pending phase changes after agent turn completes
+            # This is used by the onboarding complete tool to defer phase transition
+            if world.name:
+                WorldService.apply_pending_phase(world.name)
+
             return True
 
         except asyncio.CancelledError:
@@ -245,6 +252,10 @@ class TRPGOrchestrator:
                 raise
             except Exception as e:
                 logger.error(f"[TRPG] Agent {agent.name} error: {e}")
+
+        # Apply any pending phase changes after all agents complete
+        if world.name:
+            WorldService.apply_pending_phase(world.name)
 
         return True
 

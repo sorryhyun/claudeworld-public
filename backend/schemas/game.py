@@ -178,13 +178,20 @@ class LocationCreate(LocationBase):
     position_y: int = 0
     adjacent_to: Optional[List[int]] = None
     is_discovered: bool = True
+    is_draft: bool = False  # True if awaiting enrichment from Location Designer
 
 
 class LocationUpdate(BaseModel):
     """Schema for updating a location."""
 
+    name: Optional[str] = None
+    display_name: Optional[str] = None
+    description: Optional[str] = None
     label: Optional[str] = None
+    position_x: Optional[int] = None
+    position_y: Optional[int] = None
     is_discovered: Optional[bool] = None
+    is_draft: Optional[bool] = None
 
 
 class Location(LocationBase):
@@ -199,6 +206,7 @@ class Location(LocationBase):
     room_id: Optional[int] = None
     is_current: bool = False
     is_discovered: bool = True
+    is_draft: bool = False  # True if awaiting enrichment from Location Designer
 
     @model_validator(mode="before")
     @classmethod

@@ -17,7 +17,10 @@ Supported formats:
     </invoke>
     </function_calls>
 
-2. JSON format (raw parameters, tool inferred from fields):
+2. JSON format with explicit tool_name and tool_input:
+    {"tool_name": "mcp__action_manager__persist_character_design", "tool_input": {...}}
+
+3. JSON format (raw parameters, tool inferred from fields):
     {"name": "HANA-07", "role": "...", "appearance": "...", ...}
 """
 
@@ -40,6 +43,55 @@ class ParsedFakeToolCall:
 
     tool_name: str
     parameters: dict[str, Any]
+
+
+def _extract_json_objects(text: str) -> list[str]:
+    """
+    Extract JSON objects from text by finding balanced braces.
+
+    This handles deeply nested JSON that simple regex can't match.
+    """
+    results = []
+    i = 0
+    while i < len(text):
+        if text[i] == "{":
+            # Found potential JSON start, try to find balanced end
+            start = i
+            depth = 0
+            in_string = False
+            escape_next = False
+
+            for j in range(i, len(text)):
+                char = text[j]
+
+                if escape_next:
+                    escape_next = False
+                    continue
+
+                if char == "\\" and in_string:
+                    escape_next = True
+                    continue
+
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+
+                if not in_string:
+                    if char == "{":
+                        depth += 1
+                    elif char == "}":
+                        depth -= 1
+                        if depth == 0:
+                            # Found complete JSON object
+                            results.append(text[start : j + 1])
+                            i = j
+                            break
+            else:
+                # No balanced closing brace found
+                pass
+        i += 1
+
+    return results
 
 
 def _infer_tool_from_json(params: dict[str, Any]) -> Optional[str]:
@@ -101,21 +153,29 @@ def parse_fake_tool_calls(text: str) -> list[ParsedFakeToolCall]:
 
     # If no XML found, try JSON format: {...}
     if not calls:
-        # Find JSON objects in text (look for {...} patterns)
-        json_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
-        json_matches = re.findall(json_pattern, text, re.DOTALL)
+        # Find JSON objects by looking for balanced braces
+        json_matches = _extract_json_objects(text)
 
         for match in json_matches:
             try:
-                params = json.loads(match)
-                if not isinstance(params, dict):
+                parsed = json.loads(match)
+                if not isinstance(parsed, dict):
                     continue
 
-                # Infer tool name from parameters
-                tool_name = _infer_tool_from_json(params)
+                # Format 2: Explicit tool_name and tool_input
+                if "tool_name" in parsed and "tool_input" in parsed:
+                    tool_name = parsed["tool_name"]
+                    tool_input = parsed["tool_input"]
+                    if isinstance(tool_name, str) and isinstance(tool_input, dict):
+                        calls.append(ParsedFakeToolCall(tool_name=tool_name, parameters=tool_input))
+                        logger.info(f"Parsed JSON fake tool call (explicit): {tool_name}")
+                        continue
+
+                # Format 3: Infer tool name from parameters
+                tool_name = _infer_tool_from_json(parsed)
                 if tool_name:
-                    calls.append(ParsedFakeToolCall(tool_name=tool_name, parameters=params))
-                    logger.info(f"Parsed JSON fake tool call: {tool_name}")
+                    calls.append(ParsedFakeToolCall(tool_name=tool_name, parameters=parsed))
+                    logger.info(f"Parsed JSON fake tool call (inferred): {tool_name}")
 
             except json.JSONDecodeError:
                 continue

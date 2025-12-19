@@ -196,6 +196,36 @@ User Action → Action_Manager (hidden) → narration + suggest_options
 - **Gameplay Tools:** `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`
 - **Persist Tools (sub-agents):** `persist_stat_changes`, `persist_character_design`, `persist_location_design`
 
+**Fake Tool Executor (`sdk/tools/fake_tool_executor.py`):**
+
+When sub-agents run in background via Task tool with `run_in_background: true`, they may output tool calls as plain text instead of actual MCP calls. This happens because the message pump can't keep the SDK control channel open.
+
+The fake tool executor handles this by:
+1. Registering a `SubagentStop` hook that fires when any sub-agent completes
+2. Parsing tool calls from text output (supports both XML and JSON formats)
+3. Executing the corresponding tool handlers directly
+
+Supported formats:
+```xml
+<!-- XML format -->
+<function_calls>
+<invoke name="mcp__action_manager__persist_character_design">
+<parameter name="name">HANA-07</parameter>
+...
+</invoke>
+</function_calls>
+```
+
+```json
+// JSON format (tool inferred from fields)
+{"name": "HANA-07", "role": "...", "appearance": "...", "personality": "..."}
+```
+
+Tool inference from JSON:
+- `name + role + appearance + personality` → `persist_character_design`
+- `name + display_name + description` → `persist_location_design`
+- `summary + stat_changes/inventory_changes` → `persist_stat_changes`
+
 ## API Endpoints
 
 ### Authentication

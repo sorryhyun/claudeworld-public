@@ -34,8 +34,19 @@ class LocationService:
         description: str,
         position: tuple,
         adjacent: Optional[List[str]] = None,
+        is_draft: bool = False,
     ) -> None:
-        """Create a new location in the world."""
+        """Create a new location in the world.
+
+        Args:
+            world_name: Name of the world
+            location_name: Internal location name (slug)
+            display_name: Human-readable name
+            description: Location description
+            position: (x, y) map coordinates
+            adjacent: List of adjacent location names
+            is_draft: If True, mark as draft awaiting enrichment
+        """
         world_path = WorldService.get_world_path(world_name)
         location_path = world_path / "locations" / location_name
 
@@ -61,12 +72,13 @@ class LocationService:
             "position": list(position),
             "is_discovered": True,
             "adjacent": adjacent or [],
+            "is_draft": is_draft,
         }
 
         with open(index_file, "w", encoding="utf-8") as f:
             yaml.dump(index, f, allow_unicode=True, default_flow_style=False)
 
-        logger.info(f"Created location '{location_name}' in world '{world_name}'")
+        logger.info(f"Created location '{location_name}' in world '{world_name}' (is_draft={is_draft})")
 
     @classmethod
     def load_location(cls, world_name: str, location_name: str) -> Optional[LocationConfig]:
@@ -109,6 +121,7 @@ class LocationService:
             is_discovered=loc_data.get("is_discovered", True),
             adjacent=loc_data.get("adjacent", []),
             description=description,
+            is_draft=loc_data.get("is_draft", False),
         )
 
     @classmethod
@@ -151,6 +164,7 @@ class LocationService:
                 is_discovered=loc_data.get("is_discovered", True),
                 adjacent=loc_data.get("adjacent", []),
                 description=description,
+                is_draft=loc_data.get("is_draft", False),
             )
 
         return locations
@@ -198,6 +212,80 @@ class LocationService:
             yaml.dump(index, f, allow_unicode=True, default_flow_style=False)
 
         logger.info(f"Updated location '{location_name}' in world '{world_name}'")
+        return True
+
+    @classmethod
+    def update_location_description(
+        cls,
+        world_name: str,
+        location_name: str,
+        description: str,
+    ) -> bool:
+        """
+        Update a location's description (for enrichment after draft creation).
+
+        Args:
+            world_name: Name of the world
+            location_name: Name of the location to update
+            description: New description content
+
+        Returns:
+            True if updated successfully, False if location not found
+        """
+        world_path = WorldService.get_world_path(world_name)
+        loc_dir = world_path / "locations" / location_name
+
+        if not loc_dir.exists():
+            logger.warning(f"Location '{location_name}' directory does not exist")
+            return False
+
+        # Load display name for header
+        loc_config = cls.load_location(world_name, location_name)
+        display_name = loc_config.display_name if loc_config else location_name
+
+        # Update description.md
+        desc_file = loc_dir / "description.md"
+        with open(desc_file, "w", encoding="utf-8") as f:
+            f.write(f"# {display_name}\n\n{description}\n")
+
+        logger.info(f"Updated description for location '{location_name}'")
+        return True
+
+    @classmethod
+    def mark_location_finalized(
+        cls,
+        world_name: str,
+        location_name: str,
+    ) -> bool:
+        """
+        Mark a location as no longer a draft (enrichment complete).
+
+        Args:
+            world_name: Name of the world
+            location_name: Name of the location to finalize
+
+        Returns:
+            True if updated successfully, False if location not found
+        """
+        world_path = WorldService.get_world_path(world_name)
+        index_file = world_path / "locations" / "_index.yaml"
+
+        if not index_file.exists():
+            return False
+
+        with open(index_file, "r", encoding="utf-8") as f:
+            index = yaml.safe_load(f) or {"locations": {}}
+
+        if location_name not in index.get("locations", {}):
+            logger.warning(f"Location '{location_name}' not found in index")
+            return False
+
+        index["locations"][location_name]["is_draft"] = False
+
+        with open(index_file, "w", encoding="utf-8") as f:
+            yaml.dump(index, f, allow_unicode=True, default_flow_style=False)
+
+        logger.info(f"Marked location '{location_name}' as finalized")
         return True
 
     @classmethod

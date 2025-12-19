@@ -13,6 +13,7 @@ test_*.txt
 .ruff_cache
 .uv-cache
 *.Identifier
+worlds/
 
 # Node
 frontend/node_modules/

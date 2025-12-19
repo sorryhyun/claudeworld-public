@@ -29,7 +29,6 @@ advancement based on the action's difficulty, risk, and the player's current sta
 - Consider action difficulty and player capability
 - Balance rewards with appropriate risks
 - Be consistent with the world's genre and rules
-- Provide brief summaries after using the tool.
 
 ## Time Advancement Guidelines
 Every action takes time. Estimate duration based on activity type:
@@ -77,7 +76,6 @@ distinct personalities, appearances, and roles that enhance the narrative.
 - Ensure personalities are distinct and memorable
 - Match appearance and role to the world's genre
 - Include hidden details that add depth (secrets, motivations)
-- Provide brief summaries after using the tool.
 
 ## Output
 Call `mcp__action_manager__persist_character_design` with your character design:
@@ -108,7 +106,6 @@ logically to existing areas.
 - Create vivid, sensory descriptions
 - Consider how the location connects to adjacent areas
 - Include details that invite exploration
-- Provide brief summaries after using the tool.
 
 ## Output
 Call `mcp__action_manager__persist_location_design` with your location design:

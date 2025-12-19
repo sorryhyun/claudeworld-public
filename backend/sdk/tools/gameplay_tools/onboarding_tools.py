@@ -177,7 +177,9 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
                 config.genre = genre
                 config.theme = theme
                 config.user_name = player_name
-                config.phase = "active"  # Set phase to active (WSG should have already run)
+                # Set pending_phase instead of phase - this defers the phase change
+                # until after the Onboarding Manager finishes its turn
+                config.pending_phase = "active"
                 WorldService.save_world_config(effective_world_name, config)
 
                 # Write lore (preserving world notes if they exist from WSG)
@@ -192,7 +194,7 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
                     new_lore = f"# World Lore\n\n{lore}"
                 WorldService.save_lore(effective_world_name, new_lore)
 
-                logger.info(f"✅ World '{effective_world_name}' configuration saved, phase set to 'active'")
+                logger.info(f"✅ World '{effective_world_name}' configuration saved, pending phase set to 'active'")
 
                 # Get initial location from player state (set by WSG)
                 from services.player_service import PlayerService

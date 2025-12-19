@@ -162,6 +162,7 @@ class WorldFacade:
                 position_y=position[1],
                 adjacent_to=None,
                 is_discovered=loc_config.is_discovered,
+                is_draft=loc_config.is_draft,  # Preserve draft status from filesystem
             )
 
             db_location = await crud.create_location(self.db, world_id, location_create)

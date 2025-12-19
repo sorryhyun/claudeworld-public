@@ -21,8 +21,7 @@ onboarding:
       1. Sets the world's genre, theme, and lore
       2. Transitions the world phase from "onboarding" to "active"
 
-      Note: Stat system and initial location are created by World Seed Generator
-      using structured output after this tool completes.
+      Note: Stat system and initial location are created by World Seed Generator using structured output after this tool completes.
     response: |
       World initialized successfully.
       Player: {player_name}
@@ -64,14 +63,10 @@ action_manager:
       4. Your action suggestions appear as clickable buttons (like 'suggest_options')
 
       **REQUIRED Parameters:**
-      - destination: Location name to travel to (must already exist)
-      - user_action: The player's original action that triggered this travel
-        (e.g., "Go to the tavern"). Provides continuity for the next scene.
-      - chat_summary: A 2-4 sentence summary of what happened at the current
-        location before leaving. Focus on key events, decisions, and outcomes. This is
-        saved to the world's history.md file.
-      - narration: The narrative text describing the journey and arrival.
-        Make it vivid and engaging, describing what the player experiences.
+      - destination: Location name to travel to (should already exist)
+      - user_action: The player's original action that triggered this travel (e.g., "Go to the tavern"). Provides continuity for the next scene.
+      - chat_summary: A 2-4 sentence summary of what happened at the current location before leaving. Focus on key events, decisions, and outcomes. This is saved to the world's history.md file.
+      - narration: The narrative text describing the journey and arrival.  Make it vivid and engaging, describing what the player experiences.
       - action_1: First suggested action at the new location
       - action_2: Second suggested action at the new location
 
@@ -87,8 +82,7 @@ action_manager:
     enabled: true
     description: |
       Inject a memory into a specific character's recent_events.
-      Use this when external events should implant memories into NPCs,
-      such as hypnosis, mind control, illusions, or similar supernatural effects.
+      Use this when external events should implant memories into NPCs, such as hypnosis, mind control, illusions, or similar supernatural effects.
       The character will remember this as if it actually happened or regard as commonsense.
     response: |
       {inject_memory_result}
@@ -98,8 +92,7 @@ action_manager:
     enabled: true
     description: |
       Move an existing character to a different location.
-      Use this when an NPC needs to relocate (e.g., following the player,
-      fleeing, returning home, or being summoned elsewhere).
+      Use this when an NPC needs to relocate (e.g., following the player, fleeing, returning home, or being summoned elsewhere).
       The character must already exist in the game.
     response: |
       {move_result}
@@ -163,8 +156,7 @@ action_manager:
 
       **Usage:**
       Call this tool when the player attempts something risky or uncertain.
-      Use the result to inform how you narrate the outcome and what
-      stat changes to request from stat_calculator.
+      Use the result to inform how you narrate the outcome and what stat changes to request from stat_calculator.
 
       No parameters required - just call to get a random result.
     response: |

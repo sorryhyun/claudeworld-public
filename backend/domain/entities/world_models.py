@@ -24,6 +24,7 @@ class WorldConfig:
     created_at: datetime
     updated_at: datetime
     settings: Dict[str, Any] = field(default_factory=dict)
+    pending_phase: Optional[str] = None  # Deferred phase change (applied after agent turn ends)
 
 
 @dataclass
@@ -50,6 +51,7 @@ class LocationConfig:
     is_discovered: bool
     adjacent: List[str] = field(default_factory=list)
     description: str = ""
+    is_draft: bool = False  # True if awaiting enrichment from Location Designer
 
 
 @dataclass

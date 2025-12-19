@@ -303,6 +303,40 @@ async def sync_locations_with_filesystem(
     return deleted_count
 
 
+async def update_location(
+    db: AsyncSession,
+    location_id: int,
+    update_data: schemas.LocationUpdate,
+) -> Optional[models.Location]:
+    """
+    Update a location's fields.
+
+    Args:
+        db: Database session
+        location_id: ID of location to update
+        update_data: Fields to update (only non-None values are applied)
+
+    Returns:
+        Updated Location or None if not found
+    """
+    location = await db.get(models.Location, location_id)
+    if not location:
+        return None
+
+    # Update provided fields
+    update_dict = update_data.model_dump(exclude_unset=True)
+    for field, value in update_dict.items():
+        if hasattr(location, field):
+            setattr(location, field, value)
+
+    async with serialized_write():
+        await db.commit()
+
+    await db.refresh(location)
+    logger.info(f"Updated location {location_id}: {list(update_dict.keys())}")
+    return location
+
+
 async def update_location_label(
     db: AsyncSession,
     location_id: int,

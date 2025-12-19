@@ -200,6 +200,7 @@ class WorldService:
             created_at=created_at,
             updated_at=updated_at,
             settings=data.get("settings", {}),
+            pending_phase=data.get("pending_phase"),
         )
 
         # Update cache
@@ -231,6 +232,10 @@ class WorldService:
             "settings": config.settings,
         }
 
+        # Only write pending_phase if it exists
+        if config.pending_phase:
+            data["pending_phase"] = config.pending_phase
+
         with open(world_path / "world.yaml", "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
 
@@ -238,6 +243,33 @@ class WorldService:
         if name in _config_cache:
             del _config_cache[name]
             logger.debug(f"WorldConfig cache invalidated for '{name}' (save_world_config)")
+
+    @classmethod
+    def apply_pending_phase(cls, world_name: str) -> bool:
+        """
+        Apply pending phase change if one exists.
+
+        This is called after an agent's turn completes to apply deferred phase changes.
+        The pending_phase is set by the `complete` tool during onboarding, and applied
+        after the Onboarding Manager finishes its turn.
+
+        Args:
+            world_name: Name of the world
+
+        Returns:
+            True if a pending phase was applied, False otherwise
+        """
+        config = cls.load_world_config(world_name)
+        if not config or not config.pending_phase:
+            return False
+
+        old_phase = config.phase
+        config.phase = config.pending_phase
+        config.pending_phase = None
+        cls.save_world_config(world_name, config)
+
+        logger.info(f"✅ Applied pending phase change for '{world_name}': {old_phase} -> {config.phase}")
+        return True
 
     @classmethod
     def load_lore(cls, world_name: str) -> str:

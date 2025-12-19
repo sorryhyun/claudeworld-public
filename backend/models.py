@@ -262,6 +262,7 @@ class Location(Base):
     # Quick lookup fields
     is_current = Column(Boolean, default=False)
     is_discovered = Column(Boolean, default=True)
+    is_draft = Column(Boolean, default=False)  # True if awaiting enrichment from Location Designer
 
     world = relationship("World", back_populates="locations")
     room = relationship("Room")

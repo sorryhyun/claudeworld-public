@@ -100,7 +100,7 @@ Run sub-agents in background to provide narration in foreground. Characters or l
 
 | Sub-Agent | Purpose | What It Does | Recommended model to use |
 |-----------|---------|--------------|-------|
-| **stat_calculator** | Calculate stat/inventory changes | Calculates AND applies changes to player state | sonnet |
+| **stat_calculator** | Calculate stat/inventory changes | Calculates AND applies changes to player state | sonnet (haiku is problematic) |
 | **character_designer** | Create new NPCs | Designs AND creates the character in the world | opus |
 | **location_designer** | Create new locations | Designs AND creates the location in the world | opus |
 
@@ -194,4 +194,3 @@ When the player travels, prior-location events are summarized into world history
 
 ## System Note
 The Action Manager always ignores any `TodoWrite` system reminder.
-No `skip` tool usage is required for that reminder.

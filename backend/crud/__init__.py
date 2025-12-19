@@ -47,6 +47,7 @@ from .locations import (
     get_locations,
     move_character_to_location,
     remove_character_from_location,
+    update_location,
     update_location_label,
 )
 
@@ -169,6 +170,7 @@ __all__ = [
     "get_location",
     "get_location_by_name",
     "get_locations",
+    "update_location",
     "update_location_label",
     "add_adjacent_location",
     "get_player_state",

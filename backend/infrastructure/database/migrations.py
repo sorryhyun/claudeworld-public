@@ -52,6 +52,7 @@ async def run_migrations(engine: AsyncEngine):
 
         # TRPG/Game migrations
         await _migrate_game_tables(conn)
+        await _migrate_locations_table(conn)
         await _migrate_player_states_table(conn)
 
         # Cleanup migrations - remove deprecated tables
@@ -471,7 +472,6 @@ async def _add_indexes(conn):
 
 async def _sync_agents_from_filesystem(conn):
     """Sync agent data from filesystem (paths, groups, profile pics, system prompts)."""
-    from pathlib import Path
 
     from domain.entities.agent_config import AgentConfigData
     from i18n.korean import format_with_particles
@@ -613,6 +613,23 @@ async def _migrate_player_states_table(conn):
             default_clause = f" DEFAULT {default}" if default else ""
             logger.info(f"  Adding {col_name} column to player_states table...")
             await conn.execute(text(f"ALTER TABLE player_states ADD COLUMN {col_name} {col_type}{default_clause}"))
+            logger.info(f"  ✓ Added {col_name} column")
+
+
+async def _migrate_locations_table(conn):
+    """Add columns to locations table."""
+    if not await _table_exists(conn, "locations"):
+        return  # Table will be created by _migrate_game_tables
+
+    columns_to_add = [
+        ("is_draft", "BOOLEAN", "FALSE"),  # True if awaiting enrichment from Location Designer
+    ]
+
+    for col_name, col_type, default in columns_to_add:
+        if not await _column_exists(conn, "locations", col_name):
+            default_clause = f" DEFAULT {default}" if default else ""
+            logger.info(f"  Adding {col_name} column to locations table...")
+            await conn.execute(text(f"ALTER TABLE locations ADD COLUMN {col_name} {col_type}{default_clause}"))
             logger.info(f"  ✓ Added {col_name} column")
 
 
