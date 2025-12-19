@@ -33,6 +33,7 @@ const MARKDOWN_COMPONENTS: Components = {
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { ActionInput } from './ActionInput';
 import { SuggestedActions } from './SuggestedActions';
+import { ImageAttachment } from '../chat-room/message-list/ImageAttachment';
 import { TurnIndicator } from './TurnIndicator';
 import { MobileGameStateSheet } from './MobileGameStateSheet';
 
@@ -193,6 +194,17 @@ const GameMessageRow = memo(({
                 {message.thinking}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Image attachment */}
+        {message.image_data && message.image_media_type && (
+          <div className="mb-2">
+            <ImageAttachment
+              imageData={message.image_data}
+              imageMediaType={message.image_media_type}
+              isUserMessage={isUser}
+            />
           </div>
         )}
 

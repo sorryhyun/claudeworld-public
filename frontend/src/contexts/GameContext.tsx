@@ -97,6 +97,8 @@ export interface GameMessage {
   thinking: string | null;
   timestamp: string | null;
   is_chatting?: boolean;
+  image_data?: string | null;  // Base64-encoded image data
+  image_media_type?: string | null;  // MIME type (e.g., 'image/png', 'image/jpeg')
 }
 
 export type GamePhase = 'loading' | 'no_world' | 'onboarding' | 'active';

@@ -172,6 +172,8 @@ async def poll_updates(
                 "agent_name": m.agent.name if m.agent else None,
                 "thinking": m.thinking,
                 "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                "image_data": m.image_data,
+                "image_media_type": m.image_media_type,
             }
             for m in visible_messages
         ],
