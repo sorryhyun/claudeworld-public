@@ -11,6 +11,8 @@ This is the entry point for the PyInstaller bundle. It:
 import getpass
 import os
 import secrets
+import shutil
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
@@ -193,6 +195,57 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 
+def detect_claude_code() -> dict:
+    """
+    Detect if Claude Code CLI is installed and available.
+
+    Returns:
+        dict with keys:
+        - installed: bool - whether Claude Code is available
+        - version: str | None - version string if available
+        - path: str | None - path to claude executable
+    """
+    result = {"installed": False, "version": None, "path": None}
+
+    # Check if 'claude' command exists in PATH
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        # On Windows, also check common install locations
+        if sys.platform == "win32":
+            possible_paths = [
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "claude-code" / "claude.exe",
+                Path(os.environ.get("PROGRAMFILES", "")) / "claude-code" / "claude.exe",
+                Path.home() / ".claude" / "bin" / "claude.exe",
+            ]
+            for path in possible_paths:
+                if path.exists():
+                    claude_path = str(path)
+                    break
+
+    if not claude_path:
+        return result
+
+    result["path"] = claude_path
+
+    # Try to get version
+    try:
+        proc = subprocess.run(
+            [claude_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+        if proc.returncode == 0:
+            result["installed"] = True
+            result["version"] = proc.stdout.strip() or proc.stderr.strip()
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        # Command exists but couldn't get version - still consider it installed
+        result["installed"] = True
+
+    return result
+
+
 def main():
     """Main entry point."""
     # Set up paths first
@@ -201,23 +254,40 @@ def main():
     # Run environment setup (including first-time wizard if needed)
     setup_was_run = setup_environment()
 
-    # Load .env file into os.environ BEFORE importing any modules that use os.getenv()
-    # This is critical because database.py uses os.getenv("DATABASE_URL") at module level
+    # Load .env file BEFORE importing main/database modules
+    # This ensures DATABASE_URL is available via os.getenv()
     from dotenv import load_dotenv
 
     work_dir = get_work_dir()
     env_file = work_dir / ".env"
     if env_file.exists():
         load_dotenv(env_file, override=True)
-        print(f"Environment loaded from: {env_file}")
 
-    # Import uvicorn and app after setting up paths and loading environment
+    # Detect Claude Code CLI
+    claude_code_info = detect_claude_code()
+
+    # Set environment variable for backend to use
+    os.environ["CLAUDE_CODE_AVAILABLE"] = "true" if claude_code_info["installed"] else "false"
+    if claude_code_info["path"]:
+        os.environ["CLAUDE_CODE_PATH"] = claude_code_info["path"]
+
+    # Import uvicorn and app after setting up paths and loading .env
     import uvicorn
 
     print("=" * 60)
     print("ClaudeWorld")
     print("=" * 60)
     print()
+
+    # Display Claude Code status
+    if claude_code_info["installed"]:
+        version_str = f" ({claude_code_info['version']})" if claude_code_info["version"] else ""
+        print(f"Claude Code: Detected{version_str}")
+    else:
+        print("Claude Code: Not detected")
+        print("  Install from: https://claude.ai/code")
+    print()
+
     print("Server starting: http://localhost:8000")
     print("Press Ctrl+C to stop the server")
     print()

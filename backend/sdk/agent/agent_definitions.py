@@ -43,18 +43,27 @@ logger = logging.getLogger("AgentDefinitions")
 # Structure: {agent_name: {"definitions": dict, "mtimes": {path: mtime}}}
 _subagent_cache: dict[str, dict] = {}
 
-# Agent config paths - relative to project root
-AGENTS_DIR = Path(__file__).parent.parent.parent.parent / "agents"
-SUBAGENT_PATHS = {
-    # Gameplay sub-agents (invoked by Action Manager)
-    "stat_calculator": AGENTS_DIR / "group_gameplay" / "Stat_Calculator",
-    "character_designer": AGENTS_DIR / "group_gameplay" / "Character_Designer",
-    "location_designer": AGENTS_DIR / "group_gameplay" / "Location_Designer",
-    # Chat mode sub-agent (invoked on chat mode exit)
-    "chat_summarizer": AGENTS_DIR / "group_gameplay" / "Chat_Summarizer",
-    # Onboarding sub-agents (invoked by Onboarding Manager)
-    "world_seed_generator": AGENTS_DIR / "group_onboarding" / "World_Seed_Generator",
-}
+
+def _get_agents_dir() -> Path:
+    """Get agents directory, handling PyInstaller bundled mode."""
+    from core.settings import get_settings
+
+    return get_settings().agents_dir
+
+
+def _get_subagent_paths() -> dict[str, Path]:
+    """Get sub-agent paths dynamically to support PyInstaller bundles."""
+    agents_dir = _get_agents_dir()
+    return {
+        # Gameplay sub-agents (invoked by Action Manager)
+        "stat_calculator": agents_dir / "group_gameplay" / "Stat_Calculator",
+        "character_designer": agents_dir / "group_gameplay" / "Character_Designer",
+        "location_designer": agents_dir / "group_gameplay" / "Location_Designer",
+        # Chat mode sub-agent (invoked on chat mode exit)
+        "chat_summarizer": agents_dir / "group_gameplay" / "Chat_Summarizer",
+        # Onboarding sub-agents (invoked by Onboarding Manager)
+        "world_seed_generator": agents_dir / "group_onboarding" / "World_Seed_Generator",
+    }
 
 # Human-readable names for sub-agents (used in descriptions)
 SUBAGENT_DISPLAY_NAMES = {
@@ -104,7 +113,7 @@ def _load_agent_identity(agent_type: str) -> tuple[str, str]:
     Returns:
         Tuple of (in_a_nutshell, characteristics)
     """
-    base_path = SUBAGENT_PATHS.get(agent_type)
+    base_path = _get_subagent_paths().get(agent_type)
     if base_path is None or not base_path.exists():
         logger.warning(f"Agent path not found: {base_path}")
         return "", ""
@@ -260,8 +269,9 @@ def build_subagent_definitions() -> dict[str, AgentDefinition]:
 def _get_subagent_mtimes(agent_types: list[str]) -> dict[str, float]:
     """Get modification times for all config files of the given sub-agent types."""
     mtimes = {}
+    subagent_paths = _get_subagent_paths()
     for agent_type in agent_types:
-        base_path = SUBAGENT_PATHS.get(agent_type)
+        base_path = subagent_paths.get(agent_type)
         if base_path and base_path.exists():
             for filename in ["in_a_nutshell.md", "characteristics.md"]:
                 file_path = base_path / filename

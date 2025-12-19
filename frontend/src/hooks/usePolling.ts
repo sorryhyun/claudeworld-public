@@ -139,8 +139,8 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
           const withoutChatting = prev.filter(m => !m.is_chatting);
 
           // Add new chatting indicators for agents that are chatting
-          const chattingMessages = chattingAgents.map((agent: any) => ({
-            id: `chatting_${agent.id}` as any,
+          const chattingMessages = chattingAgents.map((agent: { id: number; name: string; profile_pic?: string | null; response_text?: string; thinking_text?: string }) => ({
+            id: `chatting_${agent.id}` as string,
             agent_id: agent.id,
             agent_name: agent.name,
             agent_profile_pic: agent.profile_pic,
@@ -176,7 +176,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     }
   }, [roomId]);
 
-  // Setup polling
+  // Setup polling with visibility API optimization
   useEffect(() => {
     if (!roomId) {
       setIsConnected(false);
@@ -188,6 +188,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     lastMessageIdRef.current = 0;
     isInitialLoadRef.current = true;
     let isActive = true;
+    let isTabVisible = !document.hidden;
 
     // Initial load
     fetchAllMessages();
@@ -197,7 +198,10 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       if (!isActive) return;
 
       pollIntervalRef.current = setTimeout(async () => {
-        await pollNewMessages();
+        // Only poll if tab is visible
+        if (isTabVisible) {
+          await pollNewMessages();
+        }
         scheduleNextPoll(); // Schedule next poll after this one completes
       }, POLL_INTERVAL);
     };
@@ -207,10 +211,25 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       if (!isActive) return;
 
       statusPollIntervalRef.current = setTimeout(async () => {
-        await pollChattingAgents();
+        // Only poll if tab is visible
+        if (isTabVisible) {
+          await pollChattingAgents();
+        }
         scheduleNextStatusPoll(); // Schedule next poll after this one completes
       }, STATUS_POLL_INTERVAL);
     };
+
+    // Handle visibility change - pause/resume polling
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+      if (isTabVisible) {
+        // Tab became visible - fetch immediately to catch up
+        pollNewMessages();
+        pollChattingAgents();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Start both polling cycles
     scheduleNextPoll();
@@ -219,6 +238,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     return () => {
       // Cleanup on unmount or room change
       isActive = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollIntervalRef.current) {
         clearTimeout(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -249,7 +269,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
         headers['X-API-Key'] = apiKey;
       }
 
-      const messageData: any = {
+      const messageData: { content: string; role: string; participant_type?: string; participant_name?: string; image_data?: string; image_media_type?: string; mentioned_agent_ids?: number[] } = {
         content,
         role: 'user',  // Required by MessageCreate schema
       };

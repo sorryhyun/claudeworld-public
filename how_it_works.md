@@ -19,7 +19,7 @@ The system uses a **1-agent tape architecture** where the Action Manager (hidden
 
 ## TRPG System Agents
 
-Eight specialized agents work together, organized into two groups:
+Seven specialized agents work together, organized into two groups:
 
 ### Onboarding Phase (`agents/group_onboarding/`)
 
@@ -36,8 +36,7 @@ Eight specialized agents work together, organized into two groups:
 | **Stat_Calculator** | Processes mechanical game effects (stats, items) | Sub-agent via Task tool |
 | **Character_Designer** | Creates NPCs when interactions require them | Sub-agent via Task tool |
 | **Location_Designer** | Creates new locations during exploration | Sub-agent via Task tool |
-| **Summarizer** | Generates location/conversation summaries | Sub-agent via Task tool |
-| **Chat_Summarizer** | Summarizes chat mode conversations | Sub-agent via Task tool |
+| **Chat_Summarizer** | Summarizes chat mode conversations when exiting | Direct invocation on `/end` |
 
 ---
 
@@ -70,7 +69,7 @@ User Action → Action_Manager (hidden)
 3. **TRPG Orchestrator** triggers agent responses in background
 4. **Tape Executor** runs:
    - Action_Manager interprets action, invokes sub-agents as needed
-   - Narrator describes the outcome and suggests next actions
+   - Action_Manager creates narration and suggests next actions via tools
 5. **Polling endpoint** delivers responses to frontend
 
 ---
@@ -126,7 +125,7 @@ The `complete` tool invokes **World_Seed_Generator** via `WorldSeedManager`:
 | `Task(location_designer)` | Invoke Location_Designer to create new areas |
 | `narration` | Create visible narrative message to the player |
 | `suggest_options` | Provide 2 clickable action buttons |
-| `travel` | Move player to location (combines narration + suggestions + chat summary) |
+| `travel` | Move player to location (combines narration + suggestions + optional location summary) |
 | `remove_character` | Archive NPCs (death/departure) |
 | `move_character` | Relocate NPC to different location |
 | `inject_memory` | Add memory to specific NPC's recent_events.md |
@@ -135,10 +134,12 @@ The `complete` tool invokes **World_Seed_Generator** via `WorldSeedManager`:
 
 During gameplay, players can enter **Chat Mode** to have free-form conversations with NPCs:
 
-- Start via `/api/worlds/{id}/chat-mode/start` with target NPC
-- Direct back-and-forth dialogue without Action Manager/Narrator overhead
+- Start via `/chat` command (warms Chat_Summarizer client in background)
+- Direct back-and-forth dialogue without Action Manager overhead
 - NPC responds in character based on their personality and current context
-- End via `/api/worlds/{id}/chat-mode/end` to return to normal gameplay
+- End via `/end` command:
+  1. Chat_Summarizer generates a 2-4 sentence summary of the conversation
+  2. Summary passed to Action Manager for narration and gameplay continuation
 
 ---
 
@@ -254,8 +255,8 @@ Each Location has an associated Room for message history. When the player travel
 
 Agent files use **third-person** because the Claude Agent SDK inherits an immutable "You are Claude Code" system prompt. Third-person descriptions avoid conflicting "You are..." statements:
 
-- **Correct**: "The Narrator is a masterful storyteller who..."
-- **Wrong**: "You are the Narrator, a masterful storyteller..."
+- **Correct**: "Action_Manager is the hidden orchestrator who..."
+- **Wrong**: "You are the Action_Manager, a hidden orchestrator..."
 
 The system prompt (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders to instruct Claude to embody the character.
 

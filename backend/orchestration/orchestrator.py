@@ -86,7 +86,7 @@ class ChatOrchestrator:
         # Clean up completed tasks from active_room_tasks
         completed_rooms = [room_id for room_id, task in self.active_room_tasks.items() if task.done()]
         for room_id in completed_rooms:
-            del self.active_room_tasks[room_id]
+            self.active_room_tasks.pop(room_id, None)  # Atomic removal
             removed_count += 1
             logger.debug(f"Cleaned up completed task for room {room_id}")
 
@@ -134,15 +134,14 @@ class ChatOrchestrator:
         # Capture streaming state BEFORE interrupting (contains partial responses)
         partial_responses = await agent_manager.get_and_clear_streaming_state_for_room(room_id)
 
-        # Cancel any active processing task for this room
-        if room_id in self.active_room_tasks:
-            task = self.active_room_tasks[room_id]
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass  # Expected
+        # Atomically remove and cancel any active processing task for this room
+        task = self.active_room_tasks.pop(room_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass  # Expected or timed out
 
         # Interrupt all agents in this room via the agent manager
         await agent_manager.interrupt_room(room_id)
@@ -182,8 +181,8 @@ class ChatOrchestrator:
         await self.interrupt_room_processing(room_id, agent_manager, save_partial_responses=False)
 
         # Remove from active tasks tracking (may already be removed by interrupt, but ensure it's gone)
-        if room_id in self.active_room_tasks:
-            del self.active_room_tasks[room_id]
+        removed_task = self.active_room_tasks.pop(room_id, None)
+        if removed_task:
             logger.info(f"✅ Removed room {room_id} from active_room_tasks")
 
         # Remove from last user message time tracking
@@ -305,9 +304,8 @@ class ChatOrchestrator:
 
             traceback.print_exc()
         finally:
-            # Clean up task tracking
-            if room_id in self.active_room_tasks and self.active_room_tasks[room_id] == processing_task:
-                del self.active_room_tasks[room_id]
+            # Clean up task tracking (task may already be removed via pop() in interrupt)
+            self.active_room_tasks.pop(room_id, None)
 
     async def _process_agent_responses(
         self,

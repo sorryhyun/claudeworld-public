@@ -266,6 +266,24 @@ class AuthMiddleware:
     # Path prefixes that don't require authentication
     EXCLUDED_PREFIXES = (
         "/mcp",  # MCP endpoint (handles its own auth via MCP protocol)
+        "/assets",  # Static assets (JS, CSS) for bundled frontend
+    )
+
+    # File extensions that don't require authentication (static files)
+    STATIC_EXTENSIONS = (
+        ".css",
+        ".js",
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".map",
     )
 
     def __init__(self, app):
@@ -285,8 +303,13 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Skip auth for excluded prefixes (like /mcp)
+        # Skip auth for excluded prefixes (like /mcp, /assets)
         if path.startswith(self.EXCLUDED_PREFIXES):
+            await self.app(scope, receive, send)
+            return
+
+        # Skip auth for static files (by extension)
+        if path.endswith(self.STATIC_EXTENSIONS):
             await self.app(scope, receive, send)
             return
 

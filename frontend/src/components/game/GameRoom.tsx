@@ -1,12 +1,40 @@
 import { useRef, useEffect, memo, useCallback, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import type { Components } from 'react-markdown';
 import { useGame, GameMessage } from '../../contexts/GameContext';
+
+// Memoized ReactMarkdown components to prevent object recreation on every render
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed whitespace-pre-wrap">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-700 my-3">
+      {children}
+    </blockquote>
+  ),
+  h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h3>,
+  hr: () => <hr className="my-4 border-slate-200" />,
+  code: ({ children }) => (
+    <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono">
+      {children}
+    </code>
+  ),
+};
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { ActionInput } from './ActionInput';
 import { SuggestedActions } from './SuggestedActions';
 import { TurnIndicator } from './TurnIndicator';
+import { MobileGameStateSheet } from './MobileGameStateSheet';
 
 // Helper to get only the latest turn (last user message + subsequent assistant responses)
 function getLatestTurn(messages: GameMessage[]): GameMessage[] {
@@ -106,28 +134,7 @@ const GameMessageRow = memo(({
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
-                components={{
-                  p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed whitespace-pre-wrap">{children}</p>,
-                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                  em: ({ children }) => <em className="italic">{children}</em>,
-                  ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
-                  ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
-                  li: ({ children }) => <li>{children}</li>,
-                  blockquote: ({ children }) => (
-                    <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 my-3">
-                      {children}
-                    </blockquote>
-                  ),
-                  h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h3>,
-                  hr: () => <hr className="my-4 border-slate-200" />,
-                  code: ({ children }) => (
-                    <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono">
-                      {children}
-                    </code>
-                  ),
-                }}
+                components={MARKDOWN_COMPONENTS}
               >
                 {message.content}
               </ReactMarkdown>
@@ -163,20 +170,26 @@ const GameMessageRow = memo(({
           <div className="mb-2">
             <button
               onClick={() => onToggleThinking(message.id)}
-              className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 transition-colors"
+              className="text-xs text-slate-600 hover:text-slate-800 flex items-center gap-1 transition-colors"
+              aria-expanded={isExpanded}
+              aria-controls={`thinking-${message.id}`}
             >
               <svg
                 className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
               Show thinking
             </button>
             {isExpanded && (
-              <div className="mt-2 p-3 bg-slate-100 rounded-lg text-xs text-slate-600 italic whitespace-pre-wrap border border-slate-200">
+              <div
+                id={`thinking-${message.id}`}
+                className="mt-2 p-3 bg-slate-100 rounded-lg text-xs text-slate-700 italic whitespace-pre-wrap border border-slate-200"
+              >
                 {message.thinking}
               </div>
             )}
@@ -190,28 +203,7 @@ const GameMessageRow = memo(({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
-            components={{
-              p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed whitespace-pre-wrap">{children}</p>,
-              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-              em: ({ children }) => <em className="italic">{children}</em>,
-              ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
-              ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
-              li: ({ children }) => <li>{children}</li>,
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 my-3">
-                  {children}
-                </blockquote>
-              ),
-              h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
-              h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
-              h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h3>,
-              hr: () => <hr className="my-4 border-slate-200" />,
-              code: ({ children }) => (
-                <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono">
-                  {children}
-                </code>
-              ),
-            }}
+            components={MARKDOWN_COMPONENTS}
           >
             {message.content}
           </ReactMarkdown>
@@ -224,6 +216,7 @@ const GameMessageRow = memo(({
 GameMessageRow.displayName = 'GameMessageRow';
 
 export function GameRoom() {
+  const { t } = useTranslation();
   const {
     world,
     messages,
@@ -237,9 +230,14 @@ export function GameRoom() {
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set());
+  // Use ref to stabilize Set access in callbacks without causing re-renders
+  const expandedThinkingRef = useRef(expandedThinking);
+  expandedThinkingRef.current = expandedThinking;
   const [isAtBottom, setIsAtBottom] = useState(true);
   const lastMessageCountRef = useRef(0);
   const [showHistory, setShowHistory] = useState(false);
+  const historyModalRef = useFocusTrap<HTMLDivElement>(showHistory);
+  const [lastAnnouncedMessageId, setLastAnnouncedMessageId] = useState<number | null>(null);
 
   // Get only the latest turn for display (not the full history)
   const displayMessages = useMemo(() => getLatestTurn(messages), [messages]);
@@ -271,6 +269,27 @@ export function GameRoom() {
     }
   }, [displayMessages.length]);
 
+  // Track last message for screen reader announcement
+  useEffect(() => {
+    if (displayMessages.length > 0) {
+      const lastMessage = displayMessages[displayMessages.length - 1];
+      if (lastMessage.id !== lastAnnouncedMessageId && lastMessage.role !== 'user') {
+        setLastAnnouncedMessageId(lastMessage.id);
+      }
+    }
+  }, [displayMessages, lastAnnouncedMessageId]);
+
+  // Handle Escape key to close history modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showHistory) {
+        setShowHistory(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showHistory]);
+
   const toggleThinking = useCallback((messageId: number) => {
     setExpandedThinking(prev => {
       const newSet = new Set(prev);
@@ -295,13 +314,14 @@ export function GameRoom() {
 
   // Use Virtuoso's data parameter to avoid messages dependency
   // This prevents itemContent recreation when messages array reference changes
+  // Access expandedThinking via ref to avoid recreating callback on every toggle
   const itemContent = useCallback((_index: number, message: GameMessage) => (
     <GameMessageRow
       message={message}
-      isExpanded={expandedThinking.has(message.id)}
+      isExpanded={expandedThinkingRef.current.has(message.id)}
       onToggleThinking={toggleThinking}
     />
-  ), [expandedThinking, toggleThinking]);
+  ), [toggleThinking]);
 
   if (!world) return null;
 
@@ -316,9 +336,9 @@ export function GameRoom() {
               <button
                 onClick={clearWorld}
                 className="text-xs text-slate-400 hover:text-slate-600 px-2 py-0.5 rounded hover:bg-slate-100 transition-colors"
-                title="Exit world"
+                aria-label={t('gameRoom.exit')}
               >
-                Exit
+                {t('gameRoom.exit')}
               </button>
             </div>
             {currentLocation && phase === 'active' && (
@@ -337,20 +357,20 @@ export function GameRoom() {
               <button
                 onClick={() => setShowHistory(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                title="View conversation history"
+                aria-label={t('gameRoom.history')}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>History</span>
-                <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 text-xs font-medium rounded-full">
+                <span>{t('gameRoom.history')}</span>
+                <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 text-xs font-medium rounded-full" aria-label={`${previousTurnCount} messages`}>
                   {previousTurnCount}
                 </span>
               </button>
             )}
             {phase === 'onboarding' && (
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-                Setting up world...
+              <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full" role="status">
+                {t('gameRoom.settingUpWorld')}
               </span>
             )}
           </div>
@@ -362,18 +382,18 @@ export function GameRoom() {
         {displayMessages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-slate-500">
             <div className="text-center px-4">
-              <svg className="w-16 h-16 mx-auto mb-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-16 h-16 mx-auto mb-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
               <p className="text-lg font-medium mb-1">
                 {phase === 'onboarding'
-                  ? 'Your adventure begins here'
-                  : 'What would you like to do?'}
+                  ? t('gameRoom.adventureBegins')
+                  : t('gameRoom.whatToDo')}
               </p>
               <p className="text-sm">
                 {phase === 'onboarding'
-                  ? 'Describe your ideal world to get started...'
-                  : 'Enter an action or choose from suggestions below'}
+                  ? t('gameRoom.describeWorld')
+                  : t('gameRoom.enterActionOrChoose')}
               </p>
             </div>
           </div>
@@ -396,12 +416,12 @@ export function GameRoom() {
               <button
                 onClick={scrollToBottom}
                 className="absolute bottom-4 right-4 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-full shadow-lg flex items-center gap-2 transition-all hover:scale-105 active:scale-95 z-10 text-sm"
-                title="Scroll to bottom"
+                aria-label={t('gameRoom.latest')}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                 </svg>
-                <span className="font-medium">Latest</span>
+                <span className="font-medium">{t('gameRoom.latest')}</span>
               </button>
             )}
           </>
@@ -432,6 +452,22 @@ export function GameRoom() {
         />
       </div>
 
+      {/* Mobile Game State Sheet */}
+      <MobileGameStateSheet />
+
+      {/* Screen reader announcements for new messages */}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {displayMessages.length > 0 && displayMessages[displayMessages.length - 1].role !== 'user' && (
+          <p>
+            {t('accessibility.newMessage', { agent: displayMessages[displayMessages.length - 1].agent_name || 'Narrator' })}
+          </p>
+        )}
+      </div>
+
       {/* History Modal */}
       {showHistory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -439,20 +475,28 @@ export function GameRoom() {
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowHistory(false)}
+            aria-hidden="true"
           />
           {/* Modal */}
-          <div className="relative w-full max-w-3xl max-h-[80vh] mx-4 bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
+          <div
+            ref={historyModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-modal-title"
+            className="relative w-full max-w-3xl max-h-[80vh] mx-4 bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden"
+          >
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <div>
-                <h2 className="text-lg font-semibold text-slate-800">Conversation History</h2>
-                <p className="text-sm text-slate-500">{messages.length} messages total</p>
+                <h2 id="history-modal-title" className="text-lg font-semibold text-slate-800">{t('gameRoom.conversationHistory')}</h2>
+                <p className="text-sm text-slate-500">{t('gameRoom.messagesTotal', { count: messages.length })}</p>
               </div>
               <button
                 onClick={() => setShowHistory(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                aria-label={t('common.close')}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -474,7 +518,7 @@ export function GameRoom() {
                 onClick={() => setShowHistory(false)}
                 className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
               >
-                Close
+                {t('gameRoom.close')}
               </button>
             </div>
           </div>

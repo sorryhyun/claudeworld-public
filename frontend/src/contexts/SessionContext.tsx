@@ -39,9 +39,9 @@ interface SessionContextValue {
   clearWorld: () => void;
 
   // Player actions
-  submitAction: (actionText: string) => Promise<void>;
+  submitAction: (actionText: string, imageData?: string, imageMediaType?: string) => Promise<void>;
   sendOnboardingMessage: (message: string) => Promise<void>;
-  useSuggestion: (index: number) => Promise<void>;
+  selectSuggestion: (index: number) => Promise<void>;
 
   // Location management
   travelTo: (locationId: number) => Promise<void>;
@@ -159,7 +159,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
   // PLAYER ACTIONS
   // ==========================================================================
 
-  const submitAction = useCallback(async (actionText: string): Promise<void> => {
+  const submitAction = useCallback(async (actionText: string, imageData?: string, imageMediaType?: string): Promise<void> => {
     if (!world || actionInProgress) return;
 
     setActionInProgress(true);
@@ -180,7 +180,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     setMessages(prev => [...prev, tempMessage]);
 
     try {
-      await gameService.submitAction(world.id, actionText);
+      await gameService.submitAction(world.id, actionText, imageData, imageMediaType);
     } catch (error) {
       setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
       throw error;
@@ -220,7 +220,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     }
   }, [world, actionInProgress]);
 
-  const useSuggestion = useCallback(async (index: number): Promise<void> => {
+  const selectSuggestion = useCallback(async (index: number): Promise<void> => {
     if (index >= 0 && index < suggestions.length) {
       await submitAction(suggestions[index]);
     }
@@ -474,7 +474,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
 
     submitAction,
     sendOnboardingMessage,
-    useSuggestion,
+    selectSuggestion,
 
     travelTo,
     updateLocationLabel,

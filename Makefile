@@ -205,10 +205,14 @@ load-test:
 	fi
 
 build-exe:
-	@echo "Building Windows executable..."
+	@echo "Building executable..."
 	@echo "Step 1: Building frontend..."
 	cd frontend && npm run build
 	@echo "Step 2: Building executable with PyInstaller..."
 	uv run pyinstaller ClaudeWorld.spec --noconfirm
+	@# Rename to add .exe suffix if not present (for cross-platform builds)
+	@if [ -f "dist/ClaudeWorld" ] && [ ! -f "dist/ClaudeWorld.exe" ]; then \
+		mv dist/ClaudeWorld dist/ClaudeWorld.exe; \
+	fi
 	@echo ""
 	@echo "Build complete! Executable is in dist/ClaudeWorld.exe"

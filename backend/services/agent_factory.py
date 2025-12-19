@@ -120,7 +120,11 @@ class AgentFactory:
         world_name: Optional[str] = None,
     ) -> models.Agent:
         """
-        Create an agent from a config file.
+        Create or update an agent from a config file.
+
+        If an agent with the same name and world_name already exists, it will be
+        updated instead of created. This handles cases where worlds are reset
+        but database entries remain.
 
         Args:
             db: Database session
@@ -131,7 +135,7 @@ class AgentFactory:
             world_name: World name for world-specific characters (auto-detected from config_file if not provided)
 
         Returns:
-            Created Agent model
+            Created or updated Agent model
         """
         # 1. Load config from filesystem
         file_config = AgentConfigService.load_agent_config(config_file)
@@ -164,7 +168,24 @@ class AgentFactory:
                 effective_world_name = parts[1]
                 logger.debug(f"Auto-detected world_name '{effective_world_name}' from config_file")
 
-        # 7. Create via pure CRUD
+        # 7. Check if agent already exists (handles stale DB entries after world reset)
+        existing_agent = await crud.get_agent_by_name(db, name, world_name=effective_world_name)
+        if existing_agent:
+            logger.info(f"Agent '{name}' already exists in world '{effective_world_name}', updating instead of creating")
+            return await crud.update_agent(
+                db=db,
+                agent_id=existing_agent.id,
+                system_prompt=system_prompt,
+                profile_pic=profile_pic,
+                in_a_nutshell=final_config.in_a_nutshell,
+                characteristics=final_config.characteristics,
+                recent_events=final_config.recent_events,
+                interrupt_every_turn=settings.interrupt_every_turn,
+                priority=settings.priority,
+                transparent=settings.transparent,
+            )
+
+        # 8. Create via pure CRUD
         return await crud.create_agent(
             db=db,
             name=name,

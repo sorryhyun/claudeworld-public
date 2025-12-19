@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -7,6 +8,47 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { Message } from '../../../types';
 import { getAgentProfilePicUrl } from '../../../services/agentService';
 import { ImageAttachment } from './ImageAttachment';
+import { LoadingDots } from '../../shared/LoadingDots';
+
+// Memoized ReactMarkdown components to prevent object recreation on every render
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+  li: ({ children }) => <li className="mb-1">{children}</li>,
+  code: ({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) => {
+    const match = /language-(\w+)/.exec(className || '');
+    const codeString = String(children).replace(/\n$/, '');
+    const isInline = inline ?? (!className && !codeString.includes('\n'));
+
+    return isInline ? (
+      <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+        {children}
+      </code>
+    ) : (
+      <SyntaxHighlighter
+        style={oneDark}
+        language={match ? match[1] : 'text'}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          borderRadius: '0.75rem',
+          fontSize: '0.875rem',
+        }}
+        {...props}
+      >
+        {codeString}
+      </SyntaxHighlighter>
+    );
+  },
+  pre: ({ children }) => (
+    <div className="mb-2 overflow-hidden rounded-xl">
+      {children}
+    </div>
+  ),
+};
 
 export interface MessageRowProps {
   message: Message;
@@ -14,7 +56,7 @@ export interface MessageRowProps {
   index: number;
   expandedThinking: Set<number | string>;
   copiedMessageId: number | string | null;
-  whiteboardInfo: Map<number | string, any>;
+  whiteboardInfo: Map<number | string, { agentName: string; content: string }>;
   onToggleThinking: (messageId: number | string) => void;
   onCopyToClipboard: (messageId: number | string, content: string) => void;
 }
@@ -193,9 +235,7 @@ export const MessageRow = memo(({
                   {message.is_typing || message.is_chatting ? (
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        <LoadingDots size="md" color="secondary" />
                         <span className="text-sm text-slate-600 ml-1">{message.thinking ? 'thinking...' : 'chatting...'}</span>
                       </div>
                       {/* Show streaming thinking content */}
@@ -228,44 +268,7 @@ export const MessageRow = memo(({
                         ) : (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkBreaks]}
-                            components={{
-                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                              em: ({ children }) => <em className="italic">{children}</em>,
-                              ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                              li: ({ children }) => <li className="mb-1">{children}</li>,
-                              code: ({ inline, className, children, ...props }: any) => {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const codeString = String(children).replace(/\n$/, '');
-                                const isInline = inline ?? (!className && !codeString.includes('\n'));
-
-                                return isInline ? (
-                                  <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                                    {children}
-                                  </code>
-                                ) : (
-                                  <SyntaxHighlighter
-                                    style={oneDark}
-                                    language={match ? match[1] : 'text'}
-                                    PreTag="div"
-                                    customStyle={{
-                                      margin: 0,
-                                      borderRadius: '0.75rem',
-                                      fontSize: '0.875rem',
-                                    }}
-                                    {...props}
-                                  >
-                                    {codeString}
-                                  </SyntaxHighlighter>
-                                );
-                              },
-                              pre: ({ children }) => (
-                                <div className="mb-2 overflow-hidden rounded-xl">
-                                  {children}
-                                </div>
-                              ),
-                            }}
+                            components={MARKDOWN_COMPONENTS}
                           >
                             {getDisplayContent(message)}
                           </ReactMarkdown>

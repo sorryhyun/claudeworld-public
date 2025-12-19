@@ -23,23 +23,6 @@ from core import get_logger, get_settings
 logger = get_logger("AppFactory")
 
 
-def is_frozen() -> bool:
-    """Check if running as PyInstaller bundle."""
-    return getattr(sys, "frozen", False)
-
-
-def get_static_path() -> Path | None:
-    """Get path to static files if running as bundled executable."""
-    if not is_frozen():
-        return None
-    # PyInstaller extracts to sys._MEIPASS
-    base_path = Path(sys._MEIPASS)
-    static_path = base_path / "static"
-    if static_path.exists():
-        return static_path
-    return None
-
-
 def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application.
@@ -167,43 +150,67 @@ def create_app() -> FastAPI:
     mcp.mount()
     logger.info("🔌 MCP server mounted at /mcp (5 simplified tools)")
 
-    # Serve static files for bundled executable (EXE mode)
-    static_path = get_static_path()
-    if static_path:
-        from fastapi import Request
-        from fastapi.responses import FileResponse, HTMLResponse
-        from starlette.staticfiles import StaticFiles
+    # Serve static frontend files when running as PyInstaller bundle
+    if getattr(sys, "frozen", False):
+        from fastapi.responses import FileResponse
+        from fastapi.staticfiles import StaticFiles
+        from starlette.exceptions import HTTPException as StarletteHTTPException
 
-        logger.info(f"📁 Serving static files from: {static_path}")
+        # Get the bundled static directory path
+        base_path = Path(sys._MEIPASS)
+        static_dir = base_path / "static"
 
-        # Mount assets directory for JS/CSS/images
-        assets_path = static_path / "assets"
-        if assets_path.exists():
-            app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
-            logger.info("   📦 Assets mounted at /assets")
+        if static_dir.exists():
+            # Mount static assets (js, css, etc.)
+            app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
 
-        # Serve index.html for SPA routing (catch-all for frontend routes)
-        index_html = static_path / "index.html"
+            # API prefixes that should NOT be handled by SPA
+            API_PREFIXES = (
+                "/auth",
+                "/rooms",
+                "/agents",
+                "/worlds",
+                "/debug",
+                "/mcp",
+                "/docs",
+                "/openapi.json",
+                "/redoc",
+            )
 
-        @app.get("/", include_in_schema=False)
-        async def serve_root():
-            """Serve index.html for root path."""
-            if index_html.exists():
-                return FileResponse(index_html)
-            return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+            # Serve root index.html
+            @app.get("/")
+            async def serve_index():
+                """Serve the SPA index.html for root path."""
+                return FileResponse(static_dir / "index.html")
 
-        @app.get("/{full_path:path}", include_in_schema=False)
-        async def serve_spa(request: Request, full_path: str):
-            """Serve frontend SPA - returns index.html for all non-API routes."""
-            # Check if it's a static file request
-            file_path = static_path / full_path
-            if file_path.is_file() and full_path:
-                return FileResponse(file_path)
-            # For all other routes, serve index.html (SPA routing)
-            if index_html.exists():
-                return FileResponse(index_html)
-            return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+            # Custom 404 handler to serve SPA for frontend routes
+            @app.exception_handler(StarletteHTTPException)
+            async def spa_exception_handler(request, exc):
+                """Serve index.html for 404s on non-API routes (SPA routing)."""
+                if exc.status_code == 404:
+                    path = request.url.path
+                    # Don't serve SPA for API routes - return the actual 404
+                    if path.startswith(API_PREFIXES):
+                        from fastapi.responses import JSONResponse
 
-        logger.info("   🌐 SPA fallback route configured")
+                        return JSONResponse(
+                            status_code=404,
+                            content={"detail": "Not Found"},
+                        )
+                    # Check if it's a static file that exists
+                    file_path = static_dir / path.lstrip("/")
+                    if file_path.exists() and file_path.is_file():
+                        return FileResponse(file_path)
+                    # Serve index.html for SPA routing
+                    return FileResponse(static_dir / "index.html")
+                # Re-raise other HTTP exceptions
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                )
+
+            logger.info(f"📦 Serving frontend from bundled static files: {static_dir}")
 
     return app

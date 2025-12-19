@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { useGame } from '../../contexts/GameContext';
 import * as gameService from '../../services/gameService';
 
@@ -10,6 +10,93 @@ interface Agent {
   location_id: number;
   location_name: string;
 }
+
+// Memoized agent card component
+interface AgentCardProps {
+  agent: Agent;
+  isHere: boolean;
+  isExpanded: boolean;
+  onToggleExpand: (id: number) => void;
+}
+
+const AgentCard = memo(function AgentCard({
+  agent,
+  isHere,
+  isExpanded,
+  onToggleExpand,
+}: AgentCardProps) {
+  return (
+    <div
+      className={`bg-white rounded-lg border transition-all overflow-hidden ${
+        isHere
+          ? 'border-blue-200 hover:border-blue-300 shadow-sm'
+          : 'border-slate-200 hover:border-slate-300 opacity-75'
+      }`}
+    >
+      <button
+        onClick={() => onToggleExpand(agent.id)}
+        className="w-full p-3 text-left"
+      >
+        <div className="flex items-start gap-3">
+          {/* Profile picture */}
+          <div className={`shrink-0 w-10 h-10 rounded-full overflow-hidden flex items-center justify-center ${
+            isHere ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-100'
+          }`}>
+            {agent.profile_pic ? (
+              <img
+                src={agent.profile_pic}
+                alt={agent.name}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <svg className={`w-5 h-5 ${isHere ? 'text-blue-400' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            )}
+          </div>
+
+          {/* Agent info */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between">
+              <span className={`font-medium text-sm truncate ${isHere ? 'text-slate-800' : 'text-slate-600'}`}>
+                {agent.name}
+              </span>
+              <svg
+                className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${
+                  isExpanded ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            {!isHere && (
+              <div className="flex items-center gap-1 mt-0.5">
+                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-xs text-slate-500 truncate">{agent.location_name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && agent.in_a_nutshell && (
+        <div className="px-3 pb-3 border-t border-slate-100">
+          <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+            {agent.in_a_nutshell}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+});
 
 export function AgentsList() {
   const { world, currentLocation, isChatMode } = useGame();
@@ -34,6 +121,11 @@ export function AgentsList() {
 
     fetchAgents();
   }, [world?.id]);
+
+  // Memoized toggle handler
+  const handleToggleExpand = useCallback((id: number) => {
+    setExpandedId(prev => prev === id ? null : id);
+  }, []);
 
   // Split agents by current location
   const { agentsHere, agentsElsewhere } = useMemo(() => {
@@ -67,78 +159,6 @@ export function AgentsList() {
     );
   }
 
-  const renderAgent = (agent: Agent, isHere: boolean) => (
-    <div
-      key={agent.id}
-      className={`bg-white rounded-lg border transition-all overflow-hidden ${
-        isHere
-          ? 'border-blue-200 hover:border-blue-300 shadow-sm'
-          : 'border-slate-200 hover:border-slate-300 opacity-75'
-      }`}
-    >
-      <button
-        onClick={() => setExpandedId(expandedId === agent.id ? null : agent.id)}
-        className="w-full p-3 text-left"
-      >
-        <div className="flex items-start gap-3">
-          {/* Profile picture */}
-          <div className={`shrink-0 w-10 h-10 rounded-full overflow-hidden flex items-center justify-center ${
-            isHere ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-100'
-          }`}>
-            {agent.profile_pic ? (
-              <img
-                src={agent.profile_pic}
-                alt={agent.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <svg className={`w-5 h-5 ${isHere ? 'text-blue-400' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            )}
-          </div>
-
-          {/* Agent info */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between">
-              <span className={`font-medium text-sm truncate ${isHere ? 'text-slate-800' : 'text-slate-600'}`}>
-                {agent.name}
-              </span>
-              <svg
-                className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${
-                  expandedId === agent.id ? 'rotate-180' : ''
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-            {!isHere && (
-              <div className="flex items-center gap-1 mt-0.5">
-                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span className="text-xs text-slate-500 truncate">{agent.location_name}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </button>
-
-      {/* Expanded content */}
-      {expandedId === agent.id && agent.in_a_nutshell && (
-        <div className="px-3 pb-3 border-t border-slate-100">
-          <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-            {agent.in_a_nutshell}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div className="space-y-3">
       {/* Characters at current location */}
@@ -154,7 +174,15 @@ export function AgentsList() {
               </span>
             )}
           </div>
-          {agentsHere.map((agent) => renderAgent(agent, true))}
+          {agentsHere.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              isHere={true}
+              isExpanded={expandedId === agent.id}
+              onToggleExpand={handleToggleExpand}
+            />
+          ))}
         </div>
       )}
 
@@ -166,7 +194,15 @@ export function AgentsList() {
               Elsewhere
             </span>
           )}
-          {agentsElsewhere.map((agent) => renderAgent(agent, false))}
+          {agentsElsewhere.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              isHere={false}
+              isExpanded={expandedId === agent.id}
+              onToggleExpand={handleToggleExpand}
+            />
+          ))}
         </div>
       )}
 

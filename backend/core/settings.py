@@ -5,11 +5,22 @@ This module provides type-safe access to environment variables with validation.
 All settings are loaded once at application startup.
 """
 
+import sys
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+def _get_base_path() -> Path:
+    """Get the base path for resources (handles both dev and bundled modes)."""
+    if getattr(sys, "frozen", False):
+        # Running as PyInstaller bundle - resources are in _MEIPASS
+        return Path(sys._MEIPASS)
+    else:
+        # Running in development - use file-based path
+        return Path(__file__).parent.parent.parent
 
 # ============================================================================
 # Application Constants
@@ -185,23 +196,32 @@ class Settings(BaseSettings):
     @property
     def project_root(self) -> Path:
         """
-        Get the project root directory (parent of backend/).
+        Get the project root directory.
+
+        In development: parent of backend/
+        In bundled mode: sys._MEIPASS (where PyInstaller extracts files)
 
         Returns:
             Path to the project root directory
         """
-        backend_dir = Path(__file__).parent.parent
-        return backend_dir.parent
+        return _get_base_path()
 
     @property
     def backend_dir(self) -> Path:
         """
         Get the backend directory.
 
+        In development: backend/
+        In bundled mode: sys._MEIPASS/backend/ (config files are bundled here)
+
         Returns:
             Path to the backend directory
         """
-        return Path(__file__).parent.parent
+        if getattr(sys, "frozen", False):
+            # In bundled mode, config files are at _MEIPASS/backend/...
+            return _get_base_path() / "backend"
+        else:
+            return Path(__file__).parent.parent
 
     @property
     def agents_dir(self) -> Path:
@@ -212,6 +232,23 @@ class Settings(BaseSettings):
             Path to the agents directory
         """
         return self.project_root / "agents"
+
+    @property
+    def worlds_dir(self) -> Path:
+        """
+        Get the worlds directory for user-created world data.
+
+        In development: project_root/worlds/
+        In bundled mode: working directory/worlds/ (next to .exe)
+
+        Returns:
+            Path to the worlds directory
+        """
+        if getattr(sys, "frozen", False):
+            # In bundled mode, worlds are user data stored in working directory
+            return Path.cwd() / "worlds"
+        else:
+            return self.project_root / "worlds"
 
     @property
     def config_dir(self) -> Path:

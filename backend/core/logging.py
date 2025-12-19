@@ -29,12 +29,14 @@ def setup_logging(debug_mode: bool = True, log_level: Optional[int] = None) -> N
     logging occurs. It configures the root logger and applies filters.
 
     Args:
-        debug_mode: If True, set log level to DEBUG (unless log_level is explicitly provided)
+        debug_mode: If True, set log level to INFO; if False, set to WARNING (unless log_level is explicitly provided)
         log_level: Explicit log level to use (overrides debug_mode)
     """
     # Determine log level
+    # When DEBUG_AGENTS=true, show INFO level logs (useful for debugging without verbose DEBUG noise)
+    # When DEBUG_AGENTS=false, show WARNING level logs (production mode)
     if log_level is None:
-        log_level = logging.DEBUG if debug_mode else logging.INFO
+        log_level = logging.INFO if debug_mode else logging.WARNING
 
     # Configure root logger
     logging.basicConfig(

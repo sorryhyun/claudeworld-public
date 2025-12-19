@@ -71,10 +71,12 @@ async def get_agent_profile_pic(agent_name: str):
     if not VALID_AGENT_NAME_PATTERN.match(agent_name) or ".." in agent_name:
         raise HTTPException(status_code=400, detail="Invalid agent name")
 
-    # Get the project root directory (parent of backend/)
-    backend_dir = Path(__file__).parent.parent
-    project_root = backend_dir.parent
-    agents_dir = project_root / "agents"
+    # Get directory paths (handles PyInstaller bundles)
+    from core.settings import get_settings
+
+    settings = get_settings()
+    project_root = settings.project_root
+    agents_dir = settings.agents_dir
 
     # Common image extensions
     image_extensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]

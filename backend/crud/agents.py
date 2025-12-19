@@ -151,6 +151,77 @@ async def delete_agent(db: AsyncSession, agent_id: int) -> bool:
 
 
 @retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2)
+async def delete_agents_by_world(db: AsyncSession, world_name: str) -> int:
+    """
+    Delete all agents associated with a specific world.
+
+    Args:
+        db: Database session
+        world_name: The world name to delete agents for
+
+    Returns:
+        Number of agents deleted
+    """
+    result = await db.execute(select(models.Agent).where(models.Agent.world_name == world_name))
+    agents = result.scalars().all()
+
+    count = len(agents)
+    for agent in agents:
+        await db.delete(agent)
+
+    if count > 0:
+        async with serialized_write():
+            await db.commit()
+        logger.info(f"Deleted {count} agents for world '{world_name}'")
+
+    return count
+
+
+async def get_agents_by_world(db: AsyncSession, world_name: str) -> List[models.Agent]:
+    """Get all agents for a specific world."""
+    result = await db.execute(select(models.Agent).where(models.Agent.world_name == world_name))
+    return list(result.scalars().all())
+
+
+@retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2)
+async def sync_agents_with_filesystem(db: AsyncSession, world_name: str) -> int:
+    """
+    Sync agents with filesystem - delete agents whose config directories no longer exist.
+
+    This handles the case where agent folders are removed from the filesystem
+    but database entries remain (stale agents).
+
+    Args:
+        db: Database session
+        world_name: The world name to sync agents for
+
+    Returns:
+        Number of stale agents deleted
+    """
+    from pathlib import Path
+
+    agents = await get_agents_by_world(db, world_name)
+    deleted_count = 0
+
+    for agent in agents:
+        if agent.config_file:
+            config_path = Path(agent.config_file)
+            # Check if config directory exists (for folder-based configs)
+            # or if config file exists (for single-file configs)
+            if not config_path.exists() and not config_path.with_suffix(".md").exists():
+                logger.info(f"Deleting stale agent '{agent.name}' - config not found at '{agent.config_file}'")
+                await db.delete(agent)
+                deleted_count += 1
+
+    if deleted_count > 0:
+        async with serialized_write():
+            await db.commit()
+        logger.info(f"Cleaned up {deleted_count} stale agents for world '{world_name}'")
+
+    return deleted_count
+
+
+@retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2)
 async def update_agent(
     db: AsyncSession,
     agent_id: int,

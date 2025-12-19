@@ -134,13 +134,20 @@ export async function enterWorld(worldId: number): Promise<EnterWorldResponse> {
 
 export async function submitAction(
   worldId: number,
-  actionText: string
+  actionText: string,
+  imageData?: string,
+  imageMediaType?: string
 ): Promise<{ status: string }> {
+  const body: { text: string; image_data?: string; image_media_type?: string } = { text: actionText };
+  if (imageData && imageMediaType) {
+    body.image_data = imageData;
+    body.image_media_type = imageMediaType;
+  }
   const response = await fetch(`${API_BASE}/${worldId}/action`, {
     ...getFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: actionText }),
+      body: JSON.stringify(body),
     }),
   });
   if (!response.ok) {

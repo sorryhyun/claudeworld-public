@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFocusTrap } from './hooks/useFocusTrap';
 import { useAuth } from './contexts/AuthContext';
 import { RoomProvider, useRoomContext } from './contexts/RoomContext';
@@ -13,36 +14,9 @@ import { Login } from './components/Login';
 import { BREAKPOINTS } from './config/breakpoints';
 
 function AuthenticatedApp() {
+  const { t } = useTranslation();
   const roomContext = useRoomContext();
   const { loadWorld, worldsLoading, mode, phase } = useGame();
-
-  // Mobile viewport height fix - sets CSS variable to actual window height
-  useEffect(() => {
-    const setAppHeight = () => {
-      const doc = document.documentElement;
-      doc.style.setProperty('--app-height', `${window.innerHeight}px`);
-    };
-
-    // Debounce resize events to avoid excessive updates
-    let timeoutId: number | undefined;
-    const debouncedSetAppHeight = () => {
-      clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(setAppHeight, 100);
-    };
-
-    // Set immediately on mount
-    setAppHeight();
-    window.addEventListener('resize', debouncedSetAppHeight);
-
-    // Keep orientationchange immediate for better mobile UX
-    window.addEventListener('orientationchange', setAppHeight);
-
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', debouncedSetAppHeight);
-      window.removeEventListener('orientationchange', setAppHeight);
-    };
-  }, []);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   // Desktop sidebar collapse state with localStorage persistence
@@ -52,13 +26,36 @@ function AuthenticatedApp() {
   });
   const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.lg);
 
-  // Track window size for responsive behavior
+  // Consolidated resize handler - combines viewport height fix and mobile detection
   useEffect(() => {
+    const doc = document.documentElement;
+
     const handleResize = () => {
+      // Update app height CSS variable
+      doc.style.setProperty('--app-height', `${window.innerHeight}px`);
+      // Update mobile state
       setIsMobile(window.innerWidth < BREAKPOINTS.lg);
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    // Debounce resize events to avoid excessive updates
+    let timeoutId: number | undefined;
+    const debouncedHandleResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(handleResize, 100);
+    };
+
+    // Set immediately on mount
+    handleResize();
+    window.addEventListener('resize', debouncedHandleResize);
+
+    // Keep orientationchange immediate for better mobile UX
+    window.addEventListener('orientationchange', handleResize);
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', debouncedHandleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, []);
 
   // Focus trap for mobile sidebar drawer
@@ -123,6 +120,11 @@ function AuthenticatedApp() {
 
   return (
     <div className="h-full flex bg-white relative overflow-hidden">
+      {/* Skip Link for keyboard navigation */}
+      <a href="#main-content" className="skip-link">
+        {t('accessibility.skipToMain', 'Skip to main content')}
+      </a>
+
       {/* Hamburger Menu Button - Always visible, fixed position */}
       <button
         onClick={handleToggleSidebar}
@@ -186,22 +188,24 @@ function AuthenticatedApp() {
       </div>
 
       {/* Main Content Area - Mode-based routing */}
-      {mode === 'chat' && !roomContext.selectedRoomId && <LandingPage />}
-      {mode === 'chat' && roomContext.selectedRoomId && (
-        <ChatRoom
-          roomId={roomContext.selectedRoomId}
-          onRoomRead={roomContext.refreshRooms}
-          onMarkRoomAsRead={roomContext.markRoomAsReadOptimistic}
-          onRenameRoom={roomContext.renameRoom}
-        />
-      )}
-      {mode === 'onboarding' && <OnboardingPage />}
-      {mode === 'game' && (
-        <div className="flex-1 flex min-w-0">
-          <GameRoom />
-          {phase === 'active' && <GameStatePanel />}
-        </div>
-      )}
+      <main id="main-content" className="flex-1 flex min-w-0">
+        {mode === 'chat' && !roomContext.selectedRoomId && <LandingPage />}
+        {mode === 'chat' && roomContext.selectedRoomId && (
+          <ChatRoom
+            roomId={roomContext.selectedRoomId}
+            onRoomRead={roomContext.refreshRooms}
+            onMarkRoomAsRead={roomContext.markRoomAsReadOptimistic}
+            onRenameRoom={roomContext.renameRoom}
+          />
+        )}
+        {mode === 'onboarding' && <OnboardingPage />}
+        {mode === 'game' && (
+          <>
+            <GameRoom />
+            {phase === 'active' && <GameStatePanel />}
+          </>
+        )}
+      </main>
     </div>
   );
 }

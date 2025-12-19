@@ -1,7 +1,5 @@
 # ClaudeWorld
 
-*251207: Update will be delayed until claude agent sdk fixes bug where tool calling for background agents be broken*
-
 A turn-based text adventure (TRPG) powered by Claude AI agents that collaborate to create and run interactive worlds.
 
 ## Features
@@ -10,7 +8,7 @@ A turn-based text adventure (TRPG) powered by Claude AI agents that collaborate 
 - **Turn-Based Gameplay** - Sequential agent processing: interpret action → create NPCs → update stats → narrate
 - **Persistent Game State** - Stats, inventory, locations, and NPCs tracked across sessions
 - **Location-Based Exploration** - Travel between discovered locations with unique chat histories
-- **Intelligent Narration** - The Narrator describes outcomes and suggests actions
+- **Intelligent Narration** - Action Manager creates narratives and suggests actions via tools
 - **HTTP Polling** - Real-time updates via polling (2-second intervals)
 - **JWT Authentication** - Secure password-based authentication
 
@@ -52,22 +50,25 @@ Open http://localhost:5173 and login with your password.
 1. Create a new world
 2. The **Onboarding Manager** interviews you about your ideal world
 3. The **World Seed Generator** creates lore, stat system, and starting location
-4. The **Narrator** describes your starting scene
+4. The game begins at your starting location
 
 ### Active Gameplay
 
 ```
-Your Action → Action_Manager → Character_Designer → Stat_Calculator → Narrator
-                (interpret)      (create NPCs)       (update stats)    (narrate)
-                                    [skip?]            [skip?]          [always]
+Your Action → Action_Manager (hidden)
+                    │
+                    ├── Task(stat_calculator)     → Calculate stat/inventory changes
+                    ├── Task(character_designer)  → Create NPCs if needed
+                    ├── Task(location_designer)   → Create locations if needed
+                    ├── narration()               → Describe the outcome
+                    └── suggest_options()         → Provide action buttons
 ```
 
 Each turn:
 1. Submit an action (e.g., "I search the room carefully")
-2. **Action Manager** interprets your intent
-3. **Character Designer** creates NPCs if needed (or skips)
-4. **Stat Calculator** applies mechanical effects (or skips)
-5. **Narrator** describes the outcome and suggests next actions
+2. **Action Manager** interprets your intent and coordinates sub-agents via SDK Task tool
+3. Sub-agents persist changes directly (stats, NPCs, locations)
+4. **Action Manager** creates narrative and suggests next actions
 
 ## System Agents
 
@@ -76,13 +77,12 @@ Eight specialized agents in `agents/group_onboarding/` and `agents/group_gamepla
 | Agent | Role |
 |-------|------|
 | **Onboarding_Manager** | Interviews player about world preferences |
-| **World_Seed_Generator** | Creates world lore, stat system, locations |
-| **Action_Manager** | Interprets player actions and outcomes |
-| **Character_Designer** | Creates NPCs when interactions require them |
-| **Location_Designer** | Creates new locations during exploration |
-| **Stat_Calculator** | Processes mechanical game effects |
-| **Narrator** | Describes results, suggests next actions |
-| **Summarizer** | Generates conversation summaries |
+| **World_Seed_Generator** | Creates world lore, stat system, locations (sub-agent) |
+| **Action_Manager** | Interprets actions, coordinates sub-agents, creates narration |
+| **Character_Designer** | Creates NPCs when interactions require them (sub-agent) |
+| **Location_Designer** | Creates new locations during exploration (sub-agent) |
+| **Stat_Calculator** | Processes mechanical game effects (sub-agent) |
+| **Chat_Summarizer** | Summarizes chat mode conversations (sub-agent) |
 
 ## API
 
@@ -126,11 +126,10 @@ agents/
     ├── Character_Designer/
     ├── Location_Designer/
     ├── Stat_Calculator/
-    ├── Narrator/
-    └── Summarizer/
+    └── Chat_Summarizer/
 ```
 
-All agents use **third-person perspective** (e.g., "The Narrator is..." not "You are...").
+All agents use **third-person perspective** (e.g., "Action_Manager is..." not "You are...").
 
 See [how_it_works.md](how_it_works.md) for details.
 

@@ -339,6 +339,8 @@ class PlayerAction(BaseModel):
     """Schema for a player action."""
 
     text: str
+    image_data: Optional[str] = None  # Base64 encoded image data
+    image_media_type: Optional[str] = None  # MIME type (e.g., 'image/png')
 
 
 class GameStateResponse(BaseModel):

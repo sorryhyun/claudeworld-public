@@ -180,9 +180,9 @@ interface GameContextValue {
   clearWorld: () => void;
 
   // Player Actions (from SessionContext)
-  submitAction: (actionText: string) => Promise<void>;
+  submitAction: (actionText: string, imageData?: string, imageMediaType?: string) => Promise<void>;
   sendOnboardingMessage: (message: string) => Promise<void>;
-  useSuggestion: (index: number) => Promise<void>;
+  selectSuggestion: (index: number) => Promise<void>;
 
   // Location Management (from SessionContext)
   travelTo: (locationId: number) => Promise<void>;
@@ -226,7 +226,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
     clearWorld,
     submitAction,
     sendOnboardingMessage,
-    useSuggestion,
+    selectSuggestion,
     travelTo,
     updateLocationLabel,
     viewLocationHistory,
@@ -331,7 +331,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
     // Player Actions
     submitAction,
     sendOnboardingMessage,
-    useSuggestion,
+    selectSuggestion,
 
     // Location Management
     travelTo,

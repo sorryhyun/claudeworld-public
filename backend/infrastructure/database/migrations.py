@@ -489,8 +489,12 @@ async def _sync_agents_from_filesystem(conn):
     if not agents:
         return
 
+    from core.settings import get_settings
+
+    settings = get_settings()
     system_prompt_template = get_base_system_prompt()
-    agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+    agents_dir = settings.agents_dir
+    project_root = settings.project_root
     image_extensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]
     common_names = ["profile", "avatar", "picture", "photo"]
 
@@ -510,7 +514,7 @@ async def _sync_agents_from_filesystem(conn):
             # Use config_file path if available, otherwise fall back to direct folder
             agent_folder = None
             if agent.config_file:
-                agent_folder = Path(__file__).parent.parent.parent.parent / agent.config_file
+                agent_folder = project_root / agent.config_file
             if not agent_folder or not agent_folder.exists():
                 agent_folder = agents_dir / agent.name
 

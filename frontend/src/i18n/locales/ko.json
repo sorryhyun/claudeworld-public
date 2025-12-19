@@ -1,0 +1,135 @@
+{
+  "game": {
+    "returnToGameplay": "게임플레이로 돌아간다",
+    "chatWithCharacters": "캐릭터들과 직접 대화한다",
+    "suggestedActions": "추천 행동:",
+    "chatModeIndicator": "채팅 모드 - NPC와 자유롭게 대화하세요. /end를 입력하면 게임플레이로 돌아갑니다.",
+    "clauding": "clauding...",
+    "commandHelp": "↑↓ 이동 • Tab 자동완성 • Ctrl+Enter 전송 • Esc 취소",
+    "placeholder": {
+      "chat": "말하기... (Ctrl+Enter)",
+      "action": "행동을 입력하세요... (Ctrl+Enter)",
+      "onboarding": "이상적인 세계를 설명하세요... (Ctrl+Enter)",
+      "withSuggestions": "...아니면, 다른 행동을 하시겠습니까? (Ctrl+Enter)"
+    }
+  },
+  "gameRoom": {
+    "exit": "나가기",
+    "history": "히스토리",
+    "settingUpWorld": "세계 설정 중...",
+    "adventureBegins": "모험이 시작됩니다",
+    "describeWorld": "시작하려면 이상적인 세계를 설명하세요...",
+    "whatToDo": "무엇을 하시겠습니까?",
+    "enterActionOrChoose": "행동을 입력하거나 아래 추천에서 선택하세요",
+    "conversationHistory": "대화 히스토리",
+    "messagesTotal": "{{count}}개의 메시지",
+    "close": "닫기",
+    "latest": "최신",
+    "showThinking": "생각 보기"
+  },
+  "turnIndicator": {
+    "processing": "액션 처리 중...",
+    "subtitle": "나레이터가 응답을 작성 중입니다",
+    "phaseThinking": "생각 중",
+    "phaseGenerating": "생성 중",
+    "phaseFinalizing": "마무리 중"
+  },
+  "thinking": {
+    "label": "생각",
+    "showThinking": "생각 보기",
+    "hideThinking": "생각 숨기기",
+    "characters": "글자",
+    "collapse": "접기",
+    "narrator": "나레이터",
+    "isThinking": "생각 중..."
+  },
+  "emptyState": {
+    "inventory": {
+      "title": "인벤토리가 비어 있습니다",
+      "description": "모험 중 수집한 아이템이 여기에 나타납니다"
+    },
+    "locations": {
+      "title": "발견된 장소가 없습니다",
+      "description": "세계를 탐험하여 새로운 장소를 발견하세요"
+    },
+    "messages": {
+      "title": "아직 메시지가 없습니다",
+      "description": "하고 싶은 일을 설명하여 모험을 시작하세요"
+    },
+    "agents": {
+      "title": "근처에 캐릭터가 없습니다",
+      "description": "다른 장소를 탐험하면 캐릭터가 나타납니다"
+    },
+    "stats": {
+      "title": "스탯이 정의되지 않았습니다",
+      "description": "세계 설정 후 캐릭터 스탯이 나타납니다"
+    },
+    "adventure": {
+      "title": "모험이 시작됩니다",
+      "description": "시작하려면 이상적인 세계를 설명하세요"
+    },
+    "search": {
+      "title": "결과를 찾을 수 없습니다",
+      "description": "검색을 조정하거나 다른 옵션을 탐색해보세요"
+    },
+    "generic": {
+      "title": "아직 아무것도 없습니다",
+      "description": "진행하면서 콘텐츠가 나타납니다"
+    },
+    "getStarted": "시작하기"
+  },
+  "gameState": {
+    "title": "게임 상태",
+    "time": "시간",
+    "turn": "턴",
+    "tabs": {
+      "places": "장소",
+      "stats": "스탯",
+      "items": "아이템",
+      "npcs": "NPC"
+    }
+  },
+  "locations": {
+    "noLocations": "아직 발견된 장소가 없습니다",
+    "clickToTravel": "클릭하여 이동",
+    "currentLocation": "현재 위치"
+  },
+  "stats": {
+    "noStats": "아직 스탯이 정의되지 않았습니다",
+    "statsAppearAfter": "스탯은 세계 설정 후 나타납니다",
+    "low": "낮음!"
+  },
+  "inventory": {
+    "empty": "인벤토리가 비어 있습니다",
+    "itemsAppearHere": "수집한 아이템이 여기에 나타납니다",
+    "properties": "속성:",
+    "itemCount": "{{count}}개 아이템 (총 {{total}}개)"
+  },
+  "agents": {
+    "loading": "에이전트 로딩 중...",
+    "noCharacters": "아직 캐릭터가 없습니다",
+    "charactersAppear": "탐험하면서 캐릭터가 나타납니다",
+    "here": "여기",
+    "chatting": "대화중",
+    "elsewhere": "다른 곳",
+    "hereCount": "여기 {{here}}명 · 총 {{total}}명"
+  },
+  "common": {
+    "day": "{{day}}일차",
+    "close": "닫기"
+  },
+  "accessibility": {
+    "skipToMain": "본문으로 건너뛰기",
+    "sendAction": "액션 전송",
+    "attachImage": "이미지 첨부",
+    "expandPanel": "게임 패널 펼치기",
+    "collapsePanel": "게임 패널 접기",
+    "openGameState": "게임 상태 열기",
+    "closeSheet": "닫기",
+    "editLabel": "라벨 수정",
+    "currentLocation": "현재 위치",
+    "selectedTab": "(현재 선택됨)",
+    "processing": "액션 처리 중",
+    "newMessage": "{{agent}}의 새 메시지"
+  }
+}

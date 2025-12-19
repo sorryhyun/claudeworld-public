@@ -1,0 +1,135 @@
+{
+  "game": {
+    "returnToGameplay": "Return to gameplay",
+    "chatWithCharacters": "Chat with characters",
+    "suggestedActions": "Suggested actions:",
+    "chatModeIndicator": "Chat Mode - Talk freely with NPCs. Type /end to return to gameplay.",
+    "clauding": "clauding...",
+    "commandHelp": "↑↓ navigate • Tab to complete • Ctrl+Enter to send • Esc to cancel",
+    "placeholder": {
+      "chat": "Say something... (Ctrl+Enter)",
+      "action": "Enter your action... (Ctrl+Enter)",
+      "onboarding": "Describe your ideal world... (Ctrl+Enter)",
+      "withSuggestions": "...Or, will you do something else? (Ctrl+Enter)"
+    }
+  },
+  "gameRoom": {
+    "exit": "Exit",
+    "history": "History",
+    "settingUpWorld": "Setting up world...",
+    "adventureBegins": "Your adventure begins here",
+    "describeWorld": "Describe your ideal world to get started...",
+    "whatToDo": "What would you like to do?",
+    "enterActionOrChoose": "Enter an action or choose from suggestions below",
+    "conversationHistory": "Conversation History",
+    "messagesTotal": "{{count}} messages total",
+    "close": "Close",
+    "latest": "Latest",
+    "showThinking": "Show thinking"
+  },
+  "turnIndicator": {
+    "processing": "Processing your action...",
+    "subtitle": "The narrator is crafting a response",
+    "phaseThinking": "Thinking",
+    "phaseGenerating": "Generating",
+    "phaseFinalizing": "Finalizing"
+  },
+  "thinking": {
+    "label": "Thinking",
+    "showThinking": "Show thinking",
+    "hideThinking": "Hide thinking",
+    "characters": "characters",
+    "collapse": "Collapse",
+    "narrator": "Narrator",
+    "isThinking": "is thinking..."
+  },
+  "emptyState": {
+    "inventory": {
+      "title": "Your inventory is empty",
+      "description": "Items you collect during your adventure will appear here"
+    },
+    "locations": {
+      "title": "No locations discovered",
+      "description": "Explore the world to discover new places to visit"
+    },
+    "messages": {
+      "title": "No messages yet",
+      "description": "Start your adventure by describing what you want to do"
+    },
+    "agents": {
+      "title": "No characters nearby",
+      "description": "Characters will appear as you explore different locations"
+    },
+    "stats": {
+      "title": "No stats defined",
+      "description": "Your character stats will appear after world setup"
+    },
+    "adventure": {
+      "title": "Your adventure begins",
+      "description": "Describe your ideal world to get started"
+    },
+    "search": {
+      "title": "No results found",
+      "description": "Try adjusting your search or explore other options"
+    },
+    "generic": {
+      "title": "Nothing here yet",
+      "description": "Content will appear as you progress"
+    },
+    "getStarted": "Get Started"
+  },
+  "gameState": {
+    "title": "Game State",
+    "time": "Time",
+    "turn": "Turn",
+    "tabs": {
+      "places": "Places",
+      "stats": "Stats",
+      "items": "Items",
+      "npcs": "NPCs"
+    }
+  },
+  "locations": {
+    "noLocations": "No locations discovered yet",
+    "clickToTravel": "Click to travel",
+    "currentLocation": "Current location"
+  },
+  "stats": {
+    "noStats": "No stats defined yet",
+    "statsAppearAfter": "Stats will appear after world setup",
+    "low": "Low!"
+  },
+  "inventory": {
+    "empty": "Inventory is empty",
+    "itemsAppearHere": "Items you collect will appear here",
+    "properties": "Properties:",
+    "itemCount": "{{count}} item(s) ({{total}} total)"
+  },
+  "agents": {
+    "loading": "Loading agents...",
+    "noCharacters": "No characters yet",
+    "charactersAppear": "Characters will appear as you explore",
+    "here": "Here",
+    "chatting": "chatting",
+    "elsewhere": "Elsewhere",
+    "hereCount": "{{here}} here · {{total}} total"
+  },
+  "common": {
+    "day": "Day {{day}}",
+    "close": "Close"
+  },
+  "accessibility": {
+    "skipToMain": "Skip to main content",
+    "sendAction": "Send action",
+    "attachImage": "Attach image",
+    "expandPanel": "Expand game panel",
+    "collapsePanel": "Collapse game panel",
+    "openGameState": "Open game status",
+    "closeSheet": "Close",
+    "editLabel": "Edit label",
+    "currentLocation": "Current location",
+    "selectedTab": "(currently selected)",
+    "processing": "Processing your action",
+    "newMessage": "New message from {{agent}}"
+  }
+}

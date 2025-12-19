@@ -187,41 +187,38 @@ ClaudeWorld는 여러 AI 에이전트가 협력하여 게임을 진행하는 구
 - 초기 인벤토리 설정
 - 다른 에이전트들을 위한 월드 노트 작성
 
-### 2-에이전트 테이프 시스템
+### 1-에이전트 테이프 시스템
 
-게임플레이는 **Action Manager**와 **Narrator** 두 에이전트가 번갈아 처리합니다:
+게임플레이는 **Action Manager** 하나의 에이전트가 SDK Task 도구로 서브 에이전트를 호출하여 처리합니다:
 
 ```
-플레이어 행동 → Action Manager → Narrator
+플레이어 행동 → Action Manager (숨겨짐)
                     │
-                    ├── stat_calc()       → 스탯 계산기
-                    ├── add_character()   → 캐릭터 디자이너
-                    ├── remove_character() → 캐릭터 제거
-                    └── add_location()    → 장소 디자이너
+                    ├── Task(stat_calculator)     → 스탯/인벤토리 계산
+                    ├── Task(character_designer)  → NPC 생성
+                    ├── Task(location_designer)   → 장소 생성
+                    ├── narration()               → 결과 묘사
+                    └── suggest_options()         → 다음 행동 제안
 ```
 
 **Action Manager (행동 관리자)**
 - 플레이어의 자유로운 텍스트 입력을 해석합니다
 - 행동의 실현 가능성을 판단합니다
-- 필요한 경우 서브 에이전트를 호출합니다
-- 게임 기계적 효과를 조율합니다
-
-**Narrator (나레이터)**
-- 행동 결과를 생생하게 묘사합니다
-- NPC와의 대화를 연출합니다
-- 매 턴 끝에 2가지 다음 행동을 제안합니다
+- SDK Task 도구로 서브 에이전트를 호출합니다
+- `narration` 도구로 결과를 생생하게 묘사합니다
+- `suggest_options` 도구로 다음 행동 2가지를 제안합니다
 
 ### 서브 에이전트 시스템
 
-Action Manager는 상황에 따라 전문 에이전트를 호출합니다:
+Action Manager는 SDK Task 도구로 전문 서브 에이전트를 호출합니다:
 
-| 도구 | 서브 에이전트 | 역할 |
-|------|--------------|------|
-| `stat_calc` | Stat Calculator | 스탯/인벤토리 변화 계산 |
-| `add_character` | Character Designer | 새 NPC 생성 |
-| `add_location` | Location Designer | 새 장소 생성 |
+| 서브 에이전트 | persist 도구 | 역할 |
+|--------------|-------------|------|
+| `stat_calculator` | `persist_stat_changes` | 스탯/인벤토리 변화 계산 및 저장 |
+| `character_designer` | `persist_character_design` | 새 NPC 생성 및 저장 |
+| `location_designer` | `persist_location_design` | 새 장소 생성 및 저장 |
 
-각 서브 에이전트는 독립적으로 호출되며, 구조화된 결과를 반환합니다.
+각 서브 에이전트는 persist 도구를 사용해 파일시스템에 직접 결과를 저장합니다.
 
 ### Structured Output (구조화된 출력)
 
@@ -258,12 +255,12 @@ CharacterDesign:
 2. 서버가 행동을 저장하고 턴 카운터 증가
    ↓
 3. Action Manager가 행동 해석
-   - 필요시 서브 에이전트 호출
-   - 스탯/인벤토리 변화 적용
+   - 필요시 Task 도구로 서브 에이전트 호출
+   - 서브 에이전트가 persist 도구로 변화 적용
    ↓
-4. Narrator가 결과 묘사
-   - 생생한 장면 연출
-   - 다음 행동 2가지 제안
+4. Action Manager가 결과 묘사
+   - narration 도구로 생생한 장면 연출
+   - suggest_options 도구로 다음 행동 2가지 제안
    ↓
 5. 프론트엔드가 폴링으로 결과 수신
    - 메시지 표시

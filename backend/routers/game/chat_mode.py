@@ -21,8 +21,72 @@ from sdk import AgentManager
 from services.agent_config_service import AgentConfigService
 from services.prompt_builder import build_system_prompt
 from sqlalchemy.ext.asyncio import AsyncSession
+from utils.images import compress_image_base64
 
 logger = logging.getLogger("ChatModeRoutes")
+
+
+async def _warm_chat_summarizer(room_id: int, agent_manager: AgentManager) -> None:
+    """
+    Pre-warm the Chat_Summarizer client by creating it in the client pool.
+
+    This reduces latency when exiting chat mode (/end) by having the SDK client
+    already connected and ready. Called as a background task when entering chat mode.
+
+    Args:
+        room_id: Room ID for the client pool key
+        agent_manager: AgentManager instance with client pool
+    """
+    from database import get_db as get_db_generator
+
+    async for db in get_db_generator():
+        try:
+            # Get the Chat_Summarizer agent
+            summarizer = await _get_chat_summarizer_agent(db)
+            if not summarizer:
+                logger.warning("Cannot warm Chat_Summarizer: agent not found")
+                return
+
+            # Load agent config from filesystem
+            config_data = AgentConfigData()
+            if summarizer.config_file:
+                loaded_config = AgentConfigService.load_agent_config(summarizer.config_file)
+                if loaded_config:
+                    config_data = loaded_config
+
+            # Build system prompt
+            system_prompt = build_system_prompt(summarizer.name, config_data)
+
+            # Build AgentResponseContext (user_message not used for warming)
+            task_id = TaskIdentifier(room_id=room_id, agent_id=summarizer.id)
+            context = AgentResponseContext(
+                system_prompt=system_prompt,
+                user_message="",  # Not used for warming
+                agent_name=summarizer.name,
+                config=config_data,
+                room_id=room_id,
+                agent_id=summarizer.id,
+                group_name=summarizer.group,
+                task_id=task_id,
+            )
+
+            # Build agent options (same logic as generate_sdk_response)
+            options, config_hash = agent_manager._build_agent_options(context, system_prompt)
+
+            # Pre-create the client in the pool
+            _pooled, is_new, _lock = await agent_manager.client_pool.get_or_create(
+                task_id, options, config_hash
+            )
+
+            if is_new:
+                logger.info(f"Chat_Summarizer client warmed for room {room_id}")
+            else:
+                logger.debug(f"Chat_Summarizer client already warm for room {room_id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to warm Chat_Summarizer client: {e}")
+        finally:
+            break  # Only use first session
 
 
 async def handle_chat_command(
@@ -31,6 +95,7 @@ async def handle_chat_command(
     player_state: models.PlayerState,
     room_id: int,
     _world: models.World,
+    agent_manager: AgentManager,
 ) -> dict:
     """
     Enter chat mode.
@@ -41,6 +106,7 @@ async def handle_chat_command(
         player_state: Current player state
         room_id: Target room ID
         world: World model
+        agent_manager: AgentManager instance for warming Chat_Summarizer
 
     Returns:
         Response dict with status
@@ -78,6 +144,9 @@ async def handle_chat_command(
         update_room_activity=True,
     )
 
+    # Warm the Chat_Summarizer client in background (reduces /end latency)
+    asyncio.create_task(_warm_chat_summarizer(room_id, agent_manager))
+
     logger.info(
         f"Entered chat mode for world {world_id}, start_message_id={start_message_id}, chat_session_id={chat_session_id}"
     )
@@ -97,6 +166,8 @@ async def handle_chat_mode_action(
     agent_manager: AgentManager,
     world: models.World,
     location_id: int,
+    image_data: Optional[str] = None,
+    image_media_type: Optional[str] = None,
 ) -> dict:
     """
     Handle player message in chat mode.
@@ -119,12 +190,34 @@ async def handle_chat_mode_action(
     # Get the current chat session ID from player state
     chat_session_id = player_state.chat_session_id
 
+    # Compress image if present
+    compressed_image_data = image_data
+    compressed_image_media_type = image_media_type
+    if compressed_image_data and compressed_image_media_type:
+        try:
+            logger.info(f"Compressing image for chat mode in world {world_id}")
+            compressed_data, compressed_media_type = compress_image_base64(
+                compressed_image_data, compressed_image_media_type
+            )
+            original_size = len(compressed_image_data)
+            compressed_size = len(compressed_data)
+            compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+            logger.info(
+                f"Image compressed: {original_size} -> {compressed_size} bytes ({compression_ratio:.1f}% reduction)"
+            )
+            compressed_image_data = compressed_data
+            compressed_image_media_type = compressed_media_type
+        except Exception as e:
+            logger.warning(f"Image compression failed, using original: {e}")
+
     # Save user message to room with chat_session_id
     message = schemas.MessageCreate(
         content=text,
         role=MessageRole.USER,
         participant_type="user",
         chat_session_id=chat_session_id,
+        image_data=compressed_image_data,
+        image_media_type=compressed_image_media_type,
     )
     await crud.create_message(db, room_id, message, update_room_activity=True)
 

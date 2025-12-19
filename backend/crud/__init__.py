@@ -10,9 +10,12 @@ All CRUD functions are exported at the package level for backward compatibility.
 from .agents import (
     create_agent,
     delete_agent,
+    delete_agents_by_world,
     get_agent,
     get_agent_by_name,
+    get_agents_by_world,
     get_all_agents,
+    sync_agents_with_filesystem,
     update_agent,
 )
 
@@ -122,7 +125,10 @@ __all__ = [
     "get_all_agents",
     "get_agent",
     "get_agent_by_name",
+    "get_agents_by_world",
     "delete_agent",
+    "delete_agents_by_world",
+    "sync_agents_with_filesystem",
     "update_agent",
     # Message operations
     "create_message",

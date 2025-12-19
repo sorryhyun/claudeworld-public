@@ -41,7 +41,8 @@ export const ChatHeader = ({
   const { isAdmin } = useAuth();
 
   return (
-    <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60 header-padding-mobile shadow-sm pt-12 lg:pt-2 pl-14 lg:pl-[var(--header-left-padding,1rem)] border-b border-slate-300/50 overflow-hidden select-none">
+    // Use solid background instead of backdrop-blur for better scroll performance on mobile
+    <div className="sticky top-0 z-10 bg-white header-padding-mobile shadow-sm pt-12 lg:pt-2 pl-14 lg:pl-[var(--header-left-padding,1rem)] border-b border-slate-200 overflow-hidden select-none">
       <div className="flex items-center justify-between gap-1 sm:gap-2 pb-2 min-w-0">
         {/* Room Title - Truncate on mobile */}
         <div className="min-w-0 flex-1">

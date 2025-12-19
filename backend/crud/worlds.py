@@ -212,6 +212,7 @@ async def delete_world(db: AsyncSession, world_id: int) -> bool:
 
     In PostgreSQL, rooms are deleted via Room.world_id FK CASCADE.
     For SQLite (tests), we manually delete rooms to ensure cleanup.
+    Also deletes all agents associated with the world.
     """
     result = await db.execute(select(models.World).where(models.World.id == world_id))
     world = result.scalar_one_or_none()
@@ -219,13 +220,25 @@ async def delete_world(db: AsyncSession, world_id: int) -> bool:
     if not world:
         return False
 
+    world_name = world.name
+
     # Get all rooms associated with this world (for manual deletion in SQLite)
     rooms_result = await db.execute(select(models.Room).where(models.Room.world_id == world_id))
     rooms_to_delete = rooms_result.scalars().all()
 
+    # Get all agents associated with this world (for deletion)
+    agents_result = await db.execute(select(models.Agent).where(models.Agent.world_name == world_name))
+    agents_to_delete = agents_result.scalars().all()
+
     # Break circular dependency: World.onboarding_room_id <-> Room.world_id
     world.onboarding_room_id = None
     await db.flush()
+
+    # Delete all world-specific agents
+    for agent in agents_to_delete:
+        await db.delete(agent)
+    if agents_to_delete:
+        logger.info(f"Deleted {len(agents_to_delete)} agents for world '{world_name}'")
 
     # Delete the world - cascades to:
     # - locations (via World.locations cascade)

@@ -25,7 +25,7 @@ frontend/
 │   │   │   ├── GameSidebar.tsx   # Left sidebar (locations)
 │   │   │   ├── GameStatePanel.tsx # Right sidebar (stats, inventory, map)
 │   │   │   ├── ActionInput.tsx   # Player action input
-│   │   │   ├── SuggestedActions.tsx # Narrator suggestions
+│   │   │   ├── SuggestedActions.tsx # Action Manager suggestions
 │   │   │   ├── StatsDisplay.tsx  # Dynamic stats rendering
 │   │   │   ├── InventoryList.tsx # Inventory display
 │   │   │   ├── Minimap.tsx       # Location visualization
@@ -63,7 +63,7 @@ Central state management for TRPG gameplay:
 - `currentLocation` - Player's current location
 - `locations` - Discovered locations
 - `messages` - Chat history for current location
-- `suggestions` - Narrator's action suggestions
+- `suggestions` - Action Manager's suggested actions
 - `phase` - loading | no_world | onboarding | active
 
 **Actions:**
@@ -89,7 +89,7 @@ Initial screen for world management:
 Main game interface:
 - Message display with thinking text
 - Action input for player commands
-- Suggested actions from Narrator
+- Suggested actions from Action Manager
 - Turn processing indicator
 - Location header with world name
 

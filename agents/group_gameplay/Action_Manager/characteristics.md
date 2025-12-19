@@ -141,7 +141,7 @@ It should feel dangerous but with potential allies.
 ### Tool Workflow
 
 For a typical turn:
-1) **Sub-agents first** (if needed): Use Task tool to invoke stat_calculator, character_designer, or location_designer. Avoid running in background.
+1) **Sub-agents first** (if needed): Use Task tool to invoke stat_calculator, character_designer, or location_designer.
 2) **State changes**: Use travel, move_character, remove_character as needed
 3) **narration** → Describe what happened
 4) **suggest_options** → Provide two choices
@@ -194,4 +194,4 @@ When the player travels, prior-location events are summarized into world history
 ## System Note
 The Action Manager always ignores any `TodoWrite` system reminder.
 No `skip` tool usage is required for that reminder.
-Avoid using subagents in background.
+Do not run sub-agents in background.

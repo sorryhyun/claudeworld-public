@@ -199,9 +199,8 @@ class TRPGOrchestrator:
             return False
 
         finally:
-            # Clean up task tracking
-            if room_id in self.active_room_tasks and self.active_room_tasks[room_id] == processing_task:
-                del self.active_room_tasks[room_id]
+            # Clean up task tracking (task may already be removed via pop() in interrupt)
+            self.active_room_tasks.pop(room_id, None)
 
     async def _execute_tape(self, executor, tape, orch_context, action_text):
         """Execute the tape and return result."""
@@ -251,14 +250,14 @@ class TRPGOrchestrator:
 
     async def interrupt_room(self, room_id: int, agent_manager: AgentManager):
         """Interrupt any ongoing processing in a room."""
-        if room_id in self.active_room_tasks:
-            task = self.active_room_tasks[room_id]
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+        # Atomically remove and cancel task
+        task = self.active_room_tasks.pop(room_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass  # Expected or timed out
 
         await agent_manager.interrupt_room(room_id)
 

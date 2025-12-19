@@ -286,11 +286,11 @@ class TapeExecutor:
                 raise
             except Exception as e:
                 logger.error(f"❌ Agent {agent.name} error: {e}")
-                # Errors don't count as skips - try to continue
+                result.skips += 1  # Track failure
                 try:
                     await orch_context.db.rollback()
-                except Exception:
-                    pass
+                except Exception as rollback_err:
+                    logger.error(f"❌ Rollback failed for {agent.name}: {rollback_err}")
 
         return result
 
@@ -367,16 +367,15 @@ class TapeExecutor:
         import models
         from sqlalchemy.future import select
 
-        # Expire all cached objects to ensure we get fresh data from DB
-        # This is necessary because the travel tool may have updated location.room_id
-        # in a different part of the session, and the identity map might have stale data
-        orch_context.db.expire_all()
-
-        # Get player state with current location
+        # Force fresh data from DB for this specific query
+        # Using populate_existing=True tells SQLAlchemy to overwrite any cached data
+        # in the identity map, without expiring ALL cached objects (which would
+        # cause unnecessary re-fetches of unrelated data later)
         result = await orch_context.db.execute(
             select(models.PlayerState)
             .options(selectinload(models.PlayerState.current_location))
             .where(models.PlayerState.world_id == orch_context.world_id)
+            .execution_options(populate_existing=True)
         )
         player_state = result.scalar_one_or_none()
 

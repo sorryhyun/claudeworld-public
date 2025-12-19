@@ -355,18 +355,18 @@ wheels = [
 
 [[package]]
 name = "claude-agent-sdk"
-version = "0.1.17"
+version = "0.1.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/e4/565dd62b0795427b4f6a0a8221948eef09545aaa44256af4b36a32e866b1/claude_agent_sdk-0.1.17.tar.gz", hash = "sha256:85d0818b7259b65ea0ee3103ae736f2b359243de81540ab1eee771d8cae0d8ac", size = 56157, upload-time = "2025-12-16T00:27:58.008Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/3d/a8c6ad873e8448696d44441c9eb2c24dded620fb32415d68f576a542ccde/claude_agent_sdk-0.1.18.tar.gz", hash = "sha256:4fcb8730cc77dea562fbe9aa48c65eced3ef58a6bb1f34f77e50e8258902477d", size = 56162, upload-time = "2025-12-18T00:42:57.926Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/d8/c673cf7533d3489cf516dac078d0fda353d89fb5446973dc9252281ebaff/claude_agent_sdk-0.1.17-py3-none-macosx_11_0_arm64.whl", hash = "sha256:46fd904ce90a183414f979d359519cff347f52c1906d50f1e247551c786a3613", size = 51713924, upload-time = "2025-12-16T00:27:43.409Z" },
-    { url = "https://files.pythonhosted.org/packages/8f/cb/c556f499b0195b98ede53a6c4eb78957725a508335f6c20da25018fb0a4a/claude_agent_sdk-0.1.17-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:08c41656da3ec7930cb966b35df23da6f68fa0fc0a32c61e73d6450c40c0e17e", size = 65993911, upload-time = "2025-12-16T00:27:48.765Z" },
-    { url = "https://files.pythonhosted.org/packages/5b/1f/84dce02915972f0bf0f482a948add4e1a7642c5730ad1106529445a00f1c/claude_agent_sdk-0.1.17-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:be5fe696e50829348b031106dc926bb459c94804a13584a52a483a35ebd1c388", size = 67691009, upload-time = "2025-12-16T00:27:52.1Z" },
-    { url = "https://files.pythonhosted.org/packages/65/d5/ea6fbf27da6bdafa8a1c6d7a778a0f8ced146260a5fc2c74ce606aa28993/claude_agent_sdk-0.1.17-py3-none-win_amd64.whl", hash = "sha256:f2f4e05785a42525cf8026f0bba69bce359b83a57856f0b7349cd311a0d644be", size = 69883013, upload-time = "2025-12-16T00:27:55.514Z" },
+    { url = "https://files.pythonhosted.org/packages/06/14/f529f7c4bab7c71dcbcc8c66f12f491e644ee8a027ac5111d13705df207e/claude_agent_sdk-0.1.18-py3-none-macosx_11_0_arm64.whl", hash = "sha256:9e45b4e3c20c072c3e3325fa60bab9a4b5a7cbbce64ca274b8d7d0af42dd9dd8", size = 54560828, upload-time = "2025-12-18T00:42:44.71Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/68/6e83005aa7bb9056bfad0aef0605249f877dc0c78724c9c0fadebff600fb/claude_agent_sdk-0.1.18-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:3c41bd8f38848609ae0d5da8d7327a4c2d7057a363feafb6fd70df611ea204cc", size = 68743107, upload-time = "2025-12-18T00:42:48.255Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/85/7d6dd85f402135a610894734c442f1166ffed61d03eced39d6bfd14efccd/claude_agent_sdk-0.1.18-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:983f15e51253f40c55136a86d7cc63e023a3576428b05fa1459093d461b2d215", size = 70444964, upload-time = "2025-12-18T00:42:51.752Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/fa/d2b22b7a713c4c049cbd5f9f635836ea5429ff65c1f3bcf4658a8e1c1cf5/claude_agent_sdk-0.1.18-py3-none-win_amd64.whl", hash = "sha256:36f5b84d5c3c8773ee9b56aeb5ab345d1033231db37f80d1f20ac15239bef41c", size = 72637215, upload-time = "2025-12-18T00:42:55.269Z" },
 ]
 
 [[package]]
@@ -375,6 +375,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "aiosqlite" },
     { name = "annotated-doc" },
     { name = "annotated-types" },
     { name = "anyio" },
@@ -413,7 +414,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "aiosqlite" },
     { name = "faker" },
     { name = "poethepoet" },
     { name = "pre-commit" },
@@ -427,6 +427,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
+    { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "annotated-doc", specifier = "==0.0.3" },
     { name = "annotated-types", specifier = "==0.7.0" },
     { name = "anyio", specifier = "==4.11.0" },
@@ -434,7 +435,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "bcrypt", specifier = "==4.2.1" },
     { name = "certifi", specifier = "==2025.10.5" },
-    { name = "claude-agent-sdk", specifier = "==0.1.17" },
+    { name = "claude-agent-sdk", specifier = "==0.1.18" },
     { name = "click", specifier = "==8.3.0" },
     { name = "distro", specifier = "==1.9.0" },
     { name = "docstring-parser", specifier = "==0.17.0" },
@@ -465,7 +466,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "faker", specifier = ">=33.1.0" },
     { name = "poethepoet", specifier = ">=0.29.0" },
     { name = "pre-commit", specifier = ">=4.0.0" },

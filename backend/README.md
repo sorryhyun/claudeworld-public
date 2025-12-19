@@ -129,7 +129,7 @@ GET    /worlds/{id}                    # Get world details
 DELETE /worlds/{id}                    # Delete world
 
 POST   /worlds/{id}/action             # Submit player action
-GET    /worlds/{id}/action/suggestions # Get Narrator's suggestions
+GET    /worlds/{id}/action/suggestions # Get Action Manager's suggestions
 
 GET    /worlds/{id}/locations          # List discovered locations
 GET    /worlds/{id}/locations/current  # Get current location

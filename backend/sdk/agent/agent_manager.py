@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import tempfile
 import time
 import uuid
 from typing import AsyncIterator
@@ -28,33 +30,8 @@ from sdk.client.stream_parser import StreamParser
 from sdk.loaders import get_debug_config
 
 # Streaming timeout configuration
+# Used for both the message queue read timeout and SDK query timeout
 STREAMING_IDLE_TIMEOUT = 120.0  # 2 minutes between messages before timing out
-
-
-async def async_iter_with_timeout(async_iter, timeout: float = STREAMING_IDLE_TIMEOUT):
-    """
-    Wrap an async iterator with idle timeout.
-
-    If no message is received for `timeout` seconds, raises asyncio.TimeoutError.
-    This prevents indefinite hangs when the SDK stops streaming mid-response.
-
-    Args:
-        async_iter: The async iterator to wrap
-        timeout: Maximum seconds to wait between messages
-
-    Yields:
-        Items from the async iterator
-
-    Raises:
-        asyncio.TimeoutError: If no message is received within timeout
-    """
-    aiter = async_iter.__aiter__()
-    while True:
-        try:
-            item = await asyncio.wait_for(aiter.__anext__(), timeout=timeout)
-            yield item
-        except StopAsyncIteration:
-            break
 
 
 # Get settings singleton
@@ -69,6 +46,23 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 _perf = get_perf_logger()
+
+# Cached cwd for Claude agent SDK (created once per process)
+_claude_cwd: str | None = None
+
+
+def _get_claude_cwd() -> str:
+    """Get or create a cross-platform temporary directory for Claude agent SDK.
+
+    This creates an empty directory that exists (required by SDK subprocess).
+    Uses tempfile for cross-platform compatibility (works on both Windows and Linux).
+    """
+    global _claude_cwd
+    if _claude_cwd is None or not os.path.exists(_claude_cwd):
+        # Create a persistent temp directory for this process
+        _claude_cwd = os.path.join(tempfile.gettempdir(), "claude-empty")
+        os.makedirs(_claude_cwd, exist_ok=True)
+    return _claude_cwd
 
 
 class AgentManager:
@@ -297,10 +291,10 @@ class AgentManager:
             permission_mode="default",
             max_thinking_tokens=32768,
             mcp_servers=mcp_config.mcp_servers,
-            allowed_tools=mcp_config.allowed_tool_names + ["Task"],
-            tools=mcp_config.allowed_tool_names + ["Task"],
+            allowed_tools=mcp_config.allowed_tool_names + ["Task", "TaskOutput"],
+            tools=mcp_config.allowed_tool_names + ["Task", "TaskOutput"],
             setting_sources=[],
-            cwd="/tmp/claude-empty",
+            cwd=_get_claude_cwd(),
             env={"CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK": "true"},
             hooks=hooks,
             output_format=output_format,  # Include at build time, not after connect
@@ -385,7 +379,8 @@ class AgentManager:
             pool_start = time.perf_counter()
             # NOTE: usage_lock returned but not currently used - AgentManager's clients
             # are keyed by (room_id, agent_id) and typically not accessed concurrently
-            client, is_new, _usage_lock = await self.client_pool.get_or_create(pool_key, options, config_hash)
+            # pooled contains: client, msg_queue (for reading), pump_task (background drainer)
+            pooled, is_new, _usage_lock = await self.client_pool.get_or_create(pool_key, options, config_hash)
             pool_duration_ms = (time.perf_counter() - pool_start) * 1000
 
             # Log pool fetch timing (overall summary - details logged in ClientPool)
@@ -398,7 +393,7 @@ class AgentManager:
             )
 
             # Register this client for interruption support
-            self.active_clients[task_id] = client
+            self.active_clients[task_id] = pooled.client
             logger.debug(f"Registered client for task: {task_id}")
 
             # Initialize streaming state for this task (thread-safe)
@@ -430,13 +425,74 @@ class AgentManager:
                 if context.output_format:
                     logger.info(f"📊 Using structured output format for {context.agent_name}")
 
+                # Build query content: multimodal if image present, otherwise plain text
+                if context.image:
+                    # SDK requires async generator for multimodal content (native image support)
+                    # Find [[IMAGE]] placeholder and insert image block at that position
+                    IMAGE_PLACEHOLDER = "[[IMAGE]]"
+
+                    async def multimodal_message_generator():
+                        content_blocks = []
+
+                        if IMAGE_PLACEHOLDER in message_to_send:
+                            # Split text at placeholder to insert image at correct position
+                            parts = message_to_send.split(IMAGE_PLACEHOLDER, 1)
+                            text_before = parts[0]
+                            text_after = parts[1] if len(parts) > 1 else ""
+
+                            # Add text before image (if any)
+                            if text_before.strip():
+                                content_blocks.append({"type": "text", "text": text_before})
+
+                            # Add image block at the correct position
+                            content_blocks.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": context.image.media_type,
+                                        "data": context.image.data,
+                                    },
+                                }
+                            )
+
+                            # Add text after image (if any)
+                            if text_after.strip():
+                                content_blocks.append({"type": "text", "text": text_after})
+                        else:
+                            # Fallback: no placeholder found, append image at end
+                            content_blocks.append({"type": "text", "text": message_to_send})
+                            content_blocks.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": context.image.media_type,
+                                        "data": context.image.data,
+                                    },
+                                }
+                            )
+
+                        yield {
+                            "type": "user",
+                            "message": {
+                                "role": "user",
+                                "content": content_blocks,
+                            },
+                        }
+
+                    logger.info(f"📸 Sending multimodal message with native image | Task: {context.task_id}")
+                    query_content = multimodal_message_generator()
+                else:
+                    query_content = message_to_send
+
                 # Track query timing - set timing_context for UserPromptSubmit hook
                 query_start = time.perf_counter()
                 timing_context["query_sent_time"] = query_start
 
                 # Add timeout to query to prevent hanging
                 await asyncio.wait_for(
-                    client.query(message_to_send),
+                    pooled.client.query(query_content),
                     timeout=20.0,
                 )
 
@@ -459,9 +515,25 @@ class AgentManager:
             streaming_start = time.perf_counter()
             first_token_logged = False
 
-            # Receive and stream the response with idle timeout
-            # This prevents indefinite hangs when the SDK stops streaming mid-response
-            async for message in async_iter_with_timeout(client.receive_response()):
+            # Read from message queue (filled by pump task in client_pool)
+            # The pump keeps SDK control channel healthy for background subagent MCP calls
+            while True:
+                try:
+                    message = await asyncio.wait_for(
+                        pooled.msg_queue.get(),
+                        timeout=STREAMING_IDLE_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"⏰ Timeout waiting for message | Task: {context.task_id}")
+                    raise Exception("Timeout waiting for response from agent")
+
+                # Check for end sentinel (pump finished - stream ended)
+                if message is None:
+                    logger.debug(f"Received end sentinel for task: {task_id}")
+                    break
+
+                # Check if this is the final result message
+                is_result_message = message.__class__.__name__ == "ResultMessage"
                 # Parse the message using StreamParser
                 parsed = self.stream_parser.parse_message(message, response_text, thinking_text)
 
@@ -543,6 +615,13 @@ class AgentManager:
 
                         if not (is_system_init and skip_system_init):
                             logger.debug(f"📨 Received message:\n{format_message_for_debug(message)}")
+
+                # Break after ResultMessage - this is the final message for our request
+                # The pump continues running in background to keep control channel open
+                # for any pending subagent MCP tool calls
+                if is_result_message:
+                    logger.debug(f"Received ResultMessage for task: {task_id}")
+                    break
 
             # Unregister the client when done
             if context.task_id and context.task_id in self.active_clients:

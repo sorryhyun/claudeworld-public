@@ -4,10 +4,41 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* NanumSquareNeo Font Family
+ * Light (300), Regular (400), Bold (700), Extra Bold (800)
+ * NOTE: Add font files to ./assets/ for additional weights:
+ * - NanumSquareNeoOTF-Lt.otf (Light)
+ * - NanumSquareNeoOTF-Bd.otf (Bold)
+ * - NanumSquareNeoOTF-Eb.otf (Extra Bold)
+ */
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('./assets/NanumSquareNeoOTF-Lt.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
 @font-face {
   font-family: 'NanumSquareNeo';
   src: url('./assets/NanumSquareNeoOTF-Rg.otf') format('opentype');
   font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('./assets/NanumSquareNeoOTF-Bd.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NanumSquareNeo';
+  src: url('./assets/NanumSquareNeoOTF-Eb.otf') format('opentype');
+  font-weight: 800;
   font-style: normal;
   font-display: swap;
 }
@@ -62,6 +93,45 @@
   .animate-slide-in-up {
     animation: slide-in-up 0.25s ease-out;
   }
+
+  /* Slide up animation for toasts */
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.2s ease-out;
+  }
+
+  /* Shimmer animation for loading placeholders */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 1.5s infinite;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+  }
+
+  /* Z-index utility classes from design tokens */
+  .z-dropdown { z-index: 10; }
+  .z-sticky { z-index: 20; }
+  .z-fixed { z-index: 30; }
+  .z-overlay { z-index: 40; }
+  .z-modal { z-index: 50; }
+  .z-popover { z-index: 60; }
+  .z-toast { z-index: 70; }
+  .z-tooltip { z-index: 80; }
+  .z-max { z-index: 9999; }
 
   /*
    * Responsive utilities using 3-tier breakpoint system:
@@ -349,4 +419,60 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ================================
+   Accessibility: Global Focus Styles (WCAG AA)
+   ================================ */
+
+/* Global focus-visible styles - high contrast focus ring */
+:focus-visible {
+  outline: 2px solid #3b82f6; /* primary-500 */
+  outline-offset: 2px;
+}
+
+/* Remove default outline for mouse users (click/tap) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Enhanced focus for dark backgrounds */
+.dark :focus-visible,
+[data-theme="dark"] :focus-visible {
+  outline-color: #60a5fa; /* primary-400 - better contrast on dark */
+}
+
+/* Skip link for keyboard navigation - hidden until focused */
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b; /* slate-800 */
+  color: white;
+  padding: 12px 24px;
+  border-radius: 0 0 8px 8px;
+  z-index: 9999;
+  font-weight: 500;
+  text-decoration: none;
+  transition: top 0.2s ease-out;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: none;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+/* Screen reader only - visually hidden but accessible */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }

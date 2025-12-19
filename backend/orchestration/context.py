@@ -35,6 +35,7 @@ def build_conversation_context(
     world_user_name: Optional[str] = None,
     world_language: Optional[str] = None,
     recent_events: Optional[str] = None,
+    skip_latest_image: bool = False,
 ) -> str:
     """
     Build conversation context from recent room messages for multi-agent awareness.
@@ -54,6 +55,7 @@ def build_conversation_context(
         world_user_name: Player's display name in the world (for language detection in onboarding)
         world_language: World language setting ('en' or 'ko') for game instructions
         recent_events: Agent's recent events to inject before response instruction (fresh each turn)
+        skip_latest_image: If True, skip embedding image from the latest message (sent natively instead)
 
     Returns:
         Formatted conversation history string
@@ -144,13 +146,25 @@ def build_conversation_context(
         content = whiteboard_rendered.get(msg.id, msg.content)
 
         # Format message with embedded image if present
-        if hasattr(msg, "image_data") and msg.image_data and hasattr(msg, "image_media_type") and msg.image_media_type:
-            # Embed image as data URL for Claude vision
-            data_url = f"data:{msg.image_media_type};base64,{msg.image_data}"
-            if content:
-                context_lines.append(f"{speaker}: {data_url}\n{content}\n")
+        is_latest_message = msg == recent_messages[-1] if recent_messages else False
+        has_image = (
+            hasattr(msg, "image_data") and msg.image_data and hasattr(msg, "image_media_type") and msg.image_media_type
+        )
+
+        if has_image:
+            if skip_latest_image and is_latest_message:
+                # Insert placeholder for native SDK image (will be replaced with actual image block)
+                if content:
+                    context_lines.append(f"{speaker}: [[IMAGE]]\n{content}\n")
+                else:
+                    context_lines.append(f"{speaker}: [[IMAGE]]\n")
             else:
-                context_lines.append(f"{speaker}: {data_url}\n")
+                # Embed previous message images as data URL for Claude vision
+                data_url = f"data:{msg.image_media_type};base64,{msg.image_data}"
+                if content:
+                    context_lines.append(f"{speaker}: {data_url}\n{content}\n")
+                else:
+                    context_lines.append(f"{speaker}: {data_url}\n")
         else:
             context_lines.append(f"{speaker}: {content}\n")
 

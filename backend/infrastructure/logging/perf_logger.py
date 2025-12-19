@@ -23,8 +23,17 @@ logger = logging.getLogger("PerfLogger")
 # Check if performance logging is enabled
 PERF_LOG_ENABLED = os.environ.get("PERF_LOG", "").lower() in ("true", "1", "yes")
 
-# Log file path (project root)
-LOG_FILE_PATH = Path(__file__).parent.parent.parent.parent / "latency.log"
+
+def _get_log_file_path() -> Path:
+    """Get log file path, handling PyInstaller bundles."""
+    import sys
+
+    if getattr(sys, "frozen", False):
+        # In bundled mode, use working directory
+        return Path.cwd() / "latency.log"
+    else:
+        # In dev mode, use project root
+        return Path(__file__).parent.parent.parent.parent / "latency.log"
 
 
 @dataclass
@@ -73,7 +82,7 @@ class PerfLogger:
 
     def _init_log_file(self):
         """Initialize or append to latency.log with session header."""
-        with open(LOG_FILE_PATH, "a") as f:
+        with open(_get_log_file_path(), "a") as f:
             f.write(f"\n{'=' * 80}\n")
             f.write(f"Performance Logging Session Started: {self._session_start.isoformat()}\n")
             f.write(f"{'=' * 80}\n\n")
@@ -84,7 +93,7 @@ class PerfLogger:
             return
 
         async with self._lock:
-            with open(LOG_FILE_PATH, "a") as f:
+            with open(_get_log_file_path(), "a") as f:
                 f.write(entry.to_log_line() + "\n")
             # Log to console as well
             logger.info(f"⏱️  {entry.to_log_line()}")
@@ -189,7 +198,7 @@ class PerfLogger:
         )
 
         self._entries.append(entry)
-        with open(LOG_FILE_PATH, "a") as f:
+        with open(_get_log_file_path(), "a") as f:
             f.write(entry.to_log_line() + "\n")
         logger.info(f"⏱️  {entry.to_log_line()}")
 
@@ -276,7 +285,7 @@ class PerfLogger:
 
                     self._entries.append(entry)
                     # Write synchronously for sync functions
-                    with open(LOG_FILE_PATH, "a") as f:
+                    with open(_get_log_file_path(), "a") as f:
                         f.write(entry.to_log_line() + "\n")
 
                     logger.info(f"⏱️  {entry.to_log_line()}")
@@ -292,7 +301,7 @@ class PerfLogger:
 
         self._interaction_count += 1
         async with self._lock:
-            with open(LOG_FILE_PATH, "a") as f:
+            with open(_get_log_file_path(), "a") as f:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 f.write(f"\n--- Interaction #{self._interaction_count} | Room {room_id} ---\n")
                 f.write(f"{timestamp} | USER_ACTION                    | msg_len={len(user_message)}\n")
@@ -303,7 +312,7 @@ class PerfLogger:
             return
 
         async with self._lock:
-            with open(LOG_FILE_PATH, "a") as f:
+            with open(_get_log_file_path(), "a") as f:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 f.write(
                     f"{timestamp} | INTERACTION_COMPLETE           | {total_duration_ms:8.2f}ms | agents={agent_count}\n"
@@ -347,7 +356,7 @@ class PerfLogger:
         summary = self.get_summary()
 
         async with self._lock:
-            with open(LOG_FILE_PATH, "a") as f:
+            with open(_get_log_file_path(), "a") as f:
                 f.write(f"\n{'=' * 80}\n")
                 f.write("Session Summary\n")
                 f.write(f"{'=' * 80}\n")

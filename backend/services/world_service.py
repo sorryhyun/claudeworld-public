@@ -36,8 +36,12 @@ _lore_cache: Dict[str, CachedFile] = {}
 _config_cache: Dict[str, tuple[WorldConfig, float]] = {}  # (config, mtime)
 _history_cache: Dict[str, CachedFile] = {}  # World history cache
 
-# Base directory for world storage
-WORLDS_DIR = Path(__file__).parent.parent.parent / "worlds"
+
+def _get_worlds_dir() -> Path:
+    """Get worlds directory, handling PyInstaller bundled mode."""
+    from core.settings import get_settings
+
+    return get_settings().worlds_dir
 
 
 class WorldService:
@@ -49,12 +53,12 @@ class WorldService:
         # Sanitize name for filesystem
         safe_name = "".join(c for c in world_name if c.isalnum() or c in "._- ")
         safe_name = safe_name.strip()
-        return WORLDS_DIR / safe_name
+        return _get_worlds_dir() / safe_name
 
     @classmethod
     def ensure_worlds_dir(cls) -> None:
         """Ensure the worlds directory exists."""
-        WORLDS_DIR.mkdir(parents=True, exist_ok=True)
+        _get_worlds_dir().mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def create_world(
@@ -328,6 +332,9 @@ class WorldService:
         """
         Add an entry to the world's history.md file.
 
+        Includes deduplication to prevent identical entries from being written twice
+        (can happen if the model calls the travel tool multiple times in one turn).
+
         Args:
             world_name: Name of the world
             turn: Current turn number
@@ -346,8 +353,19 @@ class WorldService:
         with open(history_file, "r", encoding="utf-8") as f:
             content = f.read()
 
+        # Build the new entry
+        new_entry = f"\n## Turn {turn} - {location_name}\n{summary}\n"
+
+        # Deduplication: check if the last entry is identical to what we're about to write
+        # This prevents duplicate entries when the model calls travel twice
+        if content.rstrip().endswith(summary.rstrip()):
+            logger.warning(
+                f"⚠️ Duplicate history entry detected for '{world_name}' at Turn {turn} - {location_name}, skipping"
+            )
+            return
+
         # Append new entry with location context
-        content += f"\n## Turn {turn} - {location_name}\n{summary}\n"
+        content += new_entry
 
         with open(history_file, "w", encoding="utf-8") as f:
             f.write(content)
@@ -363,11 +381,12 @@ class WorldService:
     def list_worlds(cls, owner_id: Optional[str] = None) -> List[WorldConfig]:
         """List all worlds, optionally filtered by owner."""
         worlds = []
+        worlds_dir = _get_worlds_dir()
 
-        if not WORLDS_DIR.exists():
+        if not worlds_dir.exists():
             return worlds
 
-        for world_dir in WORLDS_DIR.iterdir():
+        for world_dir in worlds_dir.iterdir():
             if world_dir.is_dir() and (world_dir / "world.yaml").exists():
                 config = cls.load_world_config(world_dir.name)
                 if config:

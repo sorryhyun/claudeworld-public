@@ -14,7 +14,13 @@ import schemas
 from core.settings import SKIP_MESSAGE_TEXT
 from domain import Agent
 from domain.entities.agent import is_action_manager, is_world_seed_generator
-from domain.value_objects.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
+from domain.value_objects.contexts import (
+    AgentMessageData,
+    AgentResponseContext,
+    ImageAttachment,
+    MessageContext,
+    OrchestrationContext,
+)
 from domain.value_objects.enums import MessageRole, WorldPhase
 from i18n.timezone import format_kst_timestamp
 from infrastructure.logging.perf_logger import get_perf_logger
@@ -142,6 +148,9 @@ class ResponseGenerator:
         # Determine if in chat mode (before building context)
         is_chat_mode = orch_context.chat_session_id is not None
 
+        # Check if the latest message has an image (will be sent natively, not embedded in context)
+        has_latest_image = room_messages and hasattr(room_messages[-1], "image_data") and room_messages[-1].image_data
+
         # Build conversation context from room messages (only new messages since agent's last response)
         conv_ctx_start = time.perf_counter()
         conversation_context = build_conversation_context(
@@ -158,6 +167,7 @@ class ResponseGenerator:
             world_user_name=world_user_name,
             world_language=world_language,
             recent_events=agent_config.recent_events,
+            skip_latest_image=has_latest_image,
         )
         conv_ctx_ms = (time.perf_counter() - conv_ctx_start) * 1000
         perf.log_sync("build_conv_context", conv_ctx_ms, agent.name, orch_context.room_id, msg_count=len(room_messages))
@@ -286,6 +296,17 @@ class ResponseGenerator:
                 prompt_len=len(effective_system_prompt),
             )
 
+        # Extract image from the latest message if present (for native multimodal support)
+        image = None
+        if room_messages:
+            latest_msg = room_messages[-1]
+            if hasattr(latest_msg, "image_data") and latest_msg.image_data:
+                image = ImageAttachment(
+                    data=latest_msg.image_data,
+                    media_type=latest_msg.image_media_type,
+                )
+                logger.debug(f"Extracted image from latest message for native SDK support: '{agent.name}'")
+
         logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id})")
         response_context = AgentResponseContext(
             system_prompt=effective_system_prompt,
@@ -300,6 +321,7 @@ class ResponseGenerator:
             task_id=task_id,
             conversation_started=conversation_started,
             has_situation_builder=has_situation_builder,
+            image=image,  # Native SDK image support
             world_name=world_name,
             db=orch_context.db,  # Pass db for TRPG game tools
             world_id=orch_context.world_id,  # Pass world_id for TRPG game tools

@@ -81,7 +81,7 @@ backend/
 - Multi-agent orchestration with Claude SDK
 - Filesystem-primary config with hot-reloading
 - In-memory caching (70-90% performance improvement)
-- Sub-agent invocation via SDK Task tool pattern
+- Sub-agent invocation via Claude Agent SDK native Task tool
 - Chat mode for free-form NPC conversations
 
 **For detailed backend documentation**, see [backend/README.md](backend/README.md) which includes:
@@ -111,7 +111,7 @@ backend/
 
 ## Game System
 
-Eight specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (1-agent tape with Task-based sub-agents).
+Seven specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (1-agent tape where Action Manager coordinates sub-agents via SDK Task tool and handles narration directly).
 
 **See [how_it_works.md](how_it_works.md) for detailed architecture:** agent roles, turn flow diagrams, sub-agent invocation, data storage, and API endpoints.
 
@@ -172,7 +172,7 @@ Tool descriptions and debug settings are configured via YAML files in `backend/s
 **`gameplay_tools.yaml`** - Gameplay phase tools
 - Action Manager tools: `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`
 - Sub-agent persist tools: `persist_stat_changes`, `persist_character_design`, `persist_location_design`
-- Sub-agents invoked via SDK Task tool (stat_calculator, character_designer, location_designer)
+- Sub-agents (stat_calculator, character_designer, location_designer) invoked via SDK native Task tool with AgentDefinitions
 
 **`onboarding_tools.yaml`** - Onboarding phase tools
 - `complete` tool for World_Seed_Generator invocation
@@ -233,15 +233,15 @@ can_see_system_messages: true    # Agents can see system-type messages in contex
 **Available Settings:**
 - **`interrupt_every_turn`** - When `true`, agents in this group always get a turn after any message
 - **`priority`** - Integer value (default: 0). Higher values mean agent responds before lower priority agents
-- **`transparent`** - When `true`, other agents won't be triggered to respond after this agent speaks. Useful for Narrator-type agents whose commentary shouldn't prompt replies. Messages are still visible to all agents.
+- **`transparent`** - When `true`, other agents won't be triggered to respond after this agent speaks. Useful for utility agents whose messages shouldn't prompt NPC replies. Messages are still visible to all agents.
 - **`can_see_system_messages`** - When `true`, agents in this group can see messages with `participant_type="system"` in their conversation context. By default, system messages (like "X joined the chat") are filtered out. Useful for onboarding agents that need to see system triggers.
 
-**Example: Narrator Agent Group**
+**Example: System Agent Group**
 ```yaml
-# agents/group_tool/group_config.yaml
-interrupt_every_turn: true  # Narrator always comments after each message
-priority: 5                 # Narrator responds first
-transparent: true           # Other agents don't reply to narrator
+# agents/group_gameplay/group_config.yaml
+interrupt_every_turn: false  # Controlled by TRPGTapeGenerator
+priority: 5                  # Higher priority for system agents
+transparent: false           # System messages trigger normal flow
 ```
 
 **`guidelines_3rd.yaml`** - Role guidelines for agent behavior (in `backend/sdk/config/`)
@@ -379,10 +379,8 @@ This creates `dist/ClaudeWorld.exe` with:
 - `VERCEL_URL` - Auto-detected on Vercel deployments
 
 **Image Processing:**
-- `IMAGE_MAX_DIMENSION` - Max image dimension in pixels (default: 1920)
-- `IMAGE_JPEG_QUALITY` - JPEG compression quality 1-100 (default: 85)
 - `IMAGE_WEBP_QUALITY` - WebP compression quality 1-100 (default: 85)
-- `IMAGE_PNG_COMPRESS_LEVEL` - PNG compression level 0-9 (default: 6)
+- `IMAGE_CONVERT_TO_WEBP` - Convert images to WebP format (default: true)
 
 **Claude API:**
 - `CLAUDE_API_KEY` - Direct API key for production deployments (get from console.anthropic.com)

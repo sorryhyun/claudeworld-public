@@ -12,7 +12,6 @@ test_*.txt
 .python-version
 .ruff_cache
 .uv-cache
-worlds/
 
 # Node
 frontend/node_modules/

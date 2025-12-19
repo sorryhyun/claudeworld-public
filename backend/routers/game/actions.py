@@ -23,6 +23,7 @@ from orchestration.trpg_orchestrator import get_trpg_orchestrator
 from sdk import AgentManager
 from services.location_service import LocationService
 from sqlalchemy.ext.asyncio import AsyncSession
+from utils.images import compress_image_base64
 
 from routers.game.chat_mode import (
     handle_chat_command,
@@ -50,11 +51,9 @@ async def submit_action(
     - /chat: Enter free-form conversation with NPCs
     - /end: Exit chat mode and return to gameplay
 
-    For regular actions, triggers the TRPG turn sequence:
-    1. Action Manager interprets the action
-    2. Character Designer creates NPCs if needed
-    3. Stat Calculator processes mechanical outcomes
-    4. Narrator describes the result
+    For regular actions, triggers the TRPG turn sequence where Action Manager
+    coordinates everything: interprets the action, invokes sub-agents via Task tool
+    (Character Designer, Stat Calculator, Location Designer), and creates narration.
 
     The response is sent asynchronously via polling.
     """
@@ -99,7 +98,7 @@ async def submit_action(
                 "status": "error",
                 "message": "Chat mode is only available during active gameplay.",
             }
-        return await handle_chat_command(db, world_id, player_state, target_room_id, world)
+        return await handle_chat_command(db, world_id, player_state, target_room_id, world, agent_manager)
 
     # Handle /end command
     if parsed.command_type == SlashCommandType.END:
@@ -113,7 +112,8 @@ async def submit_action(
                 "message": "Cannot process chat mode message without a current location.",
             }
         return await handle_chat_mode_action(
-            db, world_id, player_state, target_room_id, action.text, agent_manager, world, current_location_id
+            db, world_id, player_state, target_room_id, action.text, agent_manager, world, current_location_id,
+            image_data=action.image_data, image_media_type=action.image_media_type
         )
 
     # Regular TRPG flow below
@@ -130,11 +130,31 @@ async def submit_action(
     # Increment turn counter
     new_turn = await crud.increment_turn(db, world_id)
 
+    # Compress image if present
+    image_data = action.image_data
+    image_media_type = action.image_media_type
+    if image_data and image_media_type:
+        try:
+            logger.info(f"Compressing image for world {world_id}")
+            compressed_data, compressed_media_type = compress_image_base64(image_data, image_media_type)
+            original_size = len(image_data)
+            compressed_size = len(compressed_data)
+            compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+            logger.info(
+                f"Image compressed: {original_size} -> {compressed_size} bytes ({compression_ratio:.1f}% reduction)"
+            )
+            image_data = compressed_data
+            image_media_type = compressed_media_type
+        except Exception as e:
+            logger.warning(f"Image compression failed, using original: {e}")
+
     # Save user message to the appropriate room
     message = schemas.MessageCreate(
         content=action.text,
         role=MessageRole.USER,
         participant_type="user",
+        image_data=image_data,
+        image_media_type=image_media_type,
     )
     saved_message = await crud.create_message(db, target_room_id, message, update_room_activity=True)
 

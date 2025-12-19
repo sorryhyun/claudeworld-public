@@ -24,24 +24,79 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from contextlib import suppress
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from domain.value_objects.task_identifier import TaskIdentifier
 from infrastructure.logging.perf_logger import get_perf_logger
 
+if TYPE_CHECKING:
+    from claude_agent_sdk.types import Message
+
 logger = logging.getLogger(__name__)
 _perf = get_perf_logger()
+
+# Message pump configuration
+# Bounded queue prevents unbounded memory growth when subagents produce many messages
+MESSAGE_QUEUE_MAX_SIZE = 1000
 
 
 @dataclass
 class PooledClient:
-    """A pooled client with its associated metadata."""
+    """A pooled client with its associated metadata and message pump."""
 
     client: ClaudeSDKClient
     config_hash: str  # Hash of MCP config used at connect time
     session_id: Optional[str] = None  # Session ID for conversation continuity
+    # Message pump: continuously drains receive_messages() to keep SDK control channel healthy
+    msg_queue: asyncio.Queue["Message"] = field(default_factory=lambda: asyncio.Queue(maxsize=MESSAGE_QUEUE_MAX_SIZE))
+    pump_task: Optional[asyncio.Task[None]] = None  # Background task draining messages
+
+
+async def _pump_messages(pooled: PooledClient, task_id: TaskIdentifier) -> None:
+    """
+    Background task that continuously drains client.receive_messages() into queue.
+
+    This keeps the SDK's internal pipes unblocked, allowing the CLI to service
+    late MCP tool calls from background subagents (spawned via Task tool).
+
+    Without this pump, background subagents may fail to call MCP tools because:
+    1. Backend stops consuming after parent's ResultMessage
+    2. SDK internal message buffer fills up
+    3. CLI can't service control channel for tools/list and tools/call
+    4. Subagent falls back to text <function_calls> (hallucinated invoke)
+
+    Args:
+        pooled: The pooled client to pump messages from
+        task_id: Task identifier for logging
+    """
+    try:
+        async for msg in pooled.client.receive_messages():
+            try:
+                pooled.msg_queue.put_nowait(msg)
+            except asyncio.QueueFull:
+                # Drop message to avoid blocking pump - prefer availability over completeness
+                # Critical messages (ResultMessage) are typically small and arrive early
+                msg_type = type(msg).__name__
+                logger.warning(
+                    f"Queue full for {task_id}, dropping {msg_type}. "
+                    f"Queue size: {MESSAGE_QUEUE_MAX_SIZE}. "
+                    f"Consider increasing MESSAGE_QUEUE_MAX_SIZE if this persists."
+                )
+    except asyncio.CancelledError:
+        # Expected during cleanup - just exit gracefully
+        logger.debug(f"Pump task cancelled for {task_id}")
+        raise
+    except Exception as e:
+        logger.warning(f"Pump task error for {task_id}: {e}")
+    finally:
+        # Signal end of stream with sentinel value
+        try:
+            pooled.msg_queue.put_nowait(None)  # type: ignore[arg-type]
+        except asyncio.QueueFull:
+            logger.warning(f"Could not send end sentinel for {task_id} - queue full")
 
 
 class ClientPool:
@@ -96,7 +151,7 @@ class ClientPool:
 
     async def get_or_create(
         self, task_id: TaskIdentifier, options: ClaudeAgentOptions, config_hash: str = ""
-    ) -> Tuple[ClaudeSDKClient, bool, asyncio.Lock]:
+    ) -> Tuple[PooledClient, bool, asyncio.Lock]:
         """
         Get existing client or create new one.
 
@@ -113,8 +168,8 @@ class ClientPool:
             config_hash: Hash of MCP config (used to detect config changes)
 
         Returns:
-            (client, is_new, usage_lock) tuple
-            - client: ClaudeSDKClient instance
+            (pooled_client, is_new, usage_lock) tuple
+            - pooled_client: PooledClient with client, queue, and pump task
             - is_new: True if newly created, False if reused from pool
             - usage_lock: Lock to serialize query/receive_response on this client
 
@@ -166,7 +221,7 @@ class ClientPool:
                 # NOTE: We do NOT update options here - they are baked in at connect time
                 # Updating client.options has no effect on the running CLI subprocess
                 usage_lock = self._get_usage_lock(task_id)
-                return pooled.client, False, usage_lock
+                return pooled, False, usage_lock
 
         pool_check_ms = (time.perf_counter() - pool_check_start) * 1000
         _perf.log_sync("pool_check_miss", pool_check_ms, None, task_id.room_id, agent_id=task_id.agent_id, reused=False)
@@ -213,7 +268,7 @@ class ClientPool:
                         waited_for_other=True,
                     )
                     usage_lock = self._get_usage_lock(task_id)
-                    return pooled.client, False, usage_lock
+                    return pooled, False, usage_lock
 
             # Use semaphore to limit overall connection concurrency (prevents ProcessTransport issues)
             semaphore_wait_start = time.perf_counter()
@@ -249,13 +304,22 @@ class ClientPool:
                             attempt=attempt + 1,
                         )
 
-                        # Store with metadata
+                        # Store with metadata and start message pump
                         session_id = getattr(options, "resume", None)
-                        self.pool[task_id] = PooledClient(
+                        pooled = PooledClient(
                             client=client,
                             config_hash=config_hash,
                             session_id=session_id,
                         )
+
+                        # Start message pump task - keeps SDK control channel healthy
+                        # for background subagents that need to call MCP tools
+                        pooled.pump_task = asyncio.create_task(
+                            _pump_messages(pooled, task_id),
+                            name=f"pump_{task_id}",
+                        )
+
+                        self.pool[task_id] = pooled
 
                         # Brief delay to let ProcessTransport stabilize before next connection
                         await asyncio.sleep(self.CONNECTION_STABILIZATION_DELAY)
@@ -271,7 +335,7 @@ class ClientPool:
                             attempts=attempt + 1,
                         )
                         usage_lock = self._get_usage_lock(task_id)
-                        return client, True, usage_lock
+                        return pooled, True, usage_lock
                     except Exception as e:
                         if "ProcessTransport is not ready" in str(e) and attempt < max_retries - 1:
                             delay = 0.3 * (2**attempt)  # Exponential backoff: 0.3s, 0.6s
@@ -316,7 +380,7 @@ class ClientPool:
 
         # Schedule background disconnect to prevent subprocess leaks
         # (instead of relying on GC which may not clean up promptly)
-        task = asyncio.create_task(self._disconnect_client_background(pooled.client, task_id))
+        task = asyncio.create_task(self._disconnect_client_background(pooled, task_id))
         self._cleanup_tasks.add(task)
         task.add_done_callback(self._cleanup_tasks.discard)
 
@@ -349,7 +413,7 @@ class ClientPool:
 
         # Schedule disconnect in a background task (separate from HTTP request task)
         # This ensures disconnect runs in its own async context, avoiding cancel scope violations
-        task = asyncio.create_task(self._disconnect_client_background(pooled.client, task_id))
+        task = asyncio.create_task(self._disconnect_client_background(pooled, task_id))
 
         # Track the cleanup task
         self._cleanup_tasks.add(task)
@@ -438,7 +502,7 @@ class ClientPool:
         """
         return self.pool.keys()
 
-    async def _disconnect_client_background(self, client: ClaudeSDKClient, task_id: TaskIdentifier):
+    async def _disconnect_client_background(self, pooled: PooledClient, task_id: TaskIdentifier):
         """
         Background task for client disconnection with timeout.
 
@@ -447,15 +511,23 @@ class ClientPool:
         Uses asyncio.shield() to protect from cancellation of parent tasks.
 
         Args:
-            client: The client to disconnect
+            pooled: The pooled client to disconnect (includes pump task)
             task_id: Identifier for logging purposes
         """
         try:
+            # Cancel pump task first - this stops draining messages
+            if pooled.pump_task and not pooled.pump_task.done():
+                pooled.pump_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await pooled.pump_task
+                logger.debug(f"Cancelled pump task for {task_id}")
+
             # Small delay before disconnect to allow pending operations to complete
             # This prevents cancel scope interference with uvicorn lifespan handlers
             await asyncio.sleep(0.5)
             # Use shield to protect disconnect from cancellation by parent tasks
             # This prevents CancelledError from propagating when the main task is cancelled
+            client = pooled.client
             if hasattr(client, "disconnect"):
                 await asyncio.wait_for(
                     asyncio.shield(client.disconnect()),

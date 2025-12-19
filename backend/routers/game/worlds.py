@@ -389,6 +389,11 @@ async def reset_world(
         if deleted_count > 0:
             logger.info(f"Cleaned up {deleted_count} orphaned locations during reset")
 
+        # Sync database agents with filesystem (delete stale agents whose config files were removed)
+        stale_agents_count = await crud.sync_agents_with_filesystem(db, world.name)
+        if stale_agents_count > 0:
+            logger.info(f"Cleaned up {stale_agents_count} stale agents during reset")
+
         # Get all room mappings for this world
         room_mappings = LocationService.get_all_room_mappings(world.name)
 

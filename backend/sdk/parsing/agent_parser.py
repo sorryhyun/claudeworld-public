@@ -34,11 +34,13 @@ def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
     Returns:
         AgentConfigData object or None if folder doesn't exist
     """
+    # Import here to avoid circular dependency
+    from core.settings import get_settings
+
     # Resolve path relative to project root if not absolute
     path = Path(file_path)
     if not path.is_absolute():
-        backend_dir = Path(__file__).parent.parent.parent
-        project_root = backend_dir.parent
+        project_root = get_settings().project_root
         path = project_root / file_path
 
     if not path.exists() or not path.is_dir():
@@ -139,10 +141,12 @@ def list_available_configs() -> Dict[str, Dict[str, Optional[str]]]:
         - "path": str (relative path to agent folder)
         - "group": Optional[str] (group name if in a group folder, None otherwise)
     """
-    # Get the project root directory (parent of backend/)
-    backend_dir = Path(__file__).parent.parent.parent
-    project_root = backend_dir.parent
-    agents_dir = project_root / "agents"
+    # Import here to avoid circular dependency
+    from core.settings import get_settings
+
+    settings = get_settings()
+    project_root = settings.project_root
+    agents_dir = settings.agents_dir
 
     if not agents_dir.exists():
         return {}
