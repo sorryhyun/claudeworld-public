@@ -312,7 +312,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
       )}
 
       {/* Clauding indicator (normal gameplay mode) */}
-      {isProcessing && (
+      {(isProcessing || isClauding) && !isChatMode && (
         <div
           className="flex items-center justify-center gap-2 py-2 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg"
           role="status"

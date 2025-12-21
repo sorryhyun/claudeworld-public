@@ -507,6 +507,9 @@ async def reset_world(
         state.rooms = preserved_rooms
         state.suggestions = []
         state.current_room = starting_room_key
+        # Clear stale arrival context from previous travel
+        if "arrival_context" in state.ui:
+            del state.ui["arrival_context"]
         LocationService.save_state(world.name, state)
         logger.info(f"Reset _state.json rooms to: {list(preserved_rooms.keys())}")
 

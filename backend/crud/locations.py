@@ -38,15 +38,30 @@ async def create_location(
     if not world:
         raise ValueError(f"World {world_id} not found")
 
-    # Create a room for this location (with world_id set during creation for unique constraint)
-    from crud.rooms import create_room
+    # Room name for this location
+    room_name = f"Location: {location.display_name or location.name}"
 
-    room = await create_room(
-        db,
-        schemas.RoomCreate(name=f"Location: {location.display_name or location.name}"),
-        owner_id=world.owner_id,  # Use world owner_id to scope rooms per world owner
-        world_id=world_id,  # Set world_id during creation for unique constraint
+    # Check if room already exists (handles orphaned rooms from failed previous attempts)
+    existing_room_result = await db.execute(
+        select(models.Room)
+        .where(models.Room.owner_id == world.owner_id)
+        .where(models.Room.name == room_name)
+        .where(models.Room.world_id == world_id)
     )
+    room = existing_room_result.scalar_one_or_none()
+
+    if room:
+        logger.info(f"Reusing existing room '{room_name}' (id={room.id}) for location")
+    else:
+        # Create a room for this location (with world_id set during creation for unique constraint)
+        from crud.rooms import create_room
+
+        room = await create_room(
+            db,
+            schemas.RoomCreate(name=room_name),
+            owner_id=world.owner_id,  # Use world owner_id to scope rooms per world owner
+            world_id=world_id,  # Set world_id during creation for unique constraint
+        )
 
     # Add gameplay agents to the location room
     added_count = await add_gameplay_agents_to_room(db, room.id)
@@ -66,6 +81,7 @@ async def create_location(
         adjacent_locations=adjacent_json,
         room_id=room.id,
         is_discovered=location.is_discovered,
+        is_draft=location.is_draft,
     )
     db.add(db_location)
 

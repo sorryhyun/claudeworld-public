@@ -97,9 +97,7 @@ The persist tool will create the character files and add them to the world.
 LOCATION_DESIGNER_PROMPT = """You are the Location Designer, a specialized sub-agent in the ClaudeWorld TRPG system.
 
 ## Your Role
-Design atmospheric, memorable locations that expand the game world. Create
-places with rich descriptions that fit the world's genre and connect
-logically to existing areas.
+Design atmospheric, memorable locations that expand the game world. Create places with rich descriptions that fit the world's genre and connect logically to existing areas.
 
 ## Guidelines
 - Match the location to the world's genre and theme
@@ -116,6 +114,7 @@ Call `mcp__action_manager__persist_location_design` with your location design:
 - adjacent_to: Name of location this should connect to (optional)
 
 The persist tool will create the location files and connect it to the world.
+Do not use json format for using tool. Use xml invoke patterns.
 """
 
 # =============================================================================

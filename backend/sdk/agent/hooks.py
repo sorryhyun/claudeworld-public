@@ -271,6 +271,14 @@ def create_pre_task_location_hook(
             logger.info(f"✅ Draft location created: {location_info['display_name']}")
         except Exception as e:
             logger.warning(f"Failed to create draft location: {e}")
+            # Rollback the session to clear the PendingRollbackError state
+            # This is critical when running in foreground mode, as the same
+            # session will be used by persist_location_design_tool later
+            try:
+                await context.db.rollback()
+                logger.info("Session rolled back after draft location creation failure")
+            except Exception as rollback_err:
+                logger.warning(f"Failed to rollback session: {rollback_err}")
 
         return {"continue_": True}
 
