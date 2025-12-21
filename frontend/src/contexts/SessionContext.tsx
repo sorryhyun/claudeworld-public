@@ -318,6 +318,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
           stats: stateUpdate.stats,
           turn_count: stateUpdate.turn_count,
           inventory: newInventory,
+          game_time: stateUpdate.game_time ?? prev.game_time,
         } : null);
 
         // Update chat mode state - detect transition from chat mode to game mode
@@ -325,10 +326,13 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
         const nowChatMode = stateUpdate.is_chat_mode || false;
         setIsChatMode(nowChatMode);
 
-        // When exiting chat mode, clear messages and reset to fresh game-mode messages
+        // When exiting chat mode, clear messages and use the resume message ID
+        // to avoid re-fetching old narration from before chat mode
         if (wasChatMode && !nowChatMode) {
           setMessages([]);
-          setLastMessageId(null);
+          // Use chat_mode_start_message_id as the resume point to only fetch new messages
+          const resumeId = stateUpdate.chat_mode_start_message_id ?? null;
+          setLastMessageId(resumeId);
           // Suggestions will be fetched in the next poll cycle
         }
 

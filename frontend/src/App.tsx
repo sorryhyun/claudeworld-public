@@ -96,10 +96,6 @@ function AuthenticatedApp() {
     setIsSidebarOpen(false);
   };
 
-  const handleSelectRoom = (roomId: number) => {
-    roomContext.selectRoom(roomId);
-  };
-
   if (worldsLoading || roomContext.loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -182,7 +178,6 @@ function AuthenticatedApp() {
         `}
       >
         <MainSidebar
-          onSelectRoom={handleSelectRoom}
           onSelectWorld={handleSelectWorld}
         />
       </div>

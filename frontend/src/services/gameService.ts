@@ -310,6 +310,7 @@ export interface PollResponse {
     turn_count: number;
     phase: 'onboarding' | 'active' | 'ended';
     is_chat_mode: boolean;
+    chat_mode_start_message_id: number | null;
   } | null;
   location: {
     id: number;
@@ -376,4 +377,13 @@ export async function getWorldCharacters(worldId: number): Promise<WorldCharacte
   }
   const data = await response.json();
   return data.characters || [];
+}
+
+export async function getWorldHistory(worldId: number): Promise<string> {
+  const response = await fetch(`${API_BASE}/${worldId}/history`, getFetchOptions());
+  if (!response.ok) {
+    return '';
+  }
+  const data = await response.json();
+  return data.history || '';
 }

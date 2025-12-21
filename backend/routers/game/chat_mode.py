@@ -18,6 +18,7 @@ from domain.value_objects.enums import MessageRole
 from domain.value_objects.task_identifier import TaskIdentifier
 from orchestration import get_chat_mode_orchestrator
 from sdk import AgentManager
+from sdk.agent.options_builder import build_agent_options
 from services.agent_config_service import AgentConfigService
 from services.prompt_builder import build_system_prompt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +72,7 @@ async def _warm_chat_summarizer(room_id: int, agent_manager: AgentManager) -> No
             )
 
             # Build agent options (same logic as generate_sdk_response)
-            options, config_hash = agent_manager._build_agent_options(context, system_prompt)
+            options, config_hash = build_agent_options(context, system_prompt, [])
 
             # Pre-create the client in the pool
             _pooled, is_new, _lock = await agent_manager.client_pool.get_or_create(

@@ -161,6 +161,16 @@ async def poll_updates(
     # Filter out system messages (e.g., "Start onboarding..." trigger messages)
     visible_messages = [m for m in messages if m.participant_type != "system"]
 
+    # Load game_time from filesystem (source of truth)
+    fs_state = PlayerService.load_player_state(world.name)
+    game_time = None
+    if fs_state and fs_state.game_time:
+        game_time = {
+            "hour": fs_state.game_time.get("hour", 8),
+            "minute": fs_state.game_time.get("minute", 0),
+            "day": fs_state.game_time.get("day", 1),
+        }
+
     # Build response
     response = {
         "messages": [
@@ -185,6 +195,12 @@ async def poll_updates(
             "turn_count": player_state.turn_count if player_state else 0,
             "phase": current_phase,  # Use synced phase from filesystem
             "is_chat_mode": player_state.is_chat_mode if player_state else False,  # Chat mode state
+            # Resume message ID: when exiting chat mode, frontend should use this as lastMessageId
+            # to avoid re-fetching old narration from before chat mode
+            "chat_mode_start_message_id": player_state.chat_mode_start_message_id
+            if player_state
+            else None,
+            "game_time": game_time,  # In-game time from filesystem
         },
     }
 
@@ -253,27 +269,16 @@ async def get_chatting_agents(
             if agent_id in agent_map:
                 agent = agent_map[agent_id]
                 agent_state = streaming_state.get(agent_id, {})
-                # Show Action Manager as generic "Narrator" with processing message
-                if is_action_manager(agent.name):
-                    chatting_agents.append(
-                        {
-                            "id": agent.id,
-                            "name": "Narrator",
-                            "profile_pic": None,
-                            "thinking_text": "Processing your action...",
-                            "response_text": "",
-                        }
-                    )
-                else:
-                    chatting_agents.append(
-                        {
-                            "id": agent.id,
-                            "name": agent.name,
-                            "profile_pic": agent.profile_pic,
-                            "thinking_text": agent_state.get("thinking_text", ""),
-                            "response_text": agent_state.get("response_text", ""),
-                        }
-                    )
+                # Send actual agent name (frontend handles display logic)
+                chatting_agents.append(
+                    {
+                        "id": agent.id,
+                        "name": agent.name,
+                        "profile_pic": agent.profile_pic if not is_action_manager(agent.name) else None,
+                        "thinking_text": agent_state.get("thinking_text", ""),
+                        "response_text": agent_state.get("response_text", ""),
+                    }
+                )
 
     # Check if World Seed Generator is active (during onboarding complete tool)
     seed_status = trpg_orchestrator.get_seed_generation_status(target_room_id)

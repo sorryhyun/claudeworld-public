@@ -484,3 +484,57 @@ class PersistStatChangesInput(BaseModel):
         if not v:
             raise ValueError("Summary cannot be empty")
         return v
+
+    @field_validator("stat_changes", mode="before")
+    @classmethod
+    def parse_stat_changes(cls, v: list | str | None) -> list[dict]:
+        """Parse stat_changes, handling JSON string representations.
+
+        Claude sometimes passes lists as JSON strings like '[]' or
+        '[{"stat_name": "HP", "delta": -10}]'.
+        """
+        import json
+
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v == "[]":
+                return []
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                return []
+            except json.JSONDecodeError:
+                return []
+        if isinstance(v, list):
+            return v
+        return []
+
+    @field_validator("inventory_changes", mode="before")
+    @classmethod
+    def parse_inventory_changes(cls, v: list | str | None) -> list[dict]:
+        """Parse inventory_changes, handling JSON string representations.
+
+        Claude sometimes passes lists as JSON strings like '[]' or
+        '[{"action": "add", "item_id": "sword", "name": "Sword"}]'.
+        """
+        import json
+
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v == "[]":
+                return []
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                return []
+            except json.JSONDecodeError:
+                return []
+        if isinstance(v, list):
+            return v
+        return []

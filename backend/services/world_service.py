@@ -120,6 +120,7 @@ class WorldService:
             "inventory": [],
             "effects": [],
             "recent_actions": [],
+            "game_time": {"hour": 8, "minute": 0, "day": 1},
         }
 
         with open(world_path / "player.yaml", "w", encoding="utf-8") as f:

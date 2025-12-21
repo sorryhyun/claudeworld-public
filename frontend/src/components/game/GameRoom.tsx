@@ -238,6 +238,7 @@ export function GameRoom() {
     currentLocation,
     clearWorld,
     isChatMode,
+    playerState,
   } = useGame();
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -314,16 +315,6 @@ export function GameRoom() {
     });
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    if (virtuosoRef.current) {
-      virtuosoRef.current.scrollToIndex({
-        index: displayMessages.length - 1,
-        align: 'end',
-        behavior: 'smooth',
-      });
-    }
-  }, [displayMessages.length]);
-
   // Use Virtuoso's data parameter to avoid messages dependency
   // This prevents itemContent recreation when messages array reference changes
   // Access expandedThinking via ref to avoid recreating callback on every toggle
@@ -353,14 +344,27 @@ export function GameRoom() {
                 {t('gameRoom.exit')}
               </button>
             </div>
-            {currentLocation && phase === 'active' && (
-              <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                {currentLocation.label || currentLocation.name}
-              </p>
+            {phase === 'active' && (
+              <div className="flex items-center gap-3 mt-0.5 text-sm text-slate-500">
+                {currentLocation && (
+                  <span className="flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {currentLocation.label || currentLocation.name}
+                  </span>
+                )}
+                {playerState?.game_time && (
+                  <span className="flex items-center gap-1 tabular-nums">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {String(playerState.game_time.hour).padStart(2, '0')}:{String(playerState.game_time.minute).padStart(2, '0')}
+                    <span className="text-slate-400 ml-0.5">Day {playerState.game_time.day}</span>
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -422,20 +426,6 @@ export function GameRoom() {
               overscan={200}
               className="h-full"
             />
-
-            {/* Scroll to bottom button */}
-            {!isAtBottom && (
-              <button
-                onClick={scrollToBottom}
-                className="absolute bottom-4 right-4 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-full shadow-lg flex items-center gap-2 transition-all hover:scale-105 active:scale-95 z-10 text-sm"
-                aria-label={t('gameRoom.latest')}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-                <span className="font-medium">{t('gameRoom.latest')}</span>
-              </button>
-            )}
           </>
         )}
       </div>

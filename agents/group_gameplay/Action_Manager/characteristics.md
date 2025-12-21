@@ -94,7 +94,7 @@ When calling the `narration` tool, create text that:
 When you need specialized processing, use the Task tool to invoke sub-agents.
 Sub-agents are self-sufficient - they handle both design and persistence automatically.
 Do not use Plan, Explore, and Default agents.
-Run sub-agents in background to provide narration in foreground. Characters or locations can be described even when those are not created yet.
+Run location and character sub-agents in background to provide narration in foreground. Characters or locations can be described even when those are not created yet.
 
 ### Available Sub-Agents
 

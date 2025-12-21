@@ -328,7 +328,8 @@ async def exit_chat_mode(
     start_message_id = player_state.chat_mode_start_message_id
     chat_session_id = player_state.chat_session_id
     player_state.is_chat_mode = False
-    player_state.chat_mode_start_message_id = None
+    # Keep chat_mode_start_message_id so frontend can use it as resume point
+    # It will be overwritten when entering chat mode again
     player_state.chat_session_id = None
 
     async with serialized_write():

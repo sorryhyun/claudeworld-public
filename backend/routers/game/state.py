@@ -65,6 +65,16 @@ async def get_game_state(
     effects = json.loads(player_state.effects) if player_state.effects else None
     action_history = json.loads(player_state.action_history) if player_state.action_history else None
 
+    # Load game_time from filesystem (source of truth)
+    fs_state = PlayerService.load_player_state(world.name)
+    game_time = None
+    if fs_state and fs_state.game_time:
+        game_time = schemas.GameTime(
+            hour=fs_state.game_time.get("hour", 8),
+            minute=fs_state.game_time.get("minute", 0),
+            day=fs_state.game_time.get("day", 1),
+        )
+
     return schemas.PlayerState(
         id=player_state.id,
         world_id=player_state.world_id,
@@ -77,6 +87,7 @@ async def get_game_state(
         action_history=action_history,
         is_chat_mode=player_state.is_chat_mode or False,
         chat_mode_start_message_id=player_state.chat_mode_start_message_id,
+        game_time=game_time,
     )
 
 

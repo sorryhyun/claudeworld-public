@@ -14,6 +14,7 @@ from schemas.agents import Agent, AgentBase, AgentCreate, AgentUpdate
 from schemas.common import TimestampSerializerMixin
 from schemas.game import (
     GameStateResponse,
+    GameTime,
     ImportableWorld,
     InventoryItem,
     Location,
@@ -72,6 +73,7 @@ __all__ = [
     "LocationUpdate",
     "Location",
     # Game - Player State
+    "GameTime",
     "InventoryItem",
     "PlayerStateBase",
     "PlayerState",

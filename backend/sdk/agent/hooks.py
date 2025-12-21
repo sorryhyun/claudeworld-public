@@ -277,6 +277,46 @@ def create_pre_task_location_hook(
     return handle_pre_task_location
 
 
+def create_post_task_location_hook() -> HookFunc:
+    """
+    Create a PostToolUse hook to add context message when location_designer completes.
+
+    This informs the user that the location is now accessible.
+
+    Returns:
+        Async hook function
+    """
+
+    async def handle_post_task_location(
+        input_data: PostToolUseHookInput,
+        _tool_use_id: str | None,
+        _ctx: dict,
+    ) -> SyncHookJSONOutput:
+        """Add context message when location_designer Task is launched."""
+        tool_name = input_data.get("tool_name", "")
+        if tool_name != "Task":
+            return {"continue_": True}
+
+        tool_input = input_data.get("tool_input", {})
+        subagent_type = tool_input.get("subagent_type", "")
+        if subagent_type != "location_designer":
+            return {"continue_": True}
+
+        logger.info("🏗️ PostToolUse: location_designer task launched, adding context message")
+
+        return {
+            "continue_": True,
+            "hookSpecificOutput": {
+                "additionalContext": (
+                    "The location has been created and is now accessible. "
+                    "Players can travel to this location immediately."
+                ),
+            },
+        }
+
+    return handle_post_task_location
+
+
 def build_hooks(
     context: AgentResponseContext,
     anthropic_calls_capture: list[str] | None = None,
@@ -301,14 +341,26 @@ def build_hooks(
         )
     ]
 
-    # Add PostToolUse hook to capture anthropic tool calls
+    # Add PostToolUse hooks
+    if "PostToolUse" not in hooks:
+        hooks["PostToolUse"] = []
+
+    # Capture anthropic tool calls if requested
     if anthropic_calls_capture is not None:
-        hooks["PostToolUse"] = [
+        hooks["PostToolUse"].append(
             HookMatcher(
                 matcher="mcp__guidelines__anthropic",
                 hooks=[create_anthropic_capture_hook(anthropic_calls_capture)],
             )
-        ]
+        )
+
+    # Add context message when location_designer Task is launched
+    hooks["PostToolUse"].append(
+        HookMatcher(
+            matcher="Task",
+            hooks=[create_post_task_location_hook()],
+        )
+    )
 
     # Add SubagentStop hook
     if "SubagentStop" not in hooks:

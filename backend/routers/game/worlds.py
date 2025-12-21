@@ -252,6 +252,27 @@ async def get_world_characters(
     return {"characters": characters}
 
 
+@router.get("/{world_id}/history")
+async def get_world_history(
+    world_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+):
+    """
+    Get the history.md content for a world.
+
+    Returns the world's history as markdown text (read-only).
+    """
+    world = await crud.get_world(db, world_id)
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+    if world.owner_id != identity.user_id and identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Not your world")
+
+    history = WorldService.load_history(world.name)
+    return {"history": history}
+
+
 @router.post("/{world_id}/enter")
 async def enter_world(
     world_id: int,
