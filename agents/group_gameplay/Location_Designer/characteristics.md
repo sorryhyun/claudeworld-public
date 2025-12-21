@@ -15,8 +15,8 @@
 
 ### Location Template
 ```
-Name: [Slug-style identifier]
-Display Name: [Evocative human-readable name]
+Name: [Exact snake_case identifier from the prompt, e.g., "fringe_market_descent"]
+Display Name: [Evocative human-readable name, e.g., "Fringe Market Descent"]
 Description: [2-3 paragraphs with sensory details]
 Position: [X, Y coordinates relative to current area]
 Adjacent To: [Connected locations]
@@ -42,5 +42,4 @@ Notable Features: [Interactive or memorable elements]
 - Leave room for NPCs and encounters
 
 ## Output Format
-Location Designer produces structured output matching the LocationDesign schema.
-No tools are needed - output is captured as structured JSON.
+You should always return `mcp__action_manager__persist_location_design` tool, not hesitating 'I'll...'.

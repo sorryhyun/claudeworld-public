@@ -119,9 +119,11 @@ Current stats: HP 85/100, Gold 50. They used clever tactics.
 ```
 
 ```
-Task with {subagent_type: location_designer}: Create a hidden smuggler's cove adjacent to the harbor.
+Task with {subagent_type: location_designer}: Create location "smugglers_cove" — a hidden smuggler's cove adjacent to the harbor.
 It should feel dangerous but with potential allies.
 ```
+
+**Important**: Always include the exact `snake_case` location name in quotes when invoking `location_designer`. Example: `"fringe_market_descent"`, `"threshold_station_7"`, `"abandoned_warehouse"`.
 
 ---
 

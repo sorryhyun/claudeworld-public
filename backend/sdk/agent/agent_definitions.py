@@ -87,9 +87,10 @@ SUBAGENT_DESCRIPTIONS = {
         "appearance, personality, location, and initial_disposition."
     ),
     "location_designer": (
-        "Invoke to design a new location for the game world. Provide the purpose "
-        "and adjacent location name. Returns structured JSON with name, display_name, "
-        "description, position, and adjacent_hints."
+        "Invoke to design a new location for the game world. You MUST provide the "
+        "exact snake_case location name (e.g., 'fringe_market_descent', 'abandoned_warehouse') "
+        "along with the purpose and adjacent location. Returns structured JSON with name, "
+        "display_name, description, position, and adjacent_hints."
     ),
     "chat_summarizer": (
         "Summarize a chat mode conversation when transitioning back to gameplay. "

@@ -34,35 +34,38 @@ def parse_location_from_task_prompt(prompt: str) -> dict | None:
     # Try to extract key-value pairs from the prompt
     result: dict = {}
 
+    # Pattern 0: Explicit name specifications - highest priority
+    # Handles: with name "rust_byte_clinic", name "X", name should be: X
+    explicit_name_patterns = [
+        # "with name "rust_byte_clinic"" or 'with name "X"'
+        r'with\s+name\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
+        # "name "X"" - quoted name right after "name"
+        r'\bname\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
+        # "name should be: X" or "Location name should be: X"
+        r'(?:location\s+)?name\s+should\s+be\s*[:=]?\s*["\']?([a-zA-Z_][a-zA-Z0-9_]*)["\']?',
+    ]
+    for pattern in explicit_name_patterns:
+        match = re.search(pattern, prompt, re.IGNORECASE)
+        if match:
+            result["name"] = match.group(1).strip().lower()
+            break
+
     # Pattern 1: "Create X (English Name), ..." - common format for Korean locations
     # Matches: "Create 연남동 골목길 (Yeonnam-dong Alley),"
-    create_match = re.search(
-        r"Create\s+([^\(,]+?)\s*\(([^)]+)\)",
-        prompt,
-        re.IGNORECASE,
-    )
-    if create_match:
-        korean_name = create_match.group(1).strip()
-        english_name = create_match.group(2).strip()
-        # Use English name for slug, Korean+English for display
-        result["name"] = re.sub(r"[^a-zA-Z0-9]+", "_", english_name).lower().strip("_")
-        result["display_name"] = f"{korean_name} ({english_name})"
-
-    # Pattern 2: "Create X," without parenthetical English name
     if "name" not in result:
-        create_simple = re.search(r"Create\s+([^,\n]+)", prompt, re.IGNORECASE)
-        if create_simple:
-            name_val = create_simple.group(1).strip()
-            # Generate slug from the name (handle Korean by using transliteration or simple hash)
-            ascii_part = re.sub(r"[^a-zA-Z0-9\s]", "", name_val)
-            if ascii_part.strip():
-                result["name"] = re.sub(r"\s+", "_", ascii_part.strip()).lower()
-            else:
-                # For pure Korean, create a slug from hash
-                result["name"] = f"location_{hashlib.md5(name_val.encode()).hexdigest()[:8]}"
-            result["display_name"] = name_val
+        create_match = re.search(
+            r"Create\s+([^\(,]+?)\s*\(([^)]+)\)",
+            prompt,
+            re.IGNORECASE,
+        )
+        if create_match:
+            korean_name = create_match.group(1).strip()
+            english_name = create_match.group(2).strip()
+            # Use English name for slug, Korean+English for display
+            result["name"] = re.sub(r"[^a-zA-Z0-9]+", "_", english_name).lower().strip("_")
+            result["display_name"] = f"{korean_name} ({english_name})"
 
-    # Pattern 3: Explicit name field (most reliable for structured prompts)
+    # Pattern 2: Explicit name field with colon/equals
     # Matches: name: dark_forest or "name": "dark_forest"
     if "name" not in result:
         name_match = re.search(
@@ -73,8 +76,11 @@ def parse_location_from_task_prompt(prompt: str) -> dict | None:
         if name_match:
             result["name"] = name_match.group(1).strip().lower()
 
-    # Pattern 4: display_name field
+    # Pattern 3: display_name field
     display_patterns = [
+        # display_name "러스트 바이트 클리닉" - quoted value right after display_name
+        r'display_name\s*["\']([^"\']+)["\']',
+        # display_name: "value" or display_name = "value"
         r'["\']?display_name["\']?\s*[:=]\s*["\']?([^"\'\n,]+)["\']?',
         r'Display Name\s*[:=]\s*["\']?([^"\'\n,]+)["\']?',
     ]

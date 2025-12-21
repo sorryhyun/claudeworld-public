@@ -423,16 +423,21 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
 
         const withoutChatting = prev.filter(m => !m.is_chatting);
 
-        const chattingMessages: GameMessage[] = chattingAgents.map(agent => ({
-          id: -agent.id,
-          content: agent.response_text || '',
-          role: 'assistant' as const,
-          agent_id: agent.id,
-          agent_name: agent.name,
-          thinking: agent.thinking_text || null,
-          timestamp: new Date().toISOString(),
-          is_chatting: true,
-        }));
+        const chattingMessages: GameMessage[] = chattingAgents.map(agent => {
+          // For Action_Manager, don't show raw response_text - it contains tool discussions
+          // The actual narration is created via the narration tool as a separate message
+          const isActionManager = agent.name === 'Action_Manager';
+          return {
+            id: -agent.id,
+            content: isActionManager ? '' : (agent.response_text || ''),
+            role: 'assistant' as const,
+            agent_id: agent.id,
+            agent_name: agent.name,
+            thinking: agent.thinking_text || null,
+            timestamp: new Date().toISOString(),
+            is_chatting: true,
+          };
+        });
 
         const hasSameState = chattingMessages.length === prevChatting.length &&
           chattingMessages.every(msg =>

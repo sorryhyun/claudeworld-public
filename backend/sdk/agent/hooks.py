@@ -307,6 +307,7 @@ def create_post_task_location_hook() -> HookFunc:
         return {
             "continue_": True,
             "hookSpecificOutput": {
+                "hookEventName": input_data.get("hook_event_name", "PostToolUse"),
                 "additionalContext": (
                     "The location has been created and is now accessible. "
                     "Players can travel to this location immediately."
