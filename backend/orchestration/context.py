@@ -188,12 +188,13 @@ def build_conversation_context(
     if include_response_instruction:
         # Check for onboarding mode first
         if is_onboarding and world_user_name:
-            # Detect language based on world_user_name
-            # Korean names like '손님' indicate Korean language preference
-            is_korean = _is_korean_text(world_user_name)
-            instruction_key = (
-                "response_instruction_onboarding_ko" if is_korean else "response_instruction_onboarding_en"
-            )
+            # Use world_language if provided, otherwise detect from world_user_name
+            if world_language == "jp":
+                instruction_key = "response_instruction_onboarding_jp"
+            elif world_language == "ko" or _is_korean_text(world_user_name):
+                instruction_key = "response_instruction_onboarding_ko"
+            else:
+                instruction_key = "response_instruction_onboarding_en"
             instruction = config.get(instruction_key, "")
             if instruction:
                 context_lines.append(
@@ -208,8 +209,12 @@ def build_conversation_context(
         # Check for game mode (TRPG active gameplay)
         elif is_game and agent_name:
             # Use world_language if provided, otherwise detect from world_user_name
-            is_korean = world_language == "ko" or (world_user_name and _is_korean_text(world_user_name))
-            instruction_key = "response_instruction_game_ko" if is_korean else "response_instruction_game_en"
+            if world_language == "jp":
+                instruction_key = "response_instruction_game_jp"
+            elif world_language == "ko" or (world_user_name and _is_korean_text(world_user_name)):
+                instruction_key = "response_instruction_game_ko"
+            else:
+                instruction_key = "response_instruction_game_en"
             instruction = config.get(instruction_key, "")
             if instruction:
                 context_lines.append(

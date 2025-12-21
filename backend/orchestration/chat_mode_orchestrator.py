@@ -49,23 +49,15 @@ def create_chat_mode_tape(npcs: List[models.Agent]) -> Optional[TurnTape]:
     # Sort regular agents by priority (higher first)
     regular_agents.sort(key=lambda a: a.priority, reverse=True)
 
-    # Add regular agents as concurrent cell (or sequential if only one)
-    if regular_agents:
-        if len(regular_agents) == 1:
-            tape.cells.append(
-                TurnCell(
-                    cell_type=CellType.SEQUENTIAL,
-                    agent_ids=[regular_agents[0].id],
-                )
+    # Add regular agents as sequential cells (one per agent)
+    # Each agent gets its own cell to ensure sequential execution and prevent interaction
+    for agent in regular_agents:
+        tape.cells.append(
+            TurnCell(
+                cell_type=CellType.SEQUENTIAL,
+                agent_ids=[agent.id],
             )
-        else:
-            # Concurrent execution for multiple regular NPCs
-            tape.cells.append(
-                TurnCell(
-                    cell_type=CellType.CONCURRENT,
-                    agent_ids=[a.id for a in regular_agents],
-                )
-            )
+        )
 
     # Add interrupt agents (always respond) as sequential cells
     # Sort by priority (higher first)
@@ -78,7 +70,7 @@ def create_chat_mode_tape(npcs: List[models.Agent]) -> Optional[TurnTape]:
             )
         )
 
-    logger.info(f"Created chat mode tape: {len(regular_agents)} regular NPCs, {len(interrupt_agents)} interrupt NPCs")
+    logger.info(f"Created chat mode tape: {len(regular_agents)} regular NPCs (sequential), {len(interrupt_agents)} interrupt NPCs")
     return tape
 
 

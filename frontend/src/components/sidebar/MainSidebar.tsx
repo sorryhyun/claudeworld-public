@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGame } from '../../contexts/GameContext';
 import { WorldListPanel } from '../game/WorldListPanel';
@@ -11,6 +12,7 @@ interface MainSidebarProps {
 export const MainSidebar = ({
   onSelectWorld,
 }: MainSidebarProps) => {
+  const { t } = useTranslation();
   const { logout } = useAuth();
   const {
     worlds,
@@ -21,6 +23,7 @@ export const MainSidebar = ({
     deleteWorld,
     resetWorld,
     mode,
+    exitToChat,
   } = useGame();
   const [activeTab, setActiveTab] = useState<'history' | 'worlds'>('worlds');
   const [creating, setCreating] = useState(false);
@@ -46,8 +49,13 @@ export const MainSidebar = ({
     <div className="w-80 sm:w-80 bg-slate-100 flex flex-col h-full border-r border-slate-300 select-none">
       {/* Header - Add left padding to avoid overlap with fixed hamburger button */}
       <div className="pl-14 pr-6 pt-2 pb-4 border-b border-slate-300 bg-white">
-        <h2 className="text-mobile-base font-bold text-slate-700 tracking-tight mb-1">ClaudeWorld</h2>
-        <p className="text-slate-600 text-xs font-medium tracking-wider">TRPG Adventure Platform</p>
+        <button
+          onClick={exitToChat}
+          className="text-left hover:opacity-70 transition-opacity"
+        >
+          <h2 className="text-mobile-base font-bold text-slate-700 tracking-tight mb-1">{t('sidebar.title')}</h2>
+          <p className="text-slate-600 text-xs font-medium tracking-wider">{t('sidebar.subtitle')}</p>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -60,7 +68,7 @@ export const MainSidebar = ({
               : 'text-slate-500 hover:text-slate-700 border-b-2 border-transparent'
           }`}
         >
-          Worlds
+          {t('sidebar.worlds')}
         </button>
         <button
           onClick={() => setActiveTab('history')}
@@ -70,7 +78,7 @@ export const MainSidebar = ({
               : 'text-slate-500 hover:text-slate-700 border-b-2 border-transparent'
           }`}
         >
-          History
+          {t('sidebar.history')}
         </button>
       </div>
 
@@ -100,7 +108,7 @@ export const MainSidebar = ({
       <div className="mt-auto p-3 border-t border-slate-300 bg-white">
         <button
           onClick={() => {
-            if (confirm('Are you sure you want to logout?')) {
+            if (confirm(t('sidebar.logoutConfirm'))) {
               logout();
             }
           }}
@@ -109,7 +117,7 @@ export const MainSidebar = ({
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
-          Logout
+          {t('sidebar.logout')}
         </button>
       </div>
     </div>

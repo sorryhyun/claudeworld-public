@@ -86,7 +86,7 @@ export interface ImportableWorld {
   name: string;
   owner_id: string | null;
   user_name: string | null;
-  language: 'en' | 'ko';
+  language: 'en' | 'ko' | 'jp';
   phase: 'onboarding' | 'active' | 'ended';
   genre: string | null;
   theme: string | null;

@@ -54,6 +54,7 @@ class Language(str, Enum):
 
     ENGLISH = "en"  # English
     KOREAN = "ko"  # Korean
+    JAPANESE = "jp"  # Japanese
 
     def __str__(self) -> str:
         return self.value

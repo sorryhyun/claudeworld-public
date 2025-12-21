@@ -1,4 +1,38 @@
 {
+  "landing": {
+    "welcome": "Welcome to ClaudeWorld",
+    "subtitle": "Create your own TRPG adventure world and begin your journey",
+    "howToUse": "How to Use",
+    "createNewWorld": "Create New World",
+    "enterWorldName": "Enter world name...",
+    "create": "Create",
+    "continueAdventure": "Continue Adventure",
+    "moreWorlds": "+{{count}} more worlds in the sidebar",
+    "noWorlds": "No worlds yet. Create your first adventure!",
+    "footer": "Name your world and our AI will guide you through creating your adventure"
+  },
+  "sidebar": {
+    "title": "ClaudeWorld",
+    "subtitle": "TRPG Adventure Platform",
+    "worlds": "Worlds",
+    "history": "History",
+    "logout": "Logout",
+    "logoutConfirm": "Are you sure you want to logout?",
+    "howToUse": "How to Use"
+  },
+  "worldList": {
+    "newWorldPlaceholder": "New world name...",
+    "loadingWorlds": "Loading worlds...",
+    "noWorldsYet": "No worlds yet",
+    "createFirstWorld": "Create your first world above!",
+    "currentlyPlaying": "Currently playing",
+    "deleteConfirm": "Are you sure you want to delete this world? This cannot be undone.",
+    "resetConfirm": "Are you sure you want to reset this world? All progress will be lost and the world will return to its initial state.",
+    "resetTitle": "Reset world to initial state",
+    "deleteTitle": "Delete world",
+    "loadFromDisk": "Load from disk",
+    "load": "Load"
+  },
   "game": {
     "returnToGameplay": "Return to gameplay",
     "chatWithCharacters": "Chat with characters",
@@ -6,6 +40,7 @@
     "chatModeIndicator": "Chat Mode - Talk freely with NPCs. Type /end to return to gameplay.",
     "clauding": "clauding...",
     "commandHelp": "↑↓ navigate • Tab to complete • Ctrl+Enter to send • Esc to cancel",
+    "dropImageHere": "Drop image here",
     "placeholder": {
       "chat": "Say something... (Ctrl+Enter)",
       "action": "Enter your action... (Ctrl+Enter)",
@@ -92,7 +127,8 @@
   "locations": {
     "noLocations": "No locations discovered yet",
     "clickToTravel": "Click to travel",
-    "currentLocation": "Current location"
+    "currentLocation": "Current location",
+    "labelPlaceholder": "Location label..."
   },
   "stats": {
     "noStats": "No stats defined yet",

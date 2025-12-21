@@ -2,7 +2,7 @@
 # This file defines localized message templates for different languages
 # Changes to this file apply immediately (hot-reloaded)
 #
-# Supported languages: en (English), ko (Korean)
+# Supported languages: en (English), ko (Korean), jp (Japanese)
 # Templates support variable substitution with {variable_name}
 # Korean templates support particle formatting with {name:이가} syntax
 
@@ -13,11 +13,13 @@ onboarding:
   trigger:
     en: "Newcomer is here. Start onboarding."
     ko: "손님이 오셨습니다. 온보딩을 시작해주세요."
+    jp: "新しい訪問者が来ました。オンボーディングを開始してください。"
 
 # =============================================================================
 # GAME MESSAGES
 # =============================================================================
 game:
   arrival:
-    en: "{user_name} arrived at {location_name}, entering ClaudeWorld for the first time."
+    en: "{user_name} arrived at {location_name}, entering ClaudeWorld for the first time. Proceed after checking are the characters in the current location or not."
     ko: "{user_name:이가} {location_name}에 도착했습니다. ClaudeWorld에 처음으로 발을 디딥니다. 캐릭터들이 현재 장소에 있는지 확인한 다음 진행해주세요."
+    jp: "{user_name}が{location_name}に到着しました。ClaudeWorldに初めて足を踏み入れます。現在の場所にキャラクターがいるかどうか確認してから進めてください。"

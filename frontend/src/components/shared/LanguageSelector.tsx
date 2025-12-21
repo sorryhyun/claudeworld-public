@@ -29,6 +29,16 @@ export function LanguageSelector({ language, onLanguageChange, className = '' }:
       >
         한국어
       </button>
+      <button
+        onClick={() => onLanguageChange('jp')}
+        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          language === 'jp'
+            ? 'bg-slate-700 text-white'
+            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+        }`}
+      >
+        日本語
+      </button>
     </div>
   );
 }

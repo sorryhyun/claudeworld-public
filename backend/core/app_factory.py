@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
     """
     from auth import AuthMiddleware
     from fastapi.middleware.cors import CORSMiddleware
-    from routers import agent_management, agents, auth, debug, game, mcp_tools, messages, room_agents, rooms
+    from routers import agent_management, agents, auth, debug, game, mcp_tools, messages, readme, room_agents, rooms
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
     from slowapi.util import get_remote_address
@@ -135,6 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(room_agents.router, prefix="/rooms", tags=["Room-Agents"])
     app.include_router(messages.router, prefix="/rooms", tags=["Messages"])
     app.include_router(game.router, tags=["Game"])  # TRPG game routes
+    app.include_router(readme.router, tags=["Documentation"])  # Readme/help content
     app.include_router(debug.router, prefix="/debug", tags=["Debug"])
     app.include_router(mcp_tools.router, tags=["MCP Tools"])
 
@@ -171,6 +172,7 @@ def create_app() -> FastAPI:
                 "/agents",
                 "/worlds",
                 "/debug",
+                "/readme",
                 "/mcp",
                 "/docs",
                 "/openapi.json",

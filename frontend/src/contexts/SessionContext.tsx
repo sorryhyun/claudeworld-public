@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   ReactNode,
 } from 'react';
 import * as gameService from '../services/gameService';
@@ -32,6 +33,7 @@ interface SessionContextValue {
   phase: GamePhase;
   loading: boolean;
   actionInProgress: boolean;
+  isClauding: boolean;  // True when agents are actively processing (Action_Manager, sub-agents, or chat mode NPCs)
   isChatMode: boolean;
 
   // Session management
@@ -94,6 +96,31 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     : world.phase === 'onboarding'
     ? 'onboarding'
     : 'active';
+
+  // Derived isClauding - true when agents are actively generating responses
+  // Blocks user input/suggestions while Claude is working
+  const isClauding = useMemo(() => {
+    if (actionInProgress) return true;
+    if (phase !== 'active') return false;
+
+    const chattingAgents = messages.filter(m => m.is_chatting);
+    if (chattingAgents.length === 0) return false;
+
+    // In chat mode, any chatting agent blocks input
+    if (isChatMode) return true;
+
+    // In normal gameplay, only block if Action_Manager is chatting AND hasn't produced narration yet
+    // Once narration tool is used, content will have the narration text
+    // Sub-agents (negative IDs) should NOT block - they run after narration
+    const actionManager = chattingAgents.find(m => m.agent_name === 'Action_Manager');
+    if (actionManager) {
+      // Block only if Action_Manager hasn't produced narration (content) yet
+      return !actionManager.content || actionManager.content.trim() === '';
+    }
+
+    // Sub-agents don't block input
+    return false;
+  }, [actionInProgress, phase, messages, isChatMode]);
 
   // ==========================================================================
   // SESSION MANAGEMENT
@@ -471,6 +498,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     phase,
     loading,
     actionInProgress,
+    isClauding,
     isChatMode,
 
     loadWorld,

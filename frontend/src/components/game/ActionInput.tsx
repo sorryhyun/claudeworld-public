@@ -33,7 +33,10 @@ interface ActionInputProps {
 
 export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   const { t } = useTranslation();
-  const { submitAction, messages, phase, isChatMode } = useGame();
+  const { submitAction, messages, phase, isChatMode, isClauding } = useGame();
+
+  // Combined disabled state: explicit prop OR agents are processing
+  const isDisabled = disabled || isClauding;
   const [input, setInput] = useState('');
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [attachedImage, setAttachedImage] = useState<ImageData | null>(null);
@@ -186,7 +189,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   }, [input]);
 
   const handleSubmit = async () => {
-    if ((!input.trim() && !attachedImage) || disabled) return;
+    if ((!input.trim() && !attachedImage) || isDisabled) return;
 
     const action = input.trim();
     const imageData = attachedImage?.data;
@@ -278,7 +281,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Drop image here
+            {t('game.dropImageHere')}
           </div>
         </div>
       )}
@@ -380,7 +383,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
+            disabled={isDisabled}
             className="flex-shrink-0 w-[44px] h-[44px] rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-all disabled:bg-slate-50 disabled:text-slate-300 disabled:cursor-not-allowed"
             title="Attach image (or paste with Ctrl+V)"
           >
@@ -394,14 +397,14 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={isChatMode ? 'Say something... (Ctrl+Enter)' : (placeholder || 'Enter your action... (Ctrl+Enter)')}
-            disabled={disabled}
+            placeholder={isChatMode ? t('game.placeholder.chat') : (placeholder || t('game.placeholder.action'))}
+            disabled={isDisabled}
             rows={1}
             className="flex-1 resize-none rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 disabled:bg-slate-100 disabled:cursor-not-allowed text-sm sm:text-base min-h-[44px] transition-all"
           />
           <Button
             onClick={handleSubmit}
-            disabled={disabled || (!input.trim() && !attachedImage)}
+            disabled={isDisabled || (!input.trim() && !attachedImage)}
             className="px-4 h-[44px] bg-slate-700 hover:bg-slate-600 disabled:bg-slate-300"
             aria-label={t('accessibility.sendAction')}
           >

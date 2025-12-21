@@ -10,6 +10,7 @@ import {
 import * as gameService from '../services/gameService';
 import { WorldsProvider, useWorlds } from './WorldsContext';
 import { SessionProvider, useSession } from './SessionContext';
+import { changeLanguage as i18nChangeLanguage } from '../i18n';
 
 // =============================================================================
 // TYPES (Re-exported for backward compatibility)
@@ -28,7 +29,7 @@ export interface World {
   name: string;
   owner_id: string | null;
   user_name: string | null;
-  language: 'en' | 'ko';
+  language: 'en' | 'ko' | 'jp';
   genre: string | null;
   theme: string | null;
   lore: string | null;
@@ -104,12 +105,13 @@ export interface GameMessage {
 }
 
 export type GamePhase = 'loading' | 'no_world' | 'onboarding' | 'active';
-export type GameLanguage = 'en' | 'ko';
+export type GameLanguage = 'en' | 'ko' | 'jp';
 export type AppMode = 'chat' | 'onboarding' | 'game';
 
 export const DEFAULT_USER_NAMES: Record<GameLanguage, string> = {
   en: 'newcomer',
   ko: '손님',
+  jp: '訪問者',
 };
 
 // =============================================================================
@@ -130,12 +132,19 @@ function AppProvider({ children }: { children: ReactNode }) {
 
   const [language, setLanguageState] = useState<GameLanguage>(() => {
     const saved = localStorage.getItem('gameLanguage');
-    return (saved === 'en' ? 'en' : 'ko') as GameLanguage;
+    if (saved === 'en' || saved === 'ko' || saved === 'jp') return saved;
+    return 'ko';
   });
+
+  // Sync i18n on initial mount
+  useEffect(() => {
+    i18nChangeLanguage(language);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const setLanguage = useCallback((lang: GameLanguage) => {
     setLanguageState(lang);
     localStorage.setItem('gameLanguage', lang);
+    i18nChangeLanguage(lang);  // Sync i18n language immediately
   }, []);
 
   return (
@@ -162,6 +171,7 @@ interface GameContextValue {
   loading: boolean;
   worldsLoading: boolean;
   actionInProgress: boolean;
+  isClauding: boolean;  // True when agents are actively processing
   isChatMode: boolean;
 
   // App Mode (from AppContext)
@@ -176,7 +186,7 @@ interface GameContextValue {
   setLanguage: (lang: GameLanguage) => void;
 
   // World Management (coordinated)
-  createWorld: (name: string, userName?: string, language?: 'en' | 'ko') => Promise<World>;
+  createWorld: (name: string, userName?: string, language?: 'en' | 'ko' | 'jp') => Promise<World>;
   loadWorld: (worldId: number) => Promise<void>;
   deleteWorld: (worldId: number) => Promise<void>;
   resetWorld: (worldId: number) => Promise<void>;
@@ -225,6 +235,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
     phase,
     loading,
     actionInProgress,
+    isClauding,
     isChatMode,
     loadWorld: sessionLoadWorld,
     clearWorld,
@@ -245,7 +256,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
   const createWorld = useCallback(async (
     name: string,
     userName?: string,
-    lang: 'en' | 'ko' = 'ko'
+    lang: 'en' | 'ko' | 'jp' = 'ko'
   ): Promise<World> => {
     const newWorld = await gameService.createWorld(name, userName, lang);
     addWorld(newWorld);
@@ -256,8 +267,12 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
 
   const loadWorld = useCallback(async (worldId: number): Promise<void> => {
     const worldData = await sessionLoadWorld(worldId);
+    // Sync language to world's language
+    if (worldData.language) {
+      setLanguage(worldData.language);
+    }
     setMode(worldData.phase === 'onboarding' ? 'onboarding' : 'game');
-  }, [sessionLoadWorld, setMode]);
+  }, [sessionLoadWorld, setMode, setLanguage]);
 
   const deleteWorld = useCallback(async (worldId: number): Promise<void> => {
     await gameService.deleteWorld(worldId);
@@ -328,6 +343,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
     loading,
     worldsLoading,
     actionInProgress,
+    isClauding,
     isChatMode,
 
     // App Mode

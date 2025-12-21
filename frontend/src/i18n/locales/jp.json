@@ -1,0 +1,171 @@
+{
+  "landing": {
+    "welcome": "ClaudeWorldへようこそ",
+    "subtitle": "自分だけのTRPG冒険世界を作り、旅を始めましょう",
+    "howToUse": "使い方",
+    "createNewWorld": "新しい世界を作成",
+    "enterWorldName": "世界の名前を入力...",
+    "create": "作成",
+    "continueAdventure": "冒険を続ける",
+    "moreWorlds": "+{{count}}個の世界がサイドバーにあります",
+    "noWorlds": "まだ世界がありません。最初の冒険を作りましょう！",
+    "footer": "世界に名前を付けると、AIが冒険作りをガイドします"
+  },
+  "sidebar": {
+    "title": "ClaudeWorld",
+    "subtitle": "TRPG冒険プラットフォーム",
+    "worlds": "世界",
+    "history": "履歴",
+    "logout": "ログアウト",
+    "logoutConfirm": "本当にログアウトしますか？",
+    "howToUse": "使い方"
+  },
+  "worldList": {
+    "newWorldPlaceholder": "新しい世界の名前...",
+    "loadingWorlds": "世界を読み込み中...",
+    "noWorldsYet": "まだ世界がありません",
+    "createFirstWorld": "上で最初の世界を作成してください！",
+    "currentlyPlaying": "プレイ中",
+    "deleteConfirm": "この世界を削除しますか？この操作は取り消せません。",
+    "resetConfirm": "この世界をリセットしますか？すべての進行状況が失われ、初期状態に戻ります。",
+    "resetTitle": "世界を初期状態にリセット",
+    "deleteTitle": "世界を削除",
+    "loadFromDisk": "ディスクから読み込み",
+    "load": "読み込み"
+  },
+  "game": {
+    "returnToGameplay": "ゲームプレイに戻る",
+    "chatWithCharacters": "キャラクターと直接話す",
+    "suggestedActions": "おすすめの行動：",
+    "chatModeIndicator": "チャットモード - NPCと自由に話せます。/endを入力するとゲームプレイに戻ります。",
+    "clauding": "clauding...",
+    "commandHelp": "↑↓ 移動 • Tab 自動補完 • Ctrl+Enter 送信 • Esc キャンセル",
+    "dropImageHere": "ここに画像をドロップ",
+    "placeholder": {
+      "chat": "話しかける... (Ctrl+Enter)",
+      "action": "行動を入力してください... (Ctrl+Enter)",
+      "onboarding": "理想の世界を説明してください... (Ctrl+Enter)",
+      "withSuggestions": "...それとも、他のことをしますか？ (Ctrl+Enter)"
+    }
+  },
+  "gameRoom": {
+    "exit": "退出",
+    "history": "履歴",
+    "settingUpWorld": "世界を設定中...",
+    "adventureBegins": "冒険が始まります",
+    "describeWorld": "始めるには理想の世界を説明してください...",
+    "whatToDo": "何をしますか？",
+    "enterActionOrChoose": "行動を入力するか、下のおすすめから選んでください",
+    "conversationHistory": "会話履歴",
+    "messagesTotal": "{{count}}件のメッセージ",
+    "close": "閉じる",
+    "latest": "最新",
+    "showThinking": "思考を見る"
+  },
+  "turnIndicator": {
+    "processing": "アクション処理中...",
+    "subtitle": "ナレーターが応答を作成中です",
+    "phaseThinking": "思考中",
+    "phaseGenerating": "生成中",
+    "phaseFinalizing": "完成中"
+  },
+  "thinking": {
+    "label": "思考",
+    "showThinking": "思考を見る",
+    "hideThinking": "思考を隠す",
+    "characters": "文字",
+    "collapse": "折りたたむ",
+    "narrator": "ナレーター",
+    "isThinking": "思考中..."
+  },
+  "emptyState": {
+    "inventory": {
+      "title": "インベントリは空です",
+      "description": "冒険中に集めたアイテムがここに表示されます"
+    },
+    "locations": {
+      "title": "発見された場所はありません",
+      "description": "世界を探検して新しい場所を発見してください"
+    },
+    "messages": {
+      "title": "まだメッセージがありません",
+      "description": "やりたいことを説明して冒険を始めましょう"
+    },
+    "agents": {
+      "title": "近くにキャラクターがいません",
+      "description": "別の場所を探索するとキャラクターが現れます"
+    },
+    "stats": {
+      "title": "ステータスが定義されていません",
+      "description": "世界設定後にキャラクターのステータスが表示されます"
+    },
+    "adventure": {
+      "title": "冒険が始まります",
+      "description": "始めるには理想の世界を説明してください"
+    },
+    "search": {
+      "title": "結果が見つかりません",
+      "description": "検索を調整するか、他のオプションを探してみてください"
+    },
+    "generic": {
+      "title": "まだ何もありません",
+      "description": "進行に応じてコンテンツが表示されます"
+    },
+    "getStarted": "始める"
+  },
+  "gameState": {
+    "title": "ゲーム状態",
+    "time": "時間",
+    "turn": "ターン",
+    "tabs": {
+      "places": "場所",
+      "stats": "ステータス",
+      "items": "アイテム",
+      "npcs": "NPC"
+    }
+  },
+  "locations": {
+    "noLocations": "まだ発見された場所はありません",
+    "clickToTravel": "クリックして移動",
+    "currentLocation": "現在地",
+    "labelPlaceholder": "場所のラベル..."
+  },
+  "stats": {
+    "noStats": "まだステータスが定義されていません",
+    "statsAppearAfter": "ステータスは世界設定後に表示されます",
+    "low": "低い！"
+  },
+  "inventory": {
+    "empty": "インベントリは空です",
+    "itemsAppearHere": "集めたアイテムがここに表示されます",
+    "properties": "特性：",
+    "itemCount": "{{count}}個のアイテム（合計{{total}}個）"
+  },
+  "agents": {
+    "loading": "エージェント読み込み中...",
+    "noCharacters": "まだキャラクターがいません",
+    "charactersAppear": "探索するとキャラクターが現れます",
+    "here": "ここ",
+    "chatting": "会話中",
+    "elsewhere": "他の場所",
+    "hereCount": "ここに{{here}}人 · 合計{{total}}人"
+  },
+  "common": {
+    "day": "{{day}}日目",
+    "close": "閉じる"
+  },
+  "accessibility": {
+    "skipToMain": "メインコンテンツへスキップ",
+    "sendAction": "アクション送信",
+    "attachImage": "画像を添付",
+    "expandPanel": "ゲームパネルを展開",
+    "collapsePanel": "ゲームパネルを折りたたむ",
+    "openGameState": "ゲーム状態を開く",
+    "closeSheet": "閉じる",
+    "editLabel": "ラベルを編集",
+    "currentLocation": "現在地",
+    "selectedTab": "（現在選択中）",
+    "processing": "アクション処理中",
+    "newMessage": "{{agent}}からの新しいメッセージ"
+  }
+}

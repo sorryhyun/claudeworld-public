@@ -268,6 +268,8 @@ async def handle_end_command(
     """
     Exit chat mode and summarize the conversation.
 
+    If no chat interaction happened, exits silently without summarization.
+
     Args:
         db: Database session
         world_id: World ID
@@ -285,6 +287,19 @@ async def handle_end_command(
             "message": "You are not in chat mode.",
         }
 
+    # Get the chat session ID before exiting
+    chat_session_id = player_state.chat_session_id
+
+    # Check if there was any actual chat interaction (non-system messages)
+    has_chat_interaction = False
+    if chat_session_id:
+        messages = await crud.get_chat_session_messages(db, room_id, chat_session_id, limit=10)
+        # Check for non-system messages
+        for m in messages:
+            if m.participant_type != "system":
+                has_chat_interaction = True
+                break
+
     # Exit chat mode and get start message ID and chat session ID
     exit_result = await crud.exit_chat_mode(db, world_id)
     if exit_result is None:
@@ -293,7 +308,15 @@ async def handle_end_command(
             "message": "Failed to exit chat mode.",
         }
 
-    _start_message_id, chat_session_id = exit_result
+    _start_message_id, returned_chat_session_id = exit_result
+
+    # If no chat interaction, exit silently without summarization
+    if not has_chat_interaction:
+        logger.info(f"Exited chat mode for world {world_id} with no interaction, skipping summarizer")
+        return {
+            "status": "chat_mode_ended",
+            "message": "Exited chat mode.",
+        }
 
     # Send system message for end of chat mode (no chat_session_id since we're ending)
     await crud.create_message(
@@ -314,7 +337,7 @@ async def handle_end_command(
             world_id=world_id,
             _world_name=world.name,
             room_id=room_id,
-            chat_session_id=chat_session_id,
+            chat_session_id=returned_chat_session_id,
             agent_manager=agent_manager,
             user_name=world.user_name or "The player",
             world_genre=world.genre,
@@ -451,6 +474,8 @@ async def _summarize_and_continue(
     1. Get messages from chat mode session
     2. Generate AI summary using Chat_Summarizer agent
     3. Pass summary to Action Manager -> Narrator via TRPG orchestrator
+
+    If no chat interaction happened, skips summarization entirely.
     """
     from database import get_db as get_db_generator
     from orchestration import get_trpg_orchestrator
@@ -459,9 +484,6 @@ async def _summarize_and_continue(
 
     async for db in get_db_generator():
         try:
-            # Mark as processing for "clauding" display
-            trpg_orchestrator.set_sub_agent_active(room_id, "Chat_Summarizer", "Summarizing conversation...")
-
             # Ensure gameplay agents are in the location room
             # (they might be missing if location was created before agents were seeded)
             from crud.worlds import add_gameplay_agents_to_room
@@ -472,7 +494,7 @@ async def _summarize_and_continue(
             messages = await crud.get_chat_session_messages(db, room_id, chat_session_id, limit=100)
 
             if not messages:
-                logger.info(f"No messages to summarize for world {world_id}")
+                logger.info(f"No messages to summarize for world {world_id}, skipping summarizer")
                 return
 
             # Format messages as a conversation transcript
@@ -491,8 +513,11 @@ async def _summarize_and_continue(
                         participants.add(m.agent.name)
 
             if not conversation_messages:
-                logger.info(f"No conversation content to summarize for world {world_id}")
+                logger.info(f"No conversation content to summarize for world {world_id}, skipping summarizer")
                 return
+
+            # Only mark as processing AFTER confirming there's content to summarize
+            trpg_orchestrator.set_sub_agent_active(room_id, "Chat_Summarizer", "Summarizing conversation...")
 
             # Format conversation for summarizer
             conversation_text = "\n".join(conversation_messages)

@@ -132,6 +132,8 @@ class GameplayContextBuilder:
             user_name = self._world_config.user_name
         elif self._world_config and self._world_config.language == "ko":
             user_name = "여행자"
+        elif self._world_config and self._world_config.language == "jp":
+            user_name = "旅人"
         else:
             user_name = "The traveler"
 
@@ -280,8 +282,13 @@ class GameplayContextBuilder:
         config = context_config.get("conversation_context", {})
 
         # Determine language from world config
-        is_korean = self._world_config and self._world_config.language == "ko"
-        instruction_key = "response_instruction_game_ko" if is_korean else "response_instruction_game_en"
+        world_lang = self._world_config.language if self._world_config else None
+        if world_lang == "jp":
+            instruction_key = "response_instruction_game_jp"
+        elif world_lang == "ko":
+            instruction_key = "response_instruction_game_ko"
+        else:
+            instruction_key = "response_instruction_game_en"
         instruction = config.get(instruction_key, "")
 
         # Format and prefix the response instruction

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { World, useGame, DEFAULT_USER_NAMES } from '../../contexts/GameContext';
 import { Input } from '../ui/input';
 import { listImportableWorlds, importWorld, ImportableWorld } from '../../services/gameService';
@@ -9,7 +10,7 @@ interface WorldListPanelProps {
   onSelectWorld: (worldId: number) => void;
   onDeleteWorld: (worldId: number) => Promise<void>;
   onResetWorld: (worldId: number) => Promise<void>;
-  onCreateWorld: (name: string, userName?: string) => Promise<void>;
+  onCreateWorld: (name: string, userName?: string, language?: 'en' | 'ko' | 'jp') => Promise<void>;
   onWorldImported?: () => void;
   loading?: boolean;
   creating?: boolean;
@@ -26,6 +27,7 @@ export function WorldListPanel({
   loading = false,
   creating = false,
 }: WorldListPanelProps) {
+  const { t } = useTranslation();
   const { language } = useGame();
   const [newWorldName, setNewWorldName] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -72,13 +74,22 @@ export function WorldListPanel({
   const handleCreate = async () => {
     if (!newWorldName.trim() || creating) return;
     const userName = DEFAULT_USER_NAMES[language];
-    await onCreateWorld(newWorldName.trim(), userName);
+    await onCreateWorld(newWorldName.trim(), userName, language);
     setNewWorldName('');
+  };
+
+  const handleQuickCreate = async (lang: 'en' | 'ko' | 'jp') => {
+    if (creating) return;
+    const defaultNames = { en: 'New World', ko: '새로운 세계', jp: '新しい世界' };
+    const timestamp = Date.now().toString(36).slice(-4);
+    const worldName = `${defaultNames[lang]} ${timestamp}`;
+    const userName = DEFAULT_USER_NAMES[lang];
+    await onCreateWorld(worldName, userName, lang);
   };
 
   const handleDelete = async (e: React.MouseEvent, worldId: number) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this world? This cannot be undone.')) {
+    if (!confirm(t('worldList.deleteConfirm'))) {
       return;
     }
     setDeletingId(worldId);
@@ -91,7 +102,7 @@ export function WorldListPanel({
 
   const handleReset = async (e: React.MouseEvent, worldId: number) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to reset this world? All progress will be lost and the world will return to its initial state.')) {
+    if (!confirm(t('worldList.resetConfirm'))) {
       return;
     }
     setResettingId(worldId);
@@ -120,7 +131,7 @@ export function WorldListPanel({
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin h-6 w-6 border-3 border-slate-300 border-t-slate-600 rounded-full mx-auto mb-2" />
-          <p className="text-sm text-slate-500">Loading worlds...</p>
+          <p className="text-sm text-slate-500">{t('worldList.loadingWorlds')}</p>
         </div>
       </div>
     );
@@ -130,11 +141,11 @@ export function WorldListPanel({
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Create New World */}
       <div className="p-3 border-b border-slate-200 bg-white">
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-2">
           <Input
             value={newWorldName}
             onChange={(e) => setNewWorldName(e.target.value)}
-            placeholder="New world name..."
+            placeholder={t('worldList.newWorldPlaceholder')}
             disabled={creating}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             className="flex-1 text-sm h-9"
@@ -153,6 +164,33 @@ export function WorldListPanel({
             )}
           </button>
         </div>
+        {/* Quick Create Language Buttons */}
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => handleQuickCreate('en')}
+            disabled={creating}
+            className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
+            title="Create new English world"
+          >
+            <span className="text-[10px]">🌐</span> EN
+          </button>
+          <button
+            onClick={() => handleQuickCreate('ko')}
+            disabled={creating}
+            className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
+            title="새로운 한국어 세계 만들기"
+          >
+            <span className="text-[10px]">🇰🇷</span> KO
+          </button>
+          <button
+            onClick={() => handleQuickCreate('jp')}
+            disabled={creating}
+            className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
+            title="新しい日本語の世界を作成"
+          >
+            <span className="text-[10px]">🇯🇵</span> JP
+          </button>
+        </div>
       </div>
 
       {/* Worlds List */}
@@ -163,8 +201,8 @@ export function WorldListPanel({
               <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="font-medium text-slate-500">No worlds yet</p>
-              <p className="text-xs mt-1">Create your first world above!</p>
+              <p className="font-medium text-slate-500">{t('worldList.noWorldsYet')}</p>
+              <p className="text-xs mt-1">{t('worldList.createFirstWorld')}</p>
             </div>
           </div>
         ) : (
@@ -216,7 +254,7 @@ export function WorldListPanel({
                           onClick={(e) => handleReset(e, world.id)}
                           disabled={isBusy}
                           className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-all"
-                          title="Reset world to initial state"
+                          title={t('worldList.resetTitle')}
                         >
                           {isResetting ? (
                             <div className="animate-spin h-4 w-4 border-2 border-amber-400 border-t-transparent rounded-full" />
@@ -232,7 +270,7 @@ export function WorldListPanel({
                         onClick={(e) => handleDelete(e, world.id)}
                         disabled={isBusy}
                         className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
-                        title="Delete world"
+                        title={t('worldList.deleteTitle')}
                       >
                         {isDeleting ? (
                           <div className="animate-spin h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full" />
@@ -251,7 +289,7 @@ export function WorldListPanel({
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
-                      Currently playing
+                      {t('worldList.currentlyPlaying')}
                     </p>
                   )}
                 </div>
@@ -269,7 +307,7 @@ export function WorldListPanel({
               <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              <span className="text-xs font-medium text-amber-700">Load from disk</span>
+              <span className="text-xs font-medium text-amber-700">{t('worldList.loadFromDisk')}</span>
             </div>
             {loadingImportable ? (
               <div className="flex items-center justify-center py-2">
@@ -312,7 +350,7 @@ export function WorldListPanel({
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                           </svg>
-                          Load
+                          {t('worldList.load')}
                         </>
                       )}
                     </button>

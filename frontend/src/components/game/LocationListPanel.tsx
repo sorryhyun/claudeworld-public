@@ -70,7 +70,7 @@ const LocationItem = memo(function LocationItem({
                 }}
                 className="text-sm h-8"
                 autoFocus
-                placeholder="Location label..."
+                placeholder={t('locations.labelPlaceholder')}
                 aria-label={t('accessibility.editLabel')}
               />
             </div>

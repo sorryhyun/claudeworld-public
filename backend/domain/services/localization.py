@@ -15,6 +15,7 @@ from domain.value_objects.enums import Language
 _LANG_MAP = {
     Language.ENGLISH: "en",
     Language.KOREAN: "ko",
+    Language.JAPANESE: "jp",
 }
 
 

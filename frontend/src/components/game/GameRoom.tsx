@@ -443,12 +443,12 @@ export function GameRoom() {
         <ActionInput
           placeholder={
             phase === 'onboarding'
-              ? 'Describe your ideal world... (Ctrl+Enter)'
+              ? t('game.placeholder.onboarding')
               : isChatMode
-              ? 'Say something... (Ctrl+Enter to send, /end to exit)'
+              ? t('game.placeholder.chat')
               : suggestions.length > 0
-              ? '...Or, will you do something else? (Ctrl+Enter)'
-              : 'What do you do? (Ctrl+Enter)'
+              ? t('game.placeholder.withSuggestions')
+              : t('game.placeholder.action')
           }
           disabled={actionInProgress}
         />

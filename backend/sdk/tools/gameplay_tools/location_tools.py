@@ -119,9 +119,9 @@ def create_location_tools(ctx: ToolContext) -> list:
                             from_location_config.display_name if from_location_config else from_location_name
                         )
 
-                        # Get current turn count for event timestamp
-                        player_state = PlayerService.load_player_state(world_name)
-                        turn = player_state.turn_count if player_state else 0
+                        # Get current turn count from DB (DB has the incremented value, FS may not be synced)
+                        db_player_state = await crud.get_player_state(db, world_id)
+                        turn = db_player_state.turn_count if db_player_state else 0
 
                         # Save the provided chat summary to history
                         WorldService.add_history_entry(world_name, turn, from_display_name, chat_summary)

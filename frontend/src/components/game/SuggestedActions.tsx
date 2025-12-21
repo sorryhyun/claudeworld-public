@@ -8,7 +8,7 @@ interface SuggestedActionsProps {
 
 export const SuggestedActions = memo(function SuggestedActions({ isChatMode = false }: SuggestedActionsProps) {
   const { t } = useTranslation();
-  const { suggestions, selectSuggestion, actionInProgress, submitAction } = useGame();
+  const { suggestions, selectSuggestion, isClauding, submitAction } = useGame();
 
   const handleEnterChatMode = useCallback(() => {
     submitAction('/chat');
@@ -34,7 +34,7 @@ export const SuggestedActions = memo(function SuggestedActions({ isChatMode = fa
       <div className="px-4 pb-4">
         <button
           onClick={handleExitChatMode}
-          disabled={actionInProgress}
+          disabled={isClauding}
           className="px-4 py-2.5 text-base bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:from-amber-700 active:to-orange-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
         >
           🎮 {t('game.returnToGameplay')}
@@ -58,7 +58,7 @@ export const SuggestedActions = memo(function SuggestedActions({ isChatMode = fa
                       <button
                         key={actualIndex}
                         onClick={() => selectSuggestion(actualIndex)}
-                        disabled={actionInProgress}
+                        disabled={isClauding}
                         className="px-4 py-2.5 text-base bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 shadow-sm"
                       >
                         <span className="text-slate-400 mr-1.5">{actualIndex + 1}.</span>
@@ -77,7 +77,7 @@ export const SuggestedActions = memo(function SuggestedActions({ isChatMode = fa
       <div className={suggestions.length > 0 ? "mt-3" : ""}>
         <button
           onClick={handleEnterChatMode}
-          disabled={actionInProgress}
+          disabled={isClauding}
           className="px-4 py-2.5 text-base bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 active:from-blue-700 active:to-cyan-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
         >
           💬 {t('game.chatWithCharacters')}

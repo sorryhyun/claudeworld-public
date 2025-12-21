@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useGame, DEFAULT_USER_NAMES } from '../contexts/GameContext';
 import { useToast } from '../contexts/ToastContext';
 import { LanguageSelector } from './shared/LanguageSelector';
+import { HowToUseModal } from './shared/HowToUseModal';
 
 export function LandingPage() {
+  const { t } = useTranslation();
   const {
     worlds,
     worldsLoading,
@@ -17,6 +20,7 @@ export function LandingPage() {
 
   const [worldName, setWorldName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [showHowToUse, setShowHowToUse] = useState(false);
 
   const handleCreateWorld = async () => {
     if (!worldName.trim() || isCreating) return;
@@ -56,26 +60,34 @@ export function LandingPage() {
           </svg>
         </div>
 
-        <h1 className="text-3xl font-bold text-slate-800 mb-2">Welcome to ClaudeWorld</h1>
-        <p className="text-slate-600 mb-6">Create your own TRPG adventure world and begin your journey</p>
+        <h1 className="text-3xl font-bold text-slate-800 mb-2">{t('landing.welcome')}</h1>
+        <p className="text-slate-600 mb-6">{t('landing.subtitle')}</p>
 
         {/* Language Selector */}
         <LanguageSelector
           language={language}
           onLanguageChange={setLanguage}
-          className="mb-8"
+          className="mb-4"
         />
+
+        {/* How to Use Button */}
+        <button
+          onClick={() => setShowHowToUse(true)}
+          className="text-slate-600 hover:text-slate-800 text-sm underline transition-colors mb-8"
+        >
+          {t('landing.howToUse')}
+        </button>
 
         {/* Create World Form */}
         <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-700 mb-4">Create New World</h2>
+          <h2 className="text-lg font-semibold text-slate-700 mb-4">{t('landing.createNewWorld')}</h2>
           <div className="flex gap-2">
             <input
               type="text"
               value={worldName}
               onChange={(e) => setWorldName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateWorld()}
-              placeholder="Enter world name..."
+              placeholder={t('landing.enterWorldName')}
               disabled={isCreating || loading}
               className="flex-1 px-4 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
@@ -91,7 +103,7 @@ export function LandingPage() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Create
+                  {t('landing.create')}
                 </>
               )}
             </button>
@@ -103,7 +115,7 @@ export function LandingPage() {
           <div className="text-slate-500 text-sm">Loading worlds...</div>
         ) : worlds.length > 0 ? (
           <div className="bg-white rounded-xl shadow-md p-6">
-            <h2 className="text-lg font-semibold text-slate-700 mb-4">Continue Adventure</h2>
+            <h2 className="text-lg font-semibold text-slate-700 mb-4">{t('landing.continueAdventure')}</h2>
             <div className="space-y-2">
               {worlds.slice(0, 5).map((w) => (
                 <button
@@ -126,21 +138,24 @@ export function LandingPage() {
               ))}
               {worlds.length > 5 && (
                 <p className="text-slate-500 text-xs mt-2">
-                  +{worlds.length - 5} more worlds in the sidebar
+                  {t('landing.moreWorlds', { count: worlds.length - 5 })}
                 </p>
               )}
             </div>
           </div>
         ) : (
           <p className="text-slate-500 text-sm">
-            No worlds yet. Create your first adventure!
+            {t('landing.noWorlds')}
           </p>
         )}
 
         <p className="text-slate-400 text-xs mt-6">
-          Name your world and our AI will guide you through creating your adventure
+          {t('landing.footer')}
         </p>
       </div>
+
+      {/* How to Use Modal */}
+      <HowToUseModal open={showHowToUse} onOpenChange={setShowHowToUse} />
     </div>
   );
 }

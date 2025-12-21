@@ -43,12 +43,12 @@ const AgentsIcon = memo(() => (
 
 type Tab = 'locations' | 'stats' | 'inventory' | 'agents';
 
-// TABS array with stable component references
-const TABS: { id: Tab; label: string; Icon: React.ComponentType }[] = [
-  { id: 'locations', label: 'Places', Icon: LocationIcon },
-  { id: 'stats', label: 'Stats', Icon: StatsIcon },
-  { id: 'inventory', label: 'Items', Icon: InventoryIcon },
-  { id: 'agents', label: 'Agents', Icon: AgentsIcon },
+// TABS array with stable component references - labels are translation keys
+const TABS: { id: Tab; labelKey: string; Icon: React.ComponentType }[] = [
+  { id: 'locations', labelKey: 'gameState.tabs.places', Icon: LocationIcon },
+  { id: 'stats', labelKey: 'gameState.tabs.stats', Icon: StatsIcon },
+  { id: 'inventory', labelKey: 'gameState.tabs.items', Icon: InventoryIcon },
+  { id: 'agents', labelKey: 'gameState.tabs.npcs', Icon: AgentsIcon },
 ];
 
 export function GameStatePanel() {
@@ -92,7 +92,7 @@ export function GameStatePanel() {
     <div className="w-72 border-l border-slate-200 bg-slate-50 flex flex-col shrink-0 hidden lg:flex">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-white">
-        <span className="font-semibold text-sm text-slate-700">Game State</span>
+        <span className="font-semibold text-sm text-slate-700">{t('gameState.title')}</span>
         <button
           onClick={toggleCollapse}
           className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-slate-100 rounded-md transition-colors"
@@ -122,7 +122,7 @@ export function GameStatePanel() {
               }`}
           >
             <span aria-hidden="true"><tab.Icon /></span>
-            <span>{tab.label}</span>
+            <span>{t(tab.labelKey)}</span>
             {activeTab === tab.id && <span className="sr-only">{t('accessibility.selectedTab')}</span>}
           </button>
         ))}
@@ -185,17 +185,17 @@ export function GameStatePanel() {
           {/* Game Time */}
           {playerState.game_time && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500">Time</span>
+              <span className="text-slate-500">{t('gameState.time')}</span>
               <span className="font-bold text-slate-700 tabular-nums">
                 {String(playerState.game_time.hour).padStart(2, '0')}:
                 {String(playerState.game_time.minute).padStart(2, '0')}
-                <span className="text-slate-400 ml-1">Day {playerState.game_time.day}</span>
+                <span className="text-slate-400 ml-1">{t('common.day', { day: playerState.game_time.day })}</span>
               </span>
             </div>
           )}
           {/* Turn Counter */}
           <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-500">Turn</span>
+            <span className="text-slate-500">{t('gameState.turn')}</span>
             <span className="font-bold text-slate-700 tabular-nums">{playerState.turn_count}</span>
           </div>
         </div>

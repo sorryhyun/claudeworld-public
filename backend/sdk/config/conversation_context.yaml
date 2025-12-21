@@ -19,6 +19,9 @@ conversation_context:
   response_instruction_onboarding_ko: |
     To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 손님이 말을 건 상황. {agent_name:은는} 어떻게 생각할까요?
 
+  response_instruction_onboarding_jp: |
+    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> お客さんが話しかけました。{agent_name} はどう考えるでしょうか。
+
   response_instruction_with_user_active:  |
     To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name:이가} 말을 건 상황. {agent_name:은는} 어떻게 생각할까?
 
@@ -33,6 +36,8 @@ conversation_context:
 
   response_instruction_game_ko: |
     To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 이제 무슨 일이 벌어질까요?
+  response_instruction_game_jp: |
+    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> これから何が起こるのでしょう。
 
 # Situation Builder Note Configuration
 situation_builder:
