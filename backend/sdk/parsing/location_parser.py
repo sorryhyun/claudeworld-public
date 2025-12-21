@@ -36,7 +36,10 @@ def parse_location_from_task_prompt(prompt: str) -> dict | None:
 
     # Pattern 0: Explicit name specifications - highest priority
     # Handles: with name "rust_byte_clinic", name "X", name should be: X
+    # Also handles: Create location "name" — description
     explicit_name_patterns = [
+        # "Create location "fringe_market_descent"" - location name in quotes after "Create location"
+        r'Create\s+location\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
         # "with name "rust_byte_clinic"" or 'with name "X"'
         r'with\s+name\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
         # "name "X"" - quoted name right after "name"

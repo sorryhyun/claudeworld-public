@@ -29,7 +29,7 @@ const MARKDOWN_COMPONENTS: Components = {
       </code>
     ) : (
       <SyntaxHighlighter
-        style={oneDark}
+        style={oneDark as { [key: string]: React.CSSProperties }}
         language={match ? match[1] : 'text'}
         PreTag="div"
         customStyle={{
@@ -37,7 +37,6 @@ const MARKDOWN_COMPONENTS: Components = {
           borderRadius: '0.75rem',
           fontSize: '0.875rem',
         }}
-        {...props}
       >
         {codeString}
       </SyntaxHighlighter>
@@ -50,13 +49,18 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
 };
 
+interface WhiteboardMessageInfo {
+  renderedContent: string;
+  isWhiteboardMessage: boolean;
+}
+
 export interface MessageRowProps {
   message: Message;
   style: React.CSSProperties;
   index: number;
   expandedThinking: Set<number | string>;
   copiedMessageId: number | string | null;
-  whiteboardInfo: Map<number | string, { agentName: string; content: string }>;
+  whiteboardInfo: Map<number | string, WhiteboardMessageInfo>;
   onToggleThinking: (messageId: number | string) => void;
   onCopyToClipboard: (messageId: number | string, content: string) => void;
 }

@@ -185,6 +185,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 )
                 await crud.create_message(db, room_id, message, update_room_activity=True)
 
+                # Signal that narration has been produced (allows input unblocking)
+                # Lazy import to avoid circular dependency
+                from orchestration.trpg_orchestrator import get_trpg_orchestrator
+                get_trpg_orchestrator().set_narration_produced(room_id)
+
                 logger.info(f"✅ Narrative message created | room={room_id} | agent={agent_id}")
 
                 return {

@@ -100,6 +100,7 @@ export interface GameMessage {
   thinking: string | null;
   timestamp: string | null;
   is_chatting?: boolean;
+  has_narrated?: boolean;  // For Action_Manager: true when narration tool has been called
   image_data?: string | null;  // Base64-encoded image data
   image_media_type?: string | null;  // MIME type (e.g., 'image/png', 'image/jpeg')
 }

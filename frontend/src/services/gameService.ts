@@ -311,6 +311,7 @@ export interface PollResponse {
     phase: 'onboarding' | 'active' | 'ended';
     is_chat_mode: boolean;
     chat_mode_start_message_id: number | null;
+    game_time?: { hour: number; minute: number; day: number } | null;
   } | null;
   location: {
     id: number;
@@ -346,6 +347,7 @@ export interface ChattingAgent {
   profile_pic: string | null;
   thinking_text: string;
   response_text: string;
+  has_narrated?: boolean;  // For Action_Manager: true when narration tool has been called
 }
 
 export async function getChattingAgents(

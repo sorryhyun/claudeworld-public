@@ -50,6 +50,8 @@ class TRPGOrchestrator:
         self.seed_generation_rooms: Dict[int, dict] = {}
         # Track rooms where sub-agents are processing (room_id -> agent info)
         self.sub_agent_rooms: Dict[int, dict] = {}
+        # Track rooms where narration has been produced (allows input unblocking)
+        self.narration_produced_rooms: set[int] = set()
 
     def get_chatting_agents(self, room_id: int, agent_manager: AgentManager) -> list[int]:
         """
@@ -98,6 +100,19 @@ class TRPGOrchestrator:
     def get_sub_agent_status(self, room_id: int) -> Optional[dict]:
         """Get sub-agent status for a room, or None if not active."""
         return self.sub_agent_rooms.get(room_id)
+
+    def set_narration_produced(self, room_id: int) -> None:
+        """Mark that narration has been produced for a room (unblocks input)."""
+        self.narration_produced_rooms.add(room_id)
+        logger.info(f"[TRPG] Narration produced | Room: {room_id}")
+
+    def clear_narration_produced(self, room_id: int) -> None:
+        """Clear narration produced flag (called when AM turn ends)."""
+        self.narration_produced_rooms.discard(room_id)
+
+    def has_narration_produced(self, room_id: int) -> bool:
+        """Check if narration has been produced for a room."""
+        return room_id in self.narration_produced_rooms
 
     async def handle_player_action(
         self,
@@ -208,6 +223,8 @@ class TRPGOrchestrator:
         finally:
             # Clean up task tracking (task may already be removed via pop() in interrupt)
             self.active_room_tasks.pop(room_id, None)
+            # Clear narration produced flag for next turn
+            self.clear_narration_produced(room_id)
 
     async def _execute_tape(self, executor, tape, orch_context, action_text):
         """Execute the tape and return result."""

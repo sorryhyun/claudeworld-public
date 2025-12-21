@@ -270,15 +270,17 @@ async def get_chatting_agents(
                 agent = agent_map[agent_id]
                 agent_state = streaming_state.get(agent_id, {})
                 # Send actual agent name (frontend handles display logic)
-                chatting_agents.append(
-                    {
-                        "id": agent.id,
-                        "name": agent.name,
-                        "profile_pic": agent.profile_pic if not is_action_manager(agent.name) else None,
-                        "thinking_text": agent_state.get("thinking_text", ""),
-                        "response_text": agent_state.get("response_text", ""),
-                    }
-                )
+                agent_info = {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "profile_pic": agent.profile_pic if not is_action_manager(agent.name) else None,
+                    "thinking_text": agent_state.get("thinking_text", ""),
+                    "response_text": agent_state.get("response_text", ""),
+                }
+                # For Action_Manager, include has_narrated flag so frontend can unblock input
+                if is_action_manager(agent.name):
+                    agent_info["has_narrated"] = trpg_orchestrator.has_narration_produced(target_room_id)
+                chatting_agents.append(agent_info)
 
     # Check if World Seed Generator is active (during onboarding complete tool)
     seed_status = trpg_orchestrator.get_seed_generation_status(target_room_id)

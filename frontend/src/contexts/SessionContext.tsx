@@ -110,12 +110,12 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     if (isChatMode) return true;
 
     // In normal gameplay, only block if Action_Manager is chatting AND hasn't produced narration yet
-    // Once narration tool is used, content will have the narration text
+    // Once narration tool is used, has_narrated will be true (sent from backend)
     // Sub-agents (negative IDs) should NOT block - they run after narration
     const actionManager = chattingAgents.find(m => m.agent_name === 'Action_Manager');
     if (actionManager) {
-      // Block only if Action_Manager hasn't produced narration (content) yet
-      return !actionManager.content || actionManager.content.trim() === '';
+      // Block only if Action_Manager hasn't produced narration yet
+      return !actionManager.has_narrated;
     }
 
     // Sub-agents don't block input
@@ -436,6 +436,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
             thinking: agent.thinking_text || null,
             timestamp: new Date().toISOString(),
             is_chatting: true,
+            has_narrated: agent.has_narrated,  // Track if Action_Manager has produced narration
           };
         });
 
@@ -444,7 +445,8 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
             prevChatting.some(prev =>
               prev.agent_id === msg.agent_id &&
               prev.thinking === msg.thinking &&
-              prev.content === msg.content
+              prev.content === msg.content &&
+              prev.has_narrated === msg.has_narrated
             )
           );
 

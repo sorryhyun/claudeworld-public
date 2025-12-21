@@ -376,6 +376,7 @@ async def _execute_persist_location_design(
 ) -> dict[str, Any]:
     """Execute persist_location_design tool."""
     import crud
+    from services.location_service import LocationService
     from services.persistence_manager import PersistenceManager
 
     from sdk.config.gameplay_inputs import PersistLocationDesignInput
@@ -388,13 +389,56 @@ async def _execute_persist_location_design(
     # Check if location already exists
     db_locations = await crud.get_locations(db, world_id)
     location_name_lower = validated.name.lower()
+    existing_loc = None
 
     for loc in db_locations:
         if loc.name.lower() == location_name_lower or (
             loc.display_name and loc.display_name.lower() == location_name_lower
         ):
-            logger.warning(f"Location '{validated.name}' already exists, skipping")
-            return {"success": False, "error": f"Location '{validated.name}' already exists"}
+            existing_loc = loc
+            break
+
+    # If location exists and is a draft, update it
+    if existing_loc and existing_loc.is_draft:
+        logger.info(f"Updating draft location '{validated.name}' with full design")
+
+        # Update filesystem
+        LocationService.create_location(
+            world_name,
+            validated.name,
+            validated.display_name,
+            validated.description,
+            (validated.position_x, validated.position_y),
+            adjacent=[validated.adjacent_to] if validated.adjacent_to else None,
+            is_draft=False,  # No longer a draft
+        )
+
+        # Update database using LocationUpdate schema
+        import schemas
+
+        update_data = schemas.LocationUpdate(
+            display_name=validated.display_name,
+            description=validated.description,
+            position_x=validated.position_x,
+            position_y=validated.position_y,
+            is_draft=False,
+        )
+        await crud.update_location(db, existing_loc.id, update_data)
+
+        # Connect to adjacent locations
+        if validated.adjacent_to:
+            adj_loc = next((loc for loc in db_locations if loc.name == validated.adjacent_to), None)
+            if adj_loc:
+                await crud.add_adjacent_location(db, existing_loc.id, adj_loc.id)
+                await crud.add_adjacent_location(db, adj_loc.id, existing_loc.id)
+
+        logger.info(f"Updated draft location: {validated.display_name} (id={existing_loc.id})")
+        return {"success": True, "display_name": validated.display_name, "id": existing_loc.id, "updated_draft": True}
+
+    # If location exists and is NOT a draft, skip
+    if existing_loc:
+        logger.warning(f"Location '{validated.name}' already exists, skipping")
+        return {"success": False, "error": f"Location '{validated.name}' already exists"}
 
     # Build adjacent hints
     adjacent_hints = []
