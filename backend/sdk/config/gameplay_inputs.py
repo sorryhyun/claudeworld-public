@@ -8,8 +8,6 @@ Note: These models are for internal validation only. YAML configurations
 remain the source of truth for tool schemas shown to Claude.
 """
 
-from typing import Optional
-
 from pydantic import BaseModel, Field, field_validator
 
 # =============================================================================
@@ -388,73 +386,8 @@ class SuggestOptionsInput(BaseModel):
         return v
 
 
-# =============================================================================
-# Persistence Tool Inputs (for sub-agents)
-# =============================================================================
-
-
-class PersistCharacterDesignInput(BaseModel):
-    """Input for persist_character_design tool.
-
-    Used by Character Designer sub-agent to persist designed character
-    to filesystem and database.
-    """
-
-    name: str = Field(..., min_length=1, description="Character's name")
-    role: str = Field(..., min_length=1, description="Character's role (e.g., merchant, guard)")
-    appearance: str = Field(..., min_length=1, description="Physical description")
-    personality: str = Field(..., min_length=1, description="Personality traits")
-    which_location: str = Field(
-        default="current",
-        description="Where to place: 'current' or location name",
-    )
-    secret: Optional[str] = Field(default=None, description="Hidden detail or motivation")
-    initial_disposition: str = Field(
-        default="neutral",
-        description="Initial attitude: friendly, neutral, wary, hostile",
-    )
-
-    @field_validator("name", "role", "appearance", "personality", mode="before")
-    @classmethod
-    def validate_required(cls, v: str | None) -> str:
-        if v is None:
-            raise ValueError("Field is required")
-        v = str(v).strip()
-        if not v:
-            raise ValueError("Field cannot be empty")
-        return v
-
-
-class PersistLocationDesignInput(BaseModel):
-    """Input for persist_location_design tool.
-
-    Used by Location Designer sub-agent to persist designed location
-    to filesystem and database.
-    """
-
-    name: str = Field(..., min_length=1, description="Location slug (snake_case)")
-    display_name: str = Field(..., min_length=1, description="Human-readable name")
-    description: str = Field(..., min_length=1, description="Rich description")
-    position_x: int = Field(default=0, description="X coordinate on map")
-    position_y: int = Field(default=0, description="Y coordinate on map")
-    adjacent_to: Optional[str] = Field(
-        default=None,
-        description="Name of adjacent location to connect to",
-    )
-
-    @field_validator("name", "display_name", "description", mode="before")
-    @classmethod
-    def validate_required(cls, v: str | None) -> str:
-        if v is None:
-            raise ValueError("Field is required")
-        v = str(v).strip()
-        if not v:
-            raise ValueError("Field cannot be empty")
-        return v
-
-
-class PersistStatChangesInput(BaseModel):
-    """Input for persist_stat_changes tool.
+class ChangeStatInput(BaseModel):
+    """Input for change_stat tool.
 
     Used by Stat Calculator sub-agent to apply calculated stat and
     inventory changes to player state.
@@ -471,8 +404,7 @@ class PersistStatChangesInput(BaseModel):
     )
     time_advance_minutes: int = Field(
         default=0,
-        ge=0,
-        description="Minutes to advance in-game time (0 = no change)",
+        description="Minutes to advance (0 = no time change)",
     )
 
     @field_validator("summary", mode="before")
@@ -538,3 +470,62 @@ class PersistStatChangesInput(BaseModel):
         if isinstance(v, list):
             return v
         return []
+
+
+class AdvanceTimeInput(BaseModel):
+    """Input for advance_time tool.
+
+    Used for advancing in-game time during travel, rest, or time-consuming activities.
+    """
+
+    minutes: int = Field(
+        ...,
+        ge=1,
+        description="Minutes to advance (minimum 1)",
+    )
+    reason: str = Field(
+        ...,
+        min_length=1,
+        description="Brief explanation of why time passes",
+    )
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def validate_reason(cls, v: str | None) -> str:
+        """Ensure reason is provided and stripped."""
+        if v is None:
+            raise ValueError("Reason is required")
+        v = str(v).strip()
+        if not v:
+            raise ValueError("Reason cannot be empty")
+        return v
+
+
+class RollTheDiceInput(BaseModel):
+    """Input for roll_the_dice tool.
+
+    Empty input model - no parameters required.
+    """
+
+    pass
+
+
+class ListWorldItemInput(BaseModel):
+    """Input for list_world_item tool.
+
+    Used for listing all item templates in the world or filtering by keyword.
+    """
+
+    keyword: str = Field(
+        default="",
+        description="Optional keyword to filter items by name or description. "
+        "Leave empty to list all items.",
+    )
+
+    @field_validator("keyword", mode="before")
+    @classmethod
+    def strip_keyword(cls, v: str | None) -> str:
+        """Strip whitespace and handle None values."""
+        if v is None:
+            return ""
+        return str(v).strip().lower()

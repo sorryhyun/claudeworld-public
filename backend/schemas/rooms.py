@@ -33,7 +33,6 @@ class Room(TimestampSerializerMixin, RoomBase):
     is_finished: bool = False
     created_at: datetime
     last_activity_at: Optional[datetime] = None
-    last_read_at: Optional[datetime] = None
     agents: List[Agent] = []
     messages: List[Message] = []
     # World info (for TRPG rooms)
@@ -52,8 +51,6 @@ class RoomSummary(TimestampSerializerMixin, RoomBase):
     is_finished: bool = False
     created_at: datetime
     last_activity_at: Optional[datetime] = None
-    last_read_at: Optional[datetime] = None
-    has_unread: bool = False
 
     class Config:
         from_attributes = True

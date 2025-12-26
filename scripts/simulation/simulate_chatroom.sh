@@ -331,11 +331,11 @@ run_simulation() {
         fi
     done
 
-    # Step 5: Send scenario as situation_builder
+    # Step 5: Send scenario as user message
     echo -e "${YELLOW}${prefix} Sending scenario...${NC}"
     local scenario_json=$(echo "$SCENARIO" | jq -Rs .)
     local send_response=$(api_call POST "/rooms/$room_id/messages/send" \
-        "{\"content\":$scenario_json,\"role\":\"user\",\"participant_type\":\"situation_builder\"}" \
+        "{\"content\":$scenario_json,\"role\":\"user\",\"participant_type\":\"user\"}" \
         "$TOKEN")
 
     if ! echo "$send_response" | jq -e '.id' >/dev/null 2>&1; then
@@ -380,8 +380,7 @@ EOF
             if [ "$NO_THINKING" = true ]; then
                 jq_filter='.[] |
                     "--- " +
-                    (if .participant_type == "situation_builder" then "Situation Builder"
-                     elif .participant_type == "user" then "User"
+                    (if .participant_type == "user" then "User"
                      elif .agent_name then .agent_name
                      else "Unknown" end) +
                     " (" + .timestamp + ") ---\n" +
@@ -389,8 +388,7 @@ EOF
             else
                 jq_filter='.[] |
                     "--- " +
-                    (if .participant_type == "situation_builder" then "Situation Builder"
-                     elif .participant_type == "user" then "User"
+                    (if .participant_type == "user" then "User"
                      elif .agent_name then .agent_name
                      else "Unknown" end) +
                     " (" + .timestamp + ") ---\n" +

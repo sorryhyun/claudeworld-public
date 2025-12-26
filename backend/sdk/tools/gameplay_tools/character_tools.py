@@ -21,9 +21,9 @@ from services.location_service import LocationService
 from sdk.config.gameplay_inputs import (
     ListCharactersInput,
     MoveCharacterInput,
-    PersistCharacterDesignInput,
     RemoveCharacterInput,
 )
+from sdk.config.subagent_inputs import PersistCharacterDesignInput
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -132,7 +132,7 @@ def create_character_tools(ctx: ToolContext) -> list:
             MoveCharacterInput.model_json_schema(),
         )
         async def move_character_tool(args: dict[str, Any]):
-            """Move an existing character to a different location."""
+            """Move an existing character to a different location (filesystem-primary)."""
             # Validate input with Pydantic
             validated = MoveCharacterInput(**args)
             character_name = validated.character_name
@@ -142,50 +142,123 @@ def create_character_tools(ctx: ToolContext) -> list:
             logger.info(f"move_character invoked: {character_name} -> {destination}")
 
             try:
-                # Find the character within this world
-                agent = await crud.get_agent_by_name(db, character_name, world_name=world_name)
-                if not agent:
-                    return {
-                        "content": [{"type": "text", "text": f"Character '{character_name}' not found."}],
-                        "is_error": True,
-                    }
+                # ============================================================
+                # FILESYSTEM-PRIMARY: Check character exists in filesystem
+                # ============================================================
+                all_characters = AgentFilesystemService.list_world_agents(world_name)
 
-                # Find the destination location
-                dest_location = await crud.get_location_by_name(db, world_id, destination)
-                if not dest_location:
+                # Find matching character (case-insensitive, handle underscore/space)
+                character_folder = None
+                character_display_name = character_name
+                name_variants = [
+                    character_name,
+                    character_name.replace(" ", "_"),
+                    character_name.replace("_", " "),
+                ]
+
+                for char_folder in all_characters:
+                    if char_folder.lower() in [v.lower() for v in name_variants]:
+                        character_folder = char_folder
+                        character_display_name = char_folder.replace("_", " ")
+                        break
+
+                if not character_folder:
+                    # List available characters for helpful error
+                    available = ", ".join(all_characters) if all_characters else "none"
                     return {
                         "content": [
                             {
                                 "type": "text",
-                                "text": f"Location '{destination}' not found. Use list_locations to see available locations.",
+                                "text": f"Character '{character_name}' not found in filesystem.\n\nAvailable characters: {available}",
                             }
                         ],
                         "is_error": True,
                     }
 
-                # Get current locations and remove from them
-                old_locations = await crud.get_agent_locations_in_world(db, agent.id, world_id)
-                for old_loc in old_locations:
-                    if old_loc.id != dest_location.id:
-                        # Update filesystem state
-                        old_room_key = LocationService.location_to_room_key(old_loc.name)
-                        LocationService.remove_agent_from_room(world_name, old_room_key, agent.name)
-                        # Update DB
-                        await crud.remove_character_from_location(db, agent.id, old_loc.id)
+                # ============================================================
+                # FILESYSTEM-PRIMARY: Find destination location
+                # ============================================================
+                dest_room_key = LocationService.find_location_room_key_fuzzy(world_name, destination)
+                if not dest_room_key:
+                    # List available locations for helpful error
+                    fs_locations = LocationService.load_all_locations(world_name)
+                    available = (
+                        ", ".join(loc.display_name or name for name, loc in fs_locations.items())
+                        if fs_locations
+                        else "none"
+                    )
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Location '{destination}' not found.\n\nAvailable locations: {available}",
+                            }
+                        ],
+                        "is_error": True,
+                    }
 
-                # Add to destination location
-                dest_room_key = LocationService.location_to_room_key(dest_location.name)
-                LocationService.add_agent_to_room(world_name, dest_room_key, agent.name)
-                await crud.add_character_to_location(db, agent.id, dest_location.id)
+                dest_location_name = dest_room_key[9:]  # len("location:") = 9
+                dest_config = LocationService.load_location(world_name, dest_location_name)
+                location_display = dest_config.display_name if dest_config else dest_location_name
 
-                # If destination has a room, add agent to the room
-                if dest_location.room_id:
-                    from crud.room_agents import add_agent_to_room
+                # ============================================================
+                # FILESYSTEM-PRIMARY: Find and remove from current locations
+                # ============================================================
+                state = LocationService.load_state(world_name)
+                for room_key, mapping in state.rooms.items():
+                    if room_key.startswith("location:") and room_key != dest_room_key:
+                        if character_folder in mapping.agents:
+                            LocationService.remove_agent_from_room(world_name, room_key, character_folder)
+                            logger.info(f"Removed {character_folder} from {room_key}")
 
-                    await add_agent_to_room(db, dest_location.room_id, agent.id)
+                # ============================================================
+                # FILESYSTEM-PRIMARY: Add to destination location
+                # ============================================================
+                LocationService.add_agent_to_room(world_name, dest_room_key, character_folder)
+                logger.info(f"Added {character_folder} to {dest_room_key}")
 
-                location_display = dest_location.display_name or dest_location.name
-                response_text = f"**Character Moved:**\n- Name: {agent.name}\n- Destination: {location_display}"
+                # ============================================================
+                # DB SYNC (create agent if missing, then update location)
+                # ============================================================
+                try:
+                    from services.agent_factory import AgentFactory
+
+                    agent = await crud.get_agent_by_name(db, character_folder, world_name=world_name)
+
+                    # If agent doesn't exist in DB, create it from filesystem config
+                    if not agent:
+                        config_file = f"worlds/{world_name}/agents/{character_folder}"
+                        logger.info(f"Creating missing agent '{character_folder}' in DB from {config_file}")
+                        agent = await AgentFactory.create_from_config(
+                            db=db,
+                            name=character_folder,
+                            config_file=config_file,
+                            group=None,
+                            world_name=world_name,
+                        )
+                        logger.info(f"Created agent '{character_folder}' in DB (id={agent.id})")
+
+                    dest_location = await crud.get_location_by_name(db, world_id, dest_location_name)
+                    if agent and dest_location:
+                        # Remove from old locations in DB
+                        old_locations = await crud.get_agent_locations_in_world(db, agent.id, world_id)
+                        for old_loc in old_locations:
+                            if old_loc.id != dest_location.id:
+                                await crud.remove_character_from_location(db, agent.id, old_loc.id)
+                        # Add to new location in DB
+                        await crud.add_character_to_location(db, agent.id, dest_location.id)
+                        # Add to room if exists
+                        if dest_location.room_id:
+                            from crud.room_agents import add_agent_to_room
+
+                            await add_agent_to_room(db, dest_location.room_id, agent.id)
+                        logger.info(f"DB sync complete: {character_folder} -> location {dest_location.id}")
+                except Exception as db_err:
+                    logger.warning(f"DB sync failed (non-critical): {db_err}")
+
+                response_text = (
+                    f"**Character Moved:**\n- Name: {character_display_name}\n- Destination: {location_display}"
+                )
                 if narrative:
                     response_text += f"\n- Narrative: {narrative}"
 
@@ -373,7 +446,8 @@ def create_character_tools(ctx: ToolContext) -> list:
             try:
                 # Create agent in filesystem
                 agent_name = validated.name.replace(" ", "_")
-                in_a_nutshell = f"{validated.name} is a {validated.role}. {validated.appearance}"
+                # in_a_nutshell should be brief - appearance details go in characteristics only
+                in_a_nutshell = f"{validated.name} is a {validated.role}."
                 characteristics = f"""## Role
 {validated.role}
 

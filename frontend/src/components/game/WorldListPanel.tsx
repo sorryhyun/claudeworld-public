@@ -30,6 +30,7 @@ export function WorldListPanel({
   const { t } = useTranslation();
   const { language } = useGame();
   const [newWorldName, setNewWorldName] = useState('');
+  const [selectedLang, setSelectedLang] = useState<'en' | 'ko' | 'jp'>(language);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [resettingId, setResettingId] = useState<number | null>(null);
   const [importableWorlds, setImportableWorlds] = useState<ImportableWorld[]>([]);
@@ -73,18 +74,9 @@ export function WorldListPanel({
 
   const handleCreate = async () => {
     if (!newWorldName.trim() || creating) return;
-    const userName = DEFAULT_USER_NAMES[language];
-    await onCreateWorld(newWorldName.trim(), userName, language);
+    const userName = DEFAULT_USER_NAMES[selectedLang];
+    await onCreateWorld(newWorldName.trim(), userName, selectedLang);
     setNewWorldName('');
-  };
-
-  const handleQuickCreate = async (lang: 'en' | 'ko' | 'jp') => {
-    if (creating) return;
-    const defaultNames = { en: 'New World', ko: '새로운 세계', jp: '新しい世界' };
-    const timestamp = Date.now().toString(36).slice(-4);
-    const worldName = `${defaultNames[lang]} ${timestamp}`;
-    const userName = DEFAULT_USER_NAMES[lang];
-    await onCreateWorld(worldName, userName, lang);
   };
 
   const handleDelete = async (e: React.MouseEvent, worldId: number) => {
@@ -164,29 +156,38 @@ export function WorldListPanel({
             )}
           </button>
         </div>
-        {/* Quick Create Language Buttons */}
+        {/* Language Option Buttons */}
         <div className="flex gap-1.5">
           <button
-            onClick={() => handleQuickCreate('en')}
-            disabled={creating}
-            className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-            title="Create new English world"
+            onClick={() => setSelectedLang('en')}
+            className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+              selectedLang === 'en'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+            title="English"
           >
             <span className="text-[10px]">🌐</span> EN
           </button>
           <button
-            onClick={() => handleQuickCreate('ko')}
-            disabled={creating}
-            className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-            title="새로운 한국어 세계 만들기"
+            onClick={() => setSelectedLang('ko')}
+            className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+              selectedLang === 'ko'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+            title="한국어"
           >
             <span className="text-[10px]">🇰🇷</span> KO
           </button>
           <button
-            onClick={() => handleQuickCreate('jp')}
-            disabled={creating}
-            className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-            title="新しい日本語の世界を作成"
+            onClick={() => setSelectedLang('jp')}
+            className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+              selectedLang === 'jp'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+            title="日本語"
           >
             <span className="text-[10px]">🇯🇵</span> JP
           </button>

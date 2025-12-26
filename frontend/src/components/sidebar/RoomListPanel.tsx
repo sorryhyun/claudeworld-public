@@ -37,27 +37,19 @@ export const RoomListPanel = ({
             }`}
           >
             <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
-              <div className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                 selectedRoomId === room.id ? 'bg-slate-700' : 'bg-slate-200 group-hover:bg-slate-300'
               }`}>
                 <span className={`text-base sm:text-lg ${selectedRoomId === room.id ? 'text-white' : 'text-slate-600'}`}>
                   {room.name.startsWith('Direct: ') ? '@' : '#'}
                 </span>
-                {room.has_unread && (
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
-                )}
               </div>
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex-1 min-w-0">
                 <span className={`font-medium truncate text-sm sm:text-base ${
                   selectedRoomId === room.id ? 'text-slate-800' : 'text-slate-700'
-                } ${room.has_unread ? 'font-bold' : ''}`}>
+                }`}>
                   {room.name}
                 </span>
-                {room.has_unread && (
-                  <span className="flex-shrink-0 px-1.5 py-0.5 bg-red-500 text-white text-xs font-semibold rounded">
-                    NEW
-                  </span>
-                )}
               </div>
             </div>
             {isAdmin && (

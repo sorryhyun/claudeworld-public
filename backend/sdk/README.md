@@ -28,12 +28,11 @@ sdk/
 │   └── validation.py    # Config validation
 │
 ├── agent/               # High-level orchestration
-│   ├── agent_manager.py      # Response generation, client lifecycle
-│   ├── agent_definitions.py  # AgentDefinition for Task tool invocation
-│   ├── subagent_prompts.py   # Sub-agent prompt templates
-│   ├── hooks.py              # SDK hook factory functions
-│   ├── options_builder.py    # ClaudeAgentOptions builder
-│   └── streaming_state.py    # StreamingStateManager for partial responses
+│   ├── agent_manager.py           # Response generation, client lifecycle
+│   ├── task_subagent_definitions.py # AgentDefinition builders for Task tool sub-agents
+│   ├── hooks.py                   # SDK hook factory functions
+│   ├── options_builder.py         # ClaudeAgentOptions builder
+│   └── streaming_state.py         # StreamingStateManager for partial responses
 │
 ├── client/              # Claude SDK client infrastructure
 │   ├── client_pool.py   # Claude SDK client pooling
@@ -50,8 +49,8 @@ sdk/
 │   └── gameplay_tools/       # TRPG gameplay and onboarding tools
 │       ├── character_tools.py  # remove_character, move_character, list_characters, persist_character_design
 │       ├── location_tools.py   # travel, list_locations, persist_location_design
-│       ├── mechanics_tools.py  # inject_memory, narration, suggest_options, persist_stat_changes
-│       ├── onboarding_tools.py # complete, persist_world_seed (world initialization + sub-agent)
+│       ├── mechanics_tools.py  # inject_memory, narration, suggest_options, change_stat
+│       ├── onboarding_tools.py # draft_world, persist_world, complete (world initialization)
 │       └── common.py           # Shared gameplay utilities
 │
 └── parsing/             # Parsing utilities
@@ -87,8 +86,7 @@ async for chunk in manager.generate_sdk_response(context):
 | `hooks.py` | SDK hook factories (prompt tracking, subagent handling, tool capture) |
 | `options_builder.py` | Builds `ClaudeAgentOptions` with MCP config and hooks |
 | `streaming_state.py` | Thread-safe tracking of partial responses during streaming |
-| `agent_definitions.py` | `AgentDefinition` builders for Task tool sub-agents |
-| `subagent_prompts.py` | Sub-agent system prompt templates |
+| `task_subagent_definitions.py` | `AgentDefinition` builders for Task tool sub-agents |
 
 ### MCPRegistry (`client/mcp_registry.py`)
 
@@ -108,15 +106,16 @@ config = registry.build_mcp_config(agent_context)
 ### Sub-Agent Invocation (`agent/agent_definitions.py`)
 
 Sub-agents are invoked via the Task tool pattern (SDK native):
-- `stat_calculator`: Calculate stat and inventory changes
+- `item_designer`: Create new item templates with balanced stats and lore
 - `character_designer`: Create new NPCs
 - `location_designer`: Create new locations
-- `summarizer`: Summarize location events
 - `chat_summarizer`: Summarize chat conversations
-- `world_seed_generator`: Generate world from onboarding
 
-Sub-agents use persist tools (`persist_stat_changes`, `persist_character_design`, etc.)
+Sub-agents use persist tools (`persist_item`, `persist_character_design`, etc.)
 to save their results directly to filesystem and database.
+
+Note: `change_stat` is used directly by Action Manager (not via a sub-agent).
+Note: Onboarding_Manager handles world generation via `draft_world` and `persist_world` tools.
 
 ### Parsing Utilities (`parsing/`)
 

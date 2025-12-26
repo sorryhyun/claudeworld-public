@@ -74,7 +74,7 @@ class TestSaveAgentMessage:
 
     @pytest.mark.asyncio
     async def test_save_message_updates_room_activity(self):
-        """Test that saving message updates room activity for unread notifications."""
+        """Test that saving message updates room activity for recency sorting."""
         mock_db = AsyncMock()
         mock_agent = Mock(id=1, name="Alice")
 

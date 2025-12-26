@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo, useCallback } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback, useRef } from 'react';
 import { useGame } from '../../contexts/GameContext';
 import * as gameService from '../../services/gameService';
 
@@ -103,12 +103,16 @@ export function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const isInitialFetch = useRef(true);
 
   useEffect(() => {
     if (!world?.id) return;
 
     const fetchAgents = async () => {
-      setLoading(true);
+      // Only show loading spinner on initial fetch, not on refetch due to travel
+      if (isInitialFetch.current) {
+        setLoading(true);
+      }
       try {
         const characters = await gameService.getWorldCharacters(world.id);
         setAgents(characters);
@@ -116,11 +120,13 @@ export function AgentsList() {
         console.error('Failed to fetch agents:', error);
       } finally {
         setLoading(false);
+        isInitialFetch.current = false;
       }
     };
 
     fetchAgents();
-  }, [world?.id]);
+    // Refetch agents when location changes (travel) to sync NPC positions
+  }, [world?.id, currentLocation?.id]);
 
   // Memoized toggle handler
   const handleToggleExpand = useCallback((id: number) => {

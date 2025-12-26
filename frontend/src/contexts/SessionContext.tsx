@@ -66,7 +66,7 @@ interface SessionProviderProps {
   mode: 'chat' | 'onboarding' | 'game';
 }
 
-export function SessionProvider({ children, mode }: SessionProviderProps) {
+export function SessionProvider({ children, mode: _mode }: SessionProviderProps) {
   // Session state
   const [world, setWorld] = useState<World | null>(null);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
@@ -312,7 +312,9 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     if (!world) return;
 
     try {
-      const pollOnboarding = mode === 'onboarding';
+      // Use world.phase directly instead of mode prop to ensure polling
+      // immediately switches to the correct room when phase transitions
+      const pollOnboarding = world.phase === 'onboarding';
       const updates = await gameService.pollUpdates(world.id, lastMessageId, pollOnboarding);
 
       if (updates.messages.length > 0) {
@@ -405,13 +407,15 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     } catch (error) {
       console.error('Polling error:', error);
     }
-  }, [world, lastMessageId, mode, playerState, isChatMode, currentLocation]);
+  }, [world, lastMessageId, playerState, isChatMode, currentLocation]);
 
   const pollChattingAgents = useCallback(async () => {
     if (!world) return;
 
     try {
-      const pollOnboarding = mode === 'onboarding';
+      // Use world.phase directly instead of mode prop to ensure polling
+      // immediately switches to the correct room when phase transitions
+      const pollOnboarding = world.phase === 'onboarding';
       const chattingAgents = await gameService.getChattingAgents(world.id, pollOnboarding);
 
       setMessages(prev => {
@@ -459,7 +463,7 @@ export function SessionProvider({ children, mode }: SessionProviderProps) {
     } catch (error) {
       console.error('Chatting poll error:', error);
     }
-  }, [world, mode]);
+  }, [world]);
 
   const startPolling = useCallback(() => {
     if (!pollingInterval) {

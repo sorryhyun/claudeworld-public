@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 @router.get("/readme", response_class=PlainTextResponse)
 async def get_readme(
-    lang: str = Query(default="en", regex="^(en|ko|jp)$", description="Language code (en, ko, or jp)")
+    lang: str = Query(default="en", regex="^(en|ko|jp)$", description="Language code (en, ko, or jp)"),
 ) -> str:
     """
     Get the readme content for the specified language.

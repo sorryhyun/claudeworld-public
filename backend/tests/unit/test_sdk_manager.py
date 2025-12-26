@@ -149,7 +149,7 @@ class TestBuildAgentOptions:
 
         config = AgentConfigData(in_a_nutshell="Test agent", characteristics="Friendly", recent_events="Recent event")
 
-        context = Mock(agent_name="TestAgent", config=config, session_id=None, has_situation_builder=False)
+        context = Mock(agent_name="TestAgent", config=config, session_id=None)
 
         # Mock the MCP registry
         mock_registry = Mock()
@@ -164,7 +164,7 @@ class TestBuildAgentOptions:
 
             # Verify options were created correctly
             assert options.system_prompt == "System prompt"
-            # Model is hardcoded to opus in manager.py (or haiku if USE_HAIKU)
+            # Model is hardcoded to opus in options_builder.py (or sonnet if USE_SONNET)
             assert "claude" in options.model
             assert options.max_thinking_tokens == 32768
             assert "guidelines" in options.mcp_servers
@@ -176,9 +176,7 @@ class TestBuildAgentOptions:
         manager = AgentManager()
 
         config = AgentConfigData(in_a_nutshell="Test")
-        context = Mock(
-            agent_name="TestAgent", config=config, session_id="test_session_123", has_situation_builder=False
-        )
+        context = Mock(agent_name="TestAgent", config=config, session_id="test_session_123")
 
         # Mock the MCP registry
         mock_registry = Mock()

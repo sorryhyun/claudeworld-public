@@ -60,7 +60,6 @@ async def write_debug_log(
     message_to_send: str,
     config_data: dict,
     options: ClaudeAgentOptions,
-    has_situation_builder: bool = False,
 ):
     """
     Write complete agent input to debug file for debugging purposes.

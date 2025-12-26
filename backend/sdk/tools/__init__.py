@@ -9,8 +9,8 @@ modules:
 - gameplay_tools/: gameplay phase tools (includes onboarding)
   - character_tools: remove_character, persist_character_design, etc. (Action Manager)
   - location_tools: travel, persist_location_design, etc. (Action Manager)
-  - mechanics_tools: narration, suggest_options, persist_stat_changes (Action Manager)
-  - onboarding_tools: complete, persist_world_seed (Onboarding)
+  - mechanics_tools: narration, suggest_options, change_stat (Action Manager)
+  - onboarding_tools: draft_world, persist_world, complete (Onboarding)
 """
 
 # Re-export action tools
@@ -23,6 +23,8 @@ from sdk.tools.gameplay_tools import (
     create_action_manager_tools,
     create_onboarding_mcp_server,
     create_onboarding_tools,
+    create_subagents_mcp_server,
+    create_subagents_tools,
 )
 
 # Re-export guidelines tools
@@ -40,6 +42,9 @@ __all__ = [
     # Gameplay tools (for TRPG gameplay)
     "create_action_manager_tools",
     "create_action_manager_mcp_server",
+    # Subagent tools (shared between Action Manager and Onboarding Manager)
+    "create_subagents_tools",
+    "create_subagents_mcp_server",
     # Subagent tool name mappings
     "SUBAGENT_TOOL_NAMES",
 ]

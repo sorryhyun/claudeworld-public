@@ -357,7 +357,6 @@ class PlayerFacade:
         self,
         stat_changes: List[Dict[str, Any]],
         inventory_changes: List[Dict[str, Any]],
-        time_advance_minutes: int = 0,
     ) -> Dict[str, Any]:
         """
         Apply results from Stat Calculator sub-agent (FS-first, then DB cache).
@@ -367,25 +366,19 @@ class PlayerFacade:
         Args:
             stat_changes: List of {"stat_name": str, "delta": int, "new_value": int}
             inventory_changes: List of {"action": "add"|"remove", "item_id": str, "name": str, ...}
-            time_advance_minutes: Minutes to advance in-game time (0 = no change)
 
         Returns:
-            Dict with "stats_result", "inventory_results", and "time_result" keys
+            Dict with "stats_result" and "inventory_results" keys
         """
         results: Dict[str, Any] = {
             "stats_result": None,
             "inventory_results": [],
-            "time_result": None,
         }
 
         # Apply stat changes
         if stat_changes:
             changes = {sc["stat_name"]: sc["delta"] for sc in stat_changes}
             results["stats_result"] = await self.update_stats(changes)
-
-        # Advance time if requested
-        if time_advance_minutes > 0:
-            results["time_result"] = await self.advance_time(time_advance_minutes)
 
         # Apply inventory changes
         for inv_change in inventory_changes:

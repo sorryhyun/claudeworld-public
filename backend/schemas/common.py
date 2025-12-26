@@ -19,10 +19,6 @@ class TimestampSerializerMixin:
     def serialize_last_activity_at(self, dt: Optional[datetime], _info):
         return _serialize_utc_datetime(dt) if dt else None
 
-    @field_serializer("last_read_at")
-    def serialize_last_read_at(self, dt: Optional[datetime], _info):
-        return _serialize_utc_datetime(dt) if dt else None
-
     @field_serializer("is_paused")
     def serialize_is_paused(self, value: int, _info):
         return _serialize_bool(value)

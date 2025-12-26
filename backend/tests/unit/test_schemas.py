@@ -127,12 +127,6 @@ class TestMessageSchemas:
         user_msg = schemas.MessageBase(content="User says", role="user", participant_type="user")
         assert user_msg.participant_type == "user"
 
-        # Situation builder message
-        situation_msg = schemas.MessageBase(
-            content="Situation context", role="user", participant_type="situation_builder"
-        )
-        assert situation_msg.participant_type == "situation_builder"
-
         # Character message
         char_msg = schemas.MessageBase(
             content="Character says", role="user", participant_type="character", participant_name="Custom Character"

@@ -29,21 +29,6 @@ class TestMessageCreation:
 
     @pytest.mark.integration
     @pytest.mark.api
-    async def test_send_situation_builder_message(self, authenticated_client, sample_room):
-        """Test sending a situation builder message."""
-        client, token = authenticated_client
-
-        response = await client.post(
-            f"/rooms/{sample_room.id}/messages/send",
-            json={"content": "The scene is set...", "role": "user", "participant_type": "situation_builder"},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["participant_type"] == "situation_builder"
-
-    @pytest.mark.integration
-    @pytest.mark.api
     async def test_send_character_message(self, authenticated_client, sample_room):
         """Test sending a character message with custom name."""
         client, token = authenticated_client

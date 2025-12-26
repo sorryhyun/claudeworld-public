@@ -214,14 +214,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
   // Helper to get the current icon
   const getPersonaIcon = () => {
     if (participantType === 'user') return <span className="font-bold text-sm">U</span>;
-    if (participantType === 'situation_builder') return <span className="font-bold text-sm">S</span>;
     return <span className="font-bold text-sm">C</span>;
   };
 
   // Helper to get persona label
   const getPersonaLabel = () => {
     if (participantType === 'character' && characterName) return characterName;
-    if (participantType === 'situation_builder') return 'Situation Builder';
     return 'User';
   };
 
@@ -283,7 +281,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
         <div className="mb-3 p-3 bg-slate-50 rounded-xl border border-slate-300 animate-fadeIn">
           <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Speaking As</label>
           <div className="flex flex-wrap gap-2">
-            {(['user', 'situation_builder', 'character'] as ParticipantType[]).map((type) => (
+            {(['user', 'character'] as ParticipantType[]).map((type) => (
               <button
                 key={type}
                 type="button"
@@ -298,7 +296,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
                     : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
                 }`}
               >
-                {type === 'situation_builder' ? 'Builder' : type.charAt(0).toUpperCase() + type.slice(1)}
+                {type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
             ))}
           </div>
@@ -322,7 +320,6 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
           onClick={() => setShowPersonaMenu(!showPersonaMenu)}
           className={`flex-shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all ${
             participantType === 'user' ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' :
-            participantType === 'situation_builder' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' :
             'bg-purple-100 text-purple-700 hover:bg-purple-200'
           }`}
           title={`Change persona (currently: ${getPersonaLabel()})`}

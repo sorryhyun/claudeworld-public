@@ -12,11 +12,10 @@ from domain.value_objects.enums import (
     ACTION_MANAGER_PATTERNS,
     CHARACTER_DESIGNER_PATTERNS,
     CHAT_SUMMARIZER_PATTERNS,
+    ITEM_DESIGNER_PATTERNS,
     LOCATION_DESIGNER_PATTERNS,
     ONBOARDING_MANAGER_PATTERNS,
-    STAT_CALCULATOR_PATTERNS,
     SYSTEM_AGENT_GROUPS,
-    WORLD_SEED_GENERATOR_PATTERNS,
 )
 
 
@@ -60,12 +59,6 @@ class Agent:
 
 
 # Agent type detection utilities
-def is_world_seed_generator(agent_name: str) -> bool:
-    """Check if agent is World Seed Generator (for structured output)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in WORLD_SEED_GENERATOR_PATTERNS)
-
-
 def is_action_manager(agent_name: str) -> bool:
     """Check if agent is Action Manager (for gameplay context)."""
     agent_name_lower = agent_name.lower().replace(" ", "_")
@@ -117,10 +110,10 @@ def is_character_designer(agent_name: str) -> bool:
     return any(pattern in agent_name_lower for pattern in CHARACTER_DESIGNER_PATTERNS)
 
 
-def is_stat_calculator(agent_name: str) -> bool:
-    """Check if agent is Stat Calculator (TRPG sub-agent)."""
+def is_item_designer(agent_name: str) -> bool:
+    """Check if agent is Item Designer (TRPG sub-agent)."""
     agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in STAT_CALCULATOR_PATTERNS)
+    return any(pattern in agent_name_lower for pattern in ITEM_DESIGNER_PATTERNS)
 
 
 def is_location_designer(agent_name: str) -> bool:
@@ -140,9 +133,9 @@ def find_trpg_agents(agents: list) -> dict:
     Find TRPG agents from a list of agents by role.
 
     Identifies agents by name patterns for all TRPG roles:
-    - Onboarding Manager, World Seed Generator
+    - Onboarding Manager (handles interviews AND world seed generation)
     - Action Manager (handles narration via narration tool)
-    - Character Designer, Stat Calculator, Location Designer (sub-agents)
+    - Item Designer, Character Designer, Location Designer (sub-agents)
 
     Args:
         agents: List of Agent objects
@@ -159,14 +152,12 @@ def find_trpg_agents(agents: list) -> dict:
         # Check each TRPG role
         if is_onboarding_manager(agent_name):
             agent_map["onboarding_manager"] = agent.id
-        elif is_world_seed_generator(agent_name):
-            agent_map["world_seed_generator"] = agent.id
         elif is_action_manager(agent_name):
             agent_map["action_manager"] = agent.id
         elif is_character_designer(agent_name):
             agent_map["character_designer"] = agent.id
-        elif is_stat_calculator(agent_name):
-            agent_map["stat_calculator"] = agent.id
+        elif is_item_designer(agent_name):
+            agent_map["item_designer"] = agent.id
         elif is_location_designer(agent_name):
             agent_map["location_designer"] = agent.id
         elif is_chat_summarizer(agent_name):

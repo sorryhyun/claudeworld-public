@@ -107,6 +107,9 @@ def create_subagent_stop_hook(
     This is crucial for run_in_background: true where parent may not wait for results.
     The hook reads subagent output and executes any fake tool calls found.
 
+    IMPORTANT: This hook creates a fresh DB session because the parent agent's session
+    may be closed/stale by the time the background subagent completes.
+
     Args:
         context: Agent response context for tool execution
 
@@ -189,24 +192,36 @@ def create_subagent_stop_hook(
             logger.warning("Found <function_calls> marker but failed to parse any calls")
             return {"continue_": True}
 
-        # Build ToolContext for execution
+        # Create a FRESH DB session for fake tool execution
+        # The parent agent's session (context.db) may be closed/stale by now
+        # since this hook fires after the background subagent completes
+        from database import async_session_maker
+
         from sdk.tools.context import ToolContext
 
-        tool_ctx = ToolContext(
-            agent_name=context.agent_name,
-            agent_id=context.agent_id,
-            room_id=context.room_id,
-            world_name=context.world_name,
-            world_id=context.world_id,
-            db=context.db,
-            group_name=context.group_name,
-        )
+        async with async_session_maker() as fresh_db:
+            tool_ctx = ToolContext(
+                agent_name=context.agent_name,
+                agent_id=context.agent_id,
+                room_id=context.room_id,
+                world_name=context.world_name,
+                world_id=context.world_id,
+                db=fresh_db,  # Use fresh session instead of context.db
+                group_name=context.group_name,
+            )
 
-        # Execute each fake tool call
-        for call in fake_calls:
-            result = await execute_fake_tool_call(call, tool_ctx)
-            if result:
-                logger.info(f"🔔 Fake tool executed: {call.tool_name} -> success={result.get('success')}")
+            # Execute each fake tool call
+            for call in fake_calls:
+                try:
+                    result = await execute_fake_tool_call(call, tool_ctx)
+                    if result:
+                        logger.info(f"🔔 Fake tool executed: {call.tool_name} -> success={result.get('success')}")
+                except Exception as e:
+                    logger.error(f"🔔 Fake tool execution failed: {call.tool_name} -> {e}")
+
+            # Commit any changes made by fake tools
+            await fresh_db.commit()
+            logger.info("🔔 SubagentStop: Committed fake tool changes")
 
         return {"continue_": True}
 

@@ -7,14 +7,12 @@ Provides functions for validating configuration schema and startup logging.
 import logging
 
 from .cache import clear_cache
-from .guidelines import SYSTEM_PROMPT_SEGMENTS, is_sample_system_prompt_enabled
 from .tools import is_tool_enabled
 from .yaml_loaders import (
     get_conversation_context_config,
     get_debug_config,
     get_guidelines_config,
     get_guidelines_file,
-    get_guidelines_sep_config,
     get_tools_config,
 )
 
@@ -90,23 +88,10 @@ def validate_config_schema() -> list[str]:
                 if "template" not in version_config:
                     errors.append(f"{guidelines_filename} version '{active_version}' missing 'template' field")
 
-        # Check for system_prompt (required only when not using sampled system prompt)
-        if not is_sample_system_prompt_enabled():
-            active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
-            if active_system_prompt not in guidelines_config:
-                errors.append(f"{guidelines_filename} missing system prompt: '{active_system_prompt}'")
-
-    # Validate guidelines_sep.yaml when sampled system prompt is enabled
-    if is_sample_system_prompt_enabled():
-        sep_config = get_guidelines_sep_config()
-        if not sep_config:
-            errors.append("guidelines_sep.yaml is empty or missing (required for SAMPLE_SYSTEM_PROMPT=true)")
-        else:
-            # Check that each segment has at least one variation
-            for segment in SYSTEM_PROMPT_SEGMENTS:
-                variations = [k for k in sep_config.keys() if k.startswith(f"{segment}_")]
-                if not variations:
-                    errors.append(f"guidelines_sep.yaml missing variations for segment '{segment}' (e.g., {segment}_1)")
+        # Check for system_prompt
+        active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
+        if active_system_prompt not in guidelines_config:
+            errors.append(f"{guidelines_filename} missing system prompt: '{active_system_prompt}'")
 
     # Validate debug.yaml
     debug_config = get_debug_config()
@@ -149,12 +134,8 @@ def log_config_validation():
     active_version = guidelines_config.get("active_version", "unknown")
     logger.info(f"Active guidelines version: {active_version}")
 
-    # Log system prompt mode
-    if is_sample_system_prompt_enabled():
-        logger.info("System prompt mode: SAMPLED (from guidelines_sep.yaml)")
-    else:
-        active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
-        logger.info(f"Active system prompt: {active_system_prompt}")
+    active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
+    logger.info(f"Active system prompt: {active_system_prompt}")
 
     # Count enabled tools across all groups
     all_tools = []

@@ -6,11 +6,11 @@ import pytest
 from pydantic import ValidationError
 from sdk.config.onboarding_inputs import (
     CompleteOnboardingInput,
-    InitialLocation,
+    DraftWorldInput,
     InventoryItem,
+    PersistWorldInput,
     StatDefinition,
     StatSystem,
-    WorldSeed,
 )
 
 
@@ -88,45 +88,6 @@ class TestStatSystem:
             StatSystem(stats=[])
 
 
-class TestInitialLocation:
-    """Test InitialLocation model."""
-
-    def test_valid_initial_location(self):
-        """Test creating a valid initial location."""
-        loc = InitialLocation(
-            name="abandoned_watchtower",
-            display_name="Abandoned Watchtower",
-            description="A crumbling stone tower overlooking the valley.",
-        )
-        assert loc.name == "abandoned_watchtower"
-        assert loc.display_name == "Abandoned Watchtower"
-        assert loc.position_x == 0
-        assert loc.position_y == 0
-        assert loc.adjacent_hints == []
-
-    def test_initial_location_with_position(self):
-        """Test location with custom position."""
-        loc = InitialLocation(
-            name="forest_clearing",
-            display_name="Forest Clearing",
-            description="A peaceful clearing.",
-            position_x=5,
-            position_y=-3,
-        )
-        assert loc.position_x == 5
-        assert loc.position_y == -3
-
-    def test_initial_location_with_adjacent_hints(self):
-        """Test location with adjacent location hints."""
-        loc = InitialLocation(
-            name="village_square",
-            display_name="Village Square",
-            description="The heart of the village.",
-            adjacent_hints=["tavern", "blacksmith", "town_hall"],
-        )
-        assert len(loc.adjacent_hints) == 3
-
-
 class TestInventoryItem:
     """Test InventoryItem model."""
 
@@ -155,119 +116,123 @@ class TestInventoryItem:
         assert item.properties["heal_amount"] == 25
 
 
-class TestWorldSeed:
-    """Test WorldSeed model."""
+class TestDraftWorldInput:
+    """Test DraftWorldInput model."""
 
-    def test_valid_world_seed(self):
-        """Test creating a valid world seed."""
-        seed = WorldSeed(
+    def test_valid_draft_world(self):
+        """Test creating a valid draft world input."""
+        draft = DraftWorldInput(
+            genre="dark fantasy",
+            theme="survival and redemption",
+            lore_summary="A world where magic comes at a terrible cost, and the ancient empire has fallen.",
+        )
+        assert draft.genre == "dark fantasy"
+        assert draft.theme == "survival and redemption"
+        assert len(draft.lore_summary) >= 50
+
+    def test_draft_world_strips_whitespace(self):
+        """Test that whitespace is stripped from fields."""
+        draft = DraftWorldInput(
+            genre="  sci-fi  ",
+            theme="  exploration  ",
+            lore_summary="  A vast galaxy awaits exploration in this futuristic setting with advanced technology.  ",
+        )
+        assert draft.genre == "sci-fi"
+        assert draft.theme == "exploration"
+
+    def test_draft_world_rejects_short_summary(self):
+        """Test that lore summary must be at least 50 characters."""
+        with pytest.raises(ValidationError):
+            DraftWorldInput(
+                genre="fantasy",
+                theme="adventure",
+                lore_summary="Too short",  # Less than 50 chars
+            )
+
+    def test_draft_world_json_schema(self):
+        """Test that JSON schema can be generated for SDK structured output."""
+        schema = DraftWorldInput.model_json_schema()
+        assert "properties" in schema
+        assert "genre" in schema["properties"]
+        assert "theme" in schema["properties"]
+        assert "lore_summary" in schema["properties"]
+
+
+class TestPersistWorldInput:
+    """Test PersistWorldInput model.
+
+    This consolidates full lore with stat system and player state.
+    """
+
+    def test_valid_persist_world(self):
+        """Test creating a valid persist world input."""
+        persist = PersistWorldInput(
+            lore="A comprehensive world lore that spans multiple paragraphs. " * 10,
             stat_system=StatSystem(
                 stats=[
                     StatDefinition(name="health", display="HP", default=100),
                     StatDefinition(name="mana", display="MP", default=50),
                 ]
             ),
-            initial_location=InitialLocation(
-                name="starting_village",
-                display_name="Starting Village",
-                description="A peaceful village where your adventure begins.",
-            ),
         )
-        assert len(seed.stat_system.stats) == 2
-        assert seed.initial_location.name == "starting_village"
-        assert seed.initial_stats is None
-        assert seed.initial_inventory == []
-        assert seed.world_notes is None
+        assert len(persist.lore) >= 100
+        assert len(persist.stat_system.stats) == 2
+        assert persist.initial_stats is None
+        assert persist.world_notes is None
 
-    def test_world_seed_with_all_fields(self):
-        """Test world seed with all optional fields."""
-        seed = WorldSeed(
+    def test_persist_world_with_all_fields(self):
+        """Test persist world with all optional fields."""
+        persist = PersistWorldInput(
+            lore="A comprehensive world lore that spans multiple paragraphs. " * 10,
             stat_system=StatSystem(stats=[StatDefinition(name="health", display="HP", default=100)]),
-            initial_location=InitialLocation(
-                name="dark_cave",
-                display_name="Dark Cave",
-                description="A foreboding cave entrance.",
-            ),
             initial_stats={"health": 80},
-            initial_inventory=[InventoryItem(item_id="torch", name="Torch", quantity=2)],
             world_notes="This world emphasizes survival mechanics.",
         )
-        assert seed.initial_stats["health"] == 80
-        assert len(seed.initial_inventory) == 1
-        assert seed.world_notes is not None
+        assert persist.initial_stats["health"] == 80
+        assert persist.world_notes is not None
 
-    def test_world_seed_json_schema(self):
+    def test_persist_world_rejects_short_lore(self):
+        """Test that lore must be at least 100 characters."""
+        with pytest.raises(ValidationError):
+            PersistWorldInput(
+                lore="Too short",  # Less than 100 chars
+                stat_system=StatSystem(stats=[StatDefinition(name="health", display="HP", default=100)]),
+            )
+
+    def test_persist_world_json_schema(self):
         """Test that JSON schema can be generated for SDK structured output."""
-        schema = WorldSeed.model_json_schema()
+        schema = PersistWorldInput.model_json_schema()
         assert "properties" in schema
+        assert "lore" in schema["properties"]
         assert "stat_system" in schema["properties"]
-        assert "initial_location" in schema["properties"]
 
 
 class TestCompleteOnboardingInput:
-    """Test CompleteOnboardingInput model."""
+    """Test CompleteOnboardingInput model.
 
-    # Lore must be at least 100 characters
-    VALID_LORE = (
-        "The world has fallen into darkness. Ancient evils stir in forgotten places. "
-        "Heroes must rise to face the growing threat before all is lost to shadow."
-    )
+    Note: genre, theme, and lore are now handled by draft_world and persist_world tools.
+    CompleteOnboardingInput only handles the final phase transition with player_name.
+    """
 
     def test_valid_complete_input(self):
         """Test creating a valid complete input."""
-        input_data = CompleteOnboardingInput(
-            genre="dark fantasy",
-            theme="survival and redemption",
-            lore=self.VALID_LORE,
-            player_name="Hero",
-        )
-        assert input_data.genre == "dark fantasy"
-        assert input_data.theme == "survival and redemption"
-        assert input_data.lore.startswith("The world")
+        input_data = CompleteOnboardingInput(player_name="Hero")
         assert input_data.player_name == "Hero"
 
     def test_complete_input_strips_whitespace(self):
-        """Test that whitespace is stripped from fields."""
-        input_data = CompleteOnboardingInput(
-            genre="  sci-fi  ",
-            theme="  exploration  ",
-            lore=f"  {self.VALID_LORE}  ",
-            player_name="  Captain  ",
-        )
-        assert input_data.genre == "sci-fi"
-        assert input_data.theme == "exploration"
-        assert input_data.lore == self.VALID_LORE
+        """Test that whitespace is stripped from player_name."""
+        input_data = CompleteOnboardingInput(player_name="  Captain  ")
         assert input_data.player_name == "Captain"
 
-    def test_complete_input_rejects_empty_strings(self):
-        """Test that empty or whitespace-only strings are rejected."""
+    def test_complete_input_rejects_empty_player_name(self):
+        """Test that empty or whitespace-only player_name is rejected."""
         with pytest.raises(ValidationError):
-            CompleteOnboardingInput(
-                genre="",
-                theme="valid theme",
-                lore=self.VALID_LORE,
-                player_name="Hero",
-            )
+            CompleteOnboardingInput(player_name="")
 
         with pytest.raises(ValidationError):
-            CompleteOnboardingInput(
-                genre="valid genre",
-                theme="   ",  # whitespace only
-                lore=self.VALID_LORE,
-                player_name="Hero",
-            )
+            CompleteOnboardingInput(player_name="   ")  # whitespace only
 
-    def test_complete_input_missing_required(self):
-        """Test that missing required fields cause validation error."""
+    def test_complete_input_missing_player_name(self):
+        """Test that missing player_name causes validation error."""
         with pytest.raises(ValidationError):
-            CompleteOnboardingInput(genre="fantasy", theme="adventure", player_name="Hero")  # missing lore
-
-    def test_complete_input_lore_too_short(self):
-        """Test that lore with less than 100 characters is rejected."""
-        with pytest.raises(ValidationError):
-            CompleteOnboardingInput(
-                genre="fantasy",
-                theme="adventure",
-                lore="Too short",
-                player_name="Hero",
-            )
+            CompleteOnboardingInput()

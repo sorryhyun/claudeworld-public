@@ -15,17 +15,10 @@ from .cache import (
 )
 
 # Re-export from guidelines
-from .guidelines import (
-    SYSTEM_PROMPT_SEGMENTS,
-    get_base_system_prompt,
-    get_segment_variations,
-    is_sample_system_prompt_enabled,
-    sample_system_prompt_segments,
-)
+from .guidelines import get_base_system_prompt
 
 # Re-export from tools
 from .tools import (
-    get_situation_builder_note,
     get_tool_description,
     get_tool_group,
     get_tool_input_schema,
@@ -52,7 +45,6 @@ from .yaml_loaders import (
     get_guidelines_config,
     get_guidelines_config_path,
     get_guidelines_file,
-    get_guidelines_sep_config,
     get_localization_config,
     get_tools_config,
     merge_tool_configs,
@@ -74,7 +66,6 @@ __all__ = [
     "get_guidelines_config",
     "get_guidelines_config_path",
     "get_guidelines_file",
-    "get_guidelines_sep_config",
     "get_debug_config",
     "get_conversation_context_config",
     "get_localization_config",
@@ -83,16 +74,11 @@ __all__ = [
     "get_agent_tool_config",
     "merge_tool_configs",
     # Guidelines
-    "SYSTEM_PROMPT_SEGMENTS",
-    "is_sample_system_prompt_enabled",
-    "get_segment_variations",
-    "sample_system_prompt_segments",
     "get_base_system_prompt",
     # Tools
     "get_tool_description",
     "get_tool_input_schema",
     "get_tool_response",
-    "get_situation_builder_note",
     "is_tool_enabled",
     "get_tools_by_group",
     "get_tool_names_by_group",

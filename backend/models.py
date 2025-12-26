@@ -143,9 +143,7 @@ class Message(Base):
     role = Column(
         Enum(MessageRole, values_callable=lambda x: [e.value for e in x]), nullable=False
     )  # 'user' or 'assistant'
-    participant_type = Column(
-        String, nullable=True
-    )  # For user messages: 'user', 'situation_builder', 'character'; NULL for agents
+    participant_type = Column(String, nullable=True)  # For user messages: 'user', 'character'; NULL for agents
     participant_name = Column(String, nullable=True)  # Custom name for 'character' mode
     thinking = Column(Text, nullable=True)  # Agent's thinking process (for assistant messages)
     anthropic_calls = Column(Text, nullable=True)  # JSON array of anthropic tool call situations

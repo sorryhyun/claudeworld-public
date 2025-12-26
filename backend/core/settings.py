@@ -7,7 +7,7 @@ All settings are loaded once at application startup.
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -21,6 +21,7 @@ def _get_base_path() -> Path:
     else:
         # Running in development - use file-based path
         return Path(__file__).parent.parent.parent
+
 
 # ============================================================================
 # Application Constants
@@ -103,43 +104,17 @@ class Settings(BaseSettings):
     frontend_url: Optional[str] = None
     vercel_url: Optional[str] = None
 
-    # Memory system
-    recall_memory_file: str = "consolidated_memory"
-
     # Guidelines system
-    read_guideline_by: Literal["description", "active_tool"] = "active_tool"
     guidelines_file: str = "guidelines_3rd"
 
     # Model configuration
-    use_haiku: bool = False
+    use_sonnet: bool = False
 
     # Debug configuration
     debug_agents: bool = False
 
-    # Sampled system prompt (experimental)
-    sample_system_prompt: bool = False
-
     # Background scheduler configuration
     max_concurrent_rooms: int = 5
-
-    # Deprecated settings (kept for backwards compatibility warnings)
-    enable_recall_tool: Optional[str] = None
-    enable_memory_tool: Optional[str] = None
-
-    @field_validator("read_guideline_by", mode="before")
-    @classmethod
-    def validate_guideline_mode(cls, v: Optional[str]) -> str:
-        """Validate and normalize READ_GUIDELINE_BY setting."""
-        if not v:
-            return "active_tool"
-        v_lower = v.lower()
-        if v_lower in ("description", "active_tool"):
-            return v_lower
-        # Invalid value - log warning and default to active_tool
-        import logging
-
-        logging.warning(f"Invalid READ_GUIDELINE_BY value: {v}. Defaulting to 'active_tool' mode.")
-        return "active_tool"
 
     @field_validator("enable_guest_login", mode="before")
     @classmethod
@@ -151,10 +126,10 @@ class Settings(BaseSettings):
             return v.lower() == "true"
         return True
 
-    @field_validator("use_haiku", mode="before")
+    @field_validator("use_sonnet", mode="before")
     @classmethod
-    def validate_use_haiku(cls, v: Optional[str]) -> bool:
-        """Parse use_haiku from string to bool."""
+    def validate_use_sonnet(cls, v: Optional[str]) -> bool:
+        """Parse use_sonnet from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -165,16 +140,6 @@ class Settings(BaseSettings):
     @classmethod
     def validate_debug_agents(cls, v: Optional[str]) -> bool:
         """Parse debug_agents from string to bool."""
-        if isinstance(v, bool):
-            return v
-        if isinstance(v, str):
-            return v.lower() == "true"
-        return False
-
-    @field_validator("sample_system_prompt", mode="before")
-    @classmethod
-    def validate_sample_system_prompt(cls, v: Optional[str]) -> bool:
-        """Parse sample_system_prompt from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -291,16 +256,6 @@ class Settings(BaseSettings):
         return self.config_dir / "conversation_context.yaml"
 
     @property
-    def guidelines_sep_config_path(self) -> Path:
-        """
-        Get the path to guidelines_sep.yaml configuration file.
-
-        Returns:
-            Path to guidelines_sep.yaml
-        """
-        return self.config_dir / "guidelines_sep.yaml"
-
-    @property
     def guidelines_config_path(self) -> Path:
         """
         Get the path to the guidelines configuration file.
@@ -354,24 +309,6 @@ class Settings(BaseSettings):
 
         return origins
 
-    def log_deprecation_warnings(self) -> None:
-        """Log deprecation warnings for old environment variables."""
-        import logging
-
-        logger = logging.getLogger("Settings")
-
-        if self.enable_recall_tool:
-            logger.warning(
-                "ENABLE_RECALL_TOOL is deprecated. Please use MEMORY_BY=RECALL instead. "
-                "See .env.example for migration guide."
-            )
-
-        if self.enable_memory_tool:
-            logger.warning(
-                "ENABLE_MEMORY_TOOL is deprecated. Memory recording is available regardless of mode. "
-                "See .env.example for details."
-            )
-
     class Config:
         """Pydantic configuration."""
 
@@ -404,9 +341,6 @@ def get_settings() -> Settings:
         # Reload settings with explicit env file path if it exists
         if env_path.exists():
             _settings = Settings(_env_file=str(env_path))
-
-        # Log deprecation warnings
-        _settings.log_deprecation_warnings()
 
     return _settings
 

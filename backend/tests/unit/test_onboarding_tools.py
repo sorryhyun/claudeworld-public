@@ -1,8 +1,8 @@
 """
 Unit tests for onboarding tools.
 
-Tests for the complete tool, default world name generation,
-and World Seed Generator invocation.
+Tests for the draft_world, persist_world, complete tools,
+and default world name generation.
 """
 
 import re
@@ -49,31 +49,34 @@ class TestCreateOnboardingTools:
 
     @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
     @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
-    def test_creates_complete_tool_when_enabled(self, mock_get_desc, mock_is_enabled):
-        """Test that complete tool is created when enabled."""
+    def test_creates_all_tools_when_enabled(self, mock_get_desc, mock_is_enabled):
+        """Test that all onboarding tools are created when enabled."""
         mock_is_enabled.return_value = True
-        mock_get_desc.return_value = "Complete tool description"
+        mock_get_desc.return_value = "Tool description"
 
         ctx = ToolContext(agent_name="TestAgent")
         tools = create_onboarding_tools(ctx)
 
-        # 2 tools: persist_world_seed (always) + complete (when enabled)
-        assert len(tools) == 2
+        # 3 tools: draft_world + persist_world + complete
+        assert len(tools) == 3
         tool_names = [t.name for t in tools]
-        assert "persist_world_seed" in tool_names
+        assert "draft_world" in tool_names
+        assert "persist_world" in tool_names
         assert "complete" in tool_names
 
     @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    def test_only_persist_world_seed_when_complete_disabled(self, mock_is_enabled):
-        """Test that only persist_world_seed is created when complete is disabled."""
+    def test_only_draft_and_persist_when_complete_disabled(self, mock_is_enabled):
+        """Test that draft_world and persist_world are always created."""
         mock_is_enabled.return_value = False
 
         ctx = ToolContext(agent_name="TestAgent")
         tools = create_onboarding_tools(ctx)
 
-        # persist_world_seed is always added
-        assert len(tools) == 1
-        assert tools[0].name == "persist_world_seed"
+        # draft_world and persist_world are always added (complete is disabled)
+        assert len(tools) == 2
+        tool_names = [t.name for t in tools]
+        assert "draft_world" in tool_names
+        assert "persist_world" in tool_names
 
     @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
     @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
@@ -85,7 +88,14 @@ class TestCreateOnboardingTools:
         ctx = ToolContext(agent_name="MyAgent", group_name="mygroup")
         create_onboarding_tools(ctx)
 
-        mock_get_desc.assert_called_once_with("complete", agent_name="MyAgent", group_name="mygroup")
+        # complete tool should call get_tool_description
+        calls = mock_get_desc.call_args_list
+        assert len(calls) >= 1
+        # Check that complete was called with correct args
+        complete_call = next((c for c in calls if c[0][0] == "complete"), None)
+        assert complete_call is not None
+        assert complete_call[1]["agent_name"] == "MyAgent"
+        assert complete_call[1]["group_name"] == "mygroup"
 
 
 class TestCreateOnboardingMCPServer:
@@ -140,16 +150,14 @@ class TestCompleteTool:
         ctx = ToolContext(agent_name="TestAgent", world_name="MyWorld")
         tools = create_onboarding_tools(ctx)
 
-        # 2 tools: persist_world_seed + complete
-        assert len(tools) == 2
+        # 3 tools: draft_world + persist_world + complete
+        assert len(tools) == 3
         complete_tool = next(t for t in tools if t.name == "complete")
 
         # Verify schema has required fields in properties
         schema = complete_tool.input_schema
         properties = schema.get("properties", {})
-        assert "genre" in properties
-        assert "theme" in properties
-        assert "lore" in properties
+        assert "player_name" in properties
 
     @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
     @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
@@ -174,7 +182,52 @@ class TestCompleteTool:
         ctx = ToolContext(agent_name="TestAgent", world_name=None)
         tools = create_onboarding_tools(ctx)
 
-        # 2 tools: persist_world_seed + complete
-        assert len(tools) == 2
+        # 3 tools: draft_world + persist_world + complete
+        assert len(tools) == 3
         tool_names = [t.name for t in tools]
         assert "complete" in tool_names
+
+
+class TestDraftWorldTool:
+    """Tests for the draft_world tool functionality."""
+
+    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    def test_draft_world_tool_created_with_correct_schema(self, mock_get_desc, mock_is_enabled):
+        """Test that draft_world tool is created with correct schema."""
+        mock_is_enabled.return_value = True
+        mock_get_desc.return_value = "Draft world description"
+
+        ctx = ToolContext(agent_name="TestAgent", world_name="MyWorld")
+        tools = create_onboarding_tools(ctx)
+
+        draft_tool = next(t for t in tools if t.name == "draft_world")
+
+        # Verify schema has required fields
+        schema = draft_tool.input_schema
+        properties = schema.get("properties", {})
+        assert "genre" in properties
+        assert "theme" in properties
+        assert "lore_summary" in properties
+
+
+class TestPersistWorldTool:
+    """Tests for the persist_world tool functionality."""
+
+    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    def test_persist_world_tool_created_with_correct_schema(self, mock_get_desc, mock_is_enabled):
+        """Test that persist_world tool is created with correct schema."""
+        mock_is_enabled.return_value = True
+        mock_get_desc.return_value = "Persist world description"
+
+        ctx = ToolContext(agent_name="TestAgent", world_name="MyWorld")
+        tools = create_onboarding_tools(ctx)
+
+        persist_tool = next(t for t in tools if t.name == "persist_world")
+
+        # Verify schema has required fields
+        schema = persist_tool.input_schema
+        properties = schema.get("properties", {})
+        assert "lore" in properties
+        assert "stat_system" in properties

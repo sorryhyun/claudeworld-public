@@ -13,7 +13,6 @@ from domain.value_objects.enums import ParticipantType
 from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config, get_group_config
 
-from orchestration.conversation import detect_conversation_type
 from orchestration.whiteboard import process_messages_for_whiteboard
 
 # Get settings singleton
@@ -122,8 +121,6 @@ def build_conversation_context(
             # Use participant_name if provided, otherwise determine by type
             if msg.participant_name:
                 speaker = msg.participant_name
-            elif msg.participant_type == ParticipantType.SITUATION_BUILDER:
-                speaker = "Situation Builder"
             else:
                 # Use world_user_name if provided (for game context), otherwise fallback to USER_NAME
                 speaker = world_user_name or _settings.user_name
@@ -186,61 +183,50 @@ def build_conversation_context(
 
     # Add response instruction based on conversation type (if requested)
     if include_response_instruction:
+        # Helper to get language key
+        def _get_lang_key() -> str:
+            if world_language == "jp":
+                return "jp"
+            elif world_language == "ko" or (world_user_name and _is_korean_text(world_user_name)):
+                return "ko"
+            return "en"
+
         # Check for onboarding mode first
         if is_onboarding and world_user_name:
-            # Use world_language if provided, otherwise detect from world_user_name
-            if world_language == "jp":
-                instruction_key = "response_instruction_onboarding_jp"
-            elif world_language == "ko" or _is_korean_text(world_user_name):
-                instruction_key = "response_instruction_onboarding_ko"
-            else:
-                instruction_key = "response_instruction_onboarding_en"
-            instruction = config.get(instruction_key, "")
+            lang_key = _get_lang_key()
+            response_om = config.get("response_OM", {})
+            instruction = response_om.get(lang_key, "")
             if instruction:
                 context_lines.append(
                     format_with_particles(instruction, user_name=world_user_name, agent_name=agent_name or "")
                 )
         # Check for chat mode (direct NPC conversation)
         elif is_chat_mode and agent_name:
-            # Chat mode uses the agent-active instruction for more natural NPC responses
-            instruction = config.get("response_instruction_with_agent_active", "")
+            lang_key = _get_lang_key()
+            response_agent = config.get("response_agent", {})
+            instruction = response_agent.get(lang_key, "")
             if instruction:
-                context_lines.append(format_with_particles(instruction, agent_name=agent_name))
+                context_lines.append(
+                    format_with_particles(instruction, agent_name=agent_name, user_name=user_name or "")
+                )
         # Check for game mode (TRPG active gameplay)
         elif is_game and agent_name:
-            # Use world_language if provided, otherwise detect from world_user_name
-            if world_language == "jp":
-                instruction_key = "response_instruction_game_jp"
-            elif world_language == "ko" or (world_user_name and _is_korean_text(world_user_name)):
-                instruction_key = "response_instruction_game_ko"
-            else:
-                instruction_key = "response_instruction_game_en"
-            instruction = config.get(instruction_key, "")
+            lang_key = _get_lang_key()
+            response_am = config.get("response_AM", {})
+            instruction = response_am.get(lang_key, "")
             if instruction:
                 context_lines.append(
                     format_with_particles(instruction, user_name=world_user_name or "", agent_name=agent_name)
                 )
         elif agent_name:
-            # Determine conversation type using shared utility
-            is_one_on_one, _, _ = detect_conversation_type(recent_messages, agent_count or 0)
-
-            # Add response instruction based on conversation type
-            # Use _active variants when READ_GUIDELINE_BY=active_tool
-            # Use 1-on-1 template if it's a 1-on-1 conversation and user_name is provided
-            if is_one_on_one and user_name:
-                instruction = config.get("response_instruction_with_user_active", "")
-                if instruction:
-                    context_lines.append(format_with_particles(instruction, agent_name=agent_name, user_name=user_name))
-            else:
-                # Use multi-agent template when there are multiple agents (>1)
-                # Otherwise use standard agent template
-                if agent_count and agent_count > 1:
-                    instruction = config.get("response_instruction_with_multi_agent_active", "")
-                else:
-                    instruction = config.get("response_instruction_with_agent_active", "")
-
-                if instruction:
-                    context_lines.append(format_with_particles(instruction, agent_name=agent_name))
+            # Use response_agent for regular chat agents
+            lang_key = _get_lang_key()
+            response_agent = config.get("response_agent", {})
+            instruction = response_agent.get(lang_key, "")
+            if instruction:
+                context_lines.append(
+                    format_with_particles(instruction, agent_name=agent_name, user_name=user_name or "")
+                )
 
     return "\n".join(context_lines)
 

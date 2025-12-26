@@ -19,24 +19,23 @@ The system uses a **1-agent tape architecture** where the Action Manager (hidden
 
 ## TRPG System Agents
 
-Seven specialized agents work together, organized into two groups:
+Six specialized agents work together, organized into two groups:
 
-### Onboarding Phase (`agents/group_onboarding/`)
-
-| Agent | Key Responsibility |
-|-------|-------------------|
-| **Onboarding_Manager** | Interviews player about world preferences |
-| **World_Seed_Generator** | Creates world lore, stat system, starting location |
-
-### Gameplay Phase (`agents/group_gameplay/`)
+### System Agents (`agents/group_gameplay/`)
 
 | Agent | Role | Invocation |
 |-------|------|------------|
+| **Onboarding_Manager** | Interviews player, generates world seed (stats, location, inventory) | Triggered by system message |
 | **Action_Manager** | Interprets player actions, coordinates sub-agents, generates narration | In tape (hidden from frontend) |
-| **Stat_Calculator** | Processes mechanical game effects (stats, items) | Sub-agent via Task tool |
+| **Chat_Summarizer** | Summarizes chat mode conversations when exiting | Direct invocation on `/end` |
+
+### Sub-Agents (`agents/group_subagent/`)
+
+| Agent | Role | Invocation |
+|-------|------|------------|
+| **Item_Designer** | Creates new item templates with balanced stats and rich lore | Sub-agent via Task tool |
 | **Character_Designer** | Creates NPCs when interactions require them | Sub-agent via Task tool |
 | **Location_Designer** | Creates new locations during exploration | Sub-agent via Task tool |
-| **Chat_Summarizer** | Summarizes chat mode conversations when exiting | Direct invocation on `/end` |
 
 ---
 
@@ -49,7 +48,8 @@ ClaudeWorld uses a **1-agent tape with Task-based sub-agent invocation**:
 ```
 User Action → Action_Manager (hidden)
                     │
-                    ├── Task(stat_calculator)     → Stat_Calculator → persist_stat_changes
+                    ├── change_stat()             → Direct stat/inventory changes
+                    ├── Task(item_designer)       → Item_Designer → persist_item
                     ├── Task(character_designer)  → Character_Designer → persist_character_design
                     ├── Task(location_designer)   → Location_Designer → persist_location_design
                     ├── narration()               → Creates visible narrative message
@@ -76,30 +76,34 @@ User Action → Action_Manager (hidden)
 
 ## Onboarding Phase
 
-### Step 1: Onboarding Manager Interview
+### How Onboarding Works
 
 When a player creates a world, the **Onboarding_Manager** conducts an interview:
 
-- Asks about preferred genre, theme, atmosphere
-- Explores specific elements the player wants
-- Compiles a comprehensive "world brief"
+1. **Interview Phase**:
+   - Asks about preferred genre, theme, atmosphere
+   - Explores specific elements the player wants
+   - Compiles a comprehensive "world brief"
 
-When satisfied, it calls the `complete` tool with:
-- Genre and theme
-- World lore outline
-- Player's character name
+2. **Draft World** (via `draft_world` tool):
+   - Creates lightweight world draft with:
+     - **Genre**: e.g., "dark fantasy", "sci-fi horror"
+     - **Theme**: e.g., "survival and redemption"
+     - **Lore summary**: One-paragraph summary to unblock sub-agents
 
-### Step 2: World Seed Generation
+3. **Sub-agent Population** (via Task tool):
+   - Invokes sub-agents in background with draft context
+   - location_designer, character_designer, item_designer
 
-The `complete` tool invokes **World_Seed_Generator** via `WorldSeedManager`:
+4. **Persist World** (via `persist_world` tool):
+   - Creates comprehensive world with:
+     - **Full lore**: 8-15 paragraphs (overwrites draft)
+     - **Stat system**: HP, Mana, etc. with min/max/default values
+     - **World notes**: Context for gameplay agents
 
-1. Persists world config (genre, theme, lore) to filesystem
-2. World_Seed_Generator returns a `WorldSeed` with:
-   - **Stat system**: HP, Mana, etc. with min/max/default values
-   - **Initial location**: Starting area with rich description
-   - **Starting inventory**: Optional initial items
-   - **World notes**: Context for gameplay agents
-3. World phase transitions from "onboarding" to "active"
+5. **Finalization** (via `complete` tool):
+   - Sets player name
+   - World phase transitions from "onboarding" to "active"
 
 ---
 
@@ -120,7 +124,8 @@ The `complete` tool invokes **World_Seed_Generator** via `WorldSeedManager`:
 
 | Tool | Purpose |
 |------|---------|
-| `Task(stat_calculator)` | Invoke Stat_Calculator for stat/inventory changes |
+| `change_stat` | Apply stat/inventory changes directly |
+| `Task(item_designer)` | Invoke Item_Designer to create new item templates |
 | `Task(character_designer)` | Invoke Character_Designer to create NPCs |
 | `Task(location_designer)` | Invoke Location_Designer to create new areas |
 | `narration` | Create visible narrative message to the player |
@@ -151,9 +156,9 @@ Sub-agents are invoked via the SDK Task tool with AgentDefinitions:
 
 ```python
 # Each sub-agent invocation:
-# 1. Action Manager calls Task(agent_name="stat_calculator", prompt="...")
+# 1. Action Manager calls Task(agent_name="item_designer", prompt="...")
 # 2. SDK creates sub-agent with registered AgentDefinition
-# 3. Sub-agent uses persist tool (e.g., persist_stat_changes)
+# 3. Sub-agent uses persist tool (e.g., persist_item)
 # 4. Persist tool writes to filesystem + syncs to database
 # 5. Task result returned to Action Manager
 ```
@@ -188,17 +193,32 @@ Sub-agent completes → SubagentStop hook fires
 
 See `backend/sdk/tools/fake_tool_executor.py` for implementation details.
 
-### Stat Calculator
+### Item Designer
 
-**Invoked by**: `Task(agent_name="stat_calculator", prompt="...")`
+**Invoked by**: `Task(agent_name="item_designer", prompt="...")`
 
-**Uses tool**: `persist_stat_changes` to apply changes
+**Uses tool**: `persist_item` to create item templates
 
 **Input schema** for persist tool:
 ```python
-stat_changes: list[StatChange]      # old_value → new_value
-inventory_changes: list[ItemChange] # add/remove items
+item_id: str         # snake_case identifier (e.g., "frostbite_dagger")
+name: str            # Display name (e.g., "Frostbite Dagger")
+description: str     # Rich lore and visual details
+properties: dict     # Item stats (damage, armor, heal, effect, etc.)
+```
+
+Creates item template in `worlds/{world_name}/items/{item_id}.yaml`.
+
+### Direct Stat Changes
+
+Action Manager uses `change_stat` directly (no sub-agent needed):
+
+**Input schema**:
+```python
+stat_changes: list[StatChange]      # {stat_name, delta}
+inventory_changes: list[ItemChange] # add/remove items (items must exist)
 summary: str                        # Natural language summary
+time_advance_minutes: int           # In-game time progression
 ```
 
 Changes are persisted to filesystem (`_state.json`) and synced to database.
@@ -303,8 +323,7 @@ The system prompt (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders to
    ↓
 4. Action Manager:
    - Interprets: Combat action against goblin
-   - Calls Task(stat_calculator, "player attacks goblin")
-     - Stat Calculator calls persist_stat_changes
+   - Calls change_stat directly
      - -15 HP for goblin, -2 stamina for player persisted
    - Calls narration("Your sword flashes...")
      - Creates visible narrative message

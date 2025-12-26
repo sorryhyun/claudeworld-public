@@ -10,12 +10,13 @@ from typing import Optional
 
 import crud
 import schemas
-from database import get_db
+from database import async_session_maker, get_db
 from dependencies import (
     RequestIdentity,
     get_agent_manager,
     get_request_identity,
 )
+from fastapi import BackgroundTasks
 from domain.entities.agent import is_action_manager
 from domain.services.access_control import AccessControl
 from domain.services.localization import Localization
@@ -37,10 +38,12 @@ router = APIRouter()
 @router.get("/{world_id}/poll")
 async def poll_updates(
     world_id: int,
+    background_tasks: BackgroundTasks,
     since_message_id: Optional[int] = None,
     poll_onboarding: bool = False,
     db: AsyncSession = Depends(get_db),
     identity: RequestIdentity = Depends(get_request_identity),
+    agent_manager: AgentManager = Depends(get_agent_manager),
 ):
     """
     Poll for updates (new messages, state changes).
@@ -132,6 +135,28 @@ async def poll_updates(
                         )
                         logger.info(f"Sent arrival message for '{user_name}' at '{location_name}'")
 
+                        # Trigger initial scene generation in background
+                        target_room_for_scene = arrival_location.room_id
+                        arrival_content = Localization.get_arrival_message(
+                            user_name, location_name, world.language
+                        )
+
+                        async def trigger_initial_scene():
+                            async with async_session_maker() as session:
+                                trpg_orchestrator = get_trpg_orchestrator()
+                                task_world = await crud.get_world(session, world_id)
+                                if task_world:
+                                    await trpg_orchestrator.handle_player_action(
+                                        db=session,
+                                        room_id=target_room_for_scene,
+                                        action_text=arrival_content,
+                                        agent_manager=agent_manager,
+                                        world=task_world,
+                                    )
+
+                        background_tasks.add_task(trigger_initial_scene)
+                        logger.info("Polling: Triggered initial scene generation after phase transition")
+
         # Now try to get the current location's room
         if player_state and player_state.current_location_id:
             location = await crud.get_location(db, player_state.current_location_id)
@@ -197,9 +222,7 @@ async def poll_updates(
             "is_chat_mode": player_state.is_chat_mode if player_state else False,  # Chat mode state
             # Resume message ID: when exiting chat mode, frontend should use this as lastMessageId
             # to avoid re-fetching old narration from before chat mode
-            "chat_mode_start_message_id": player_state.chat_mode_start_message_id
-            if player_state
-            else None,
+            "chat_mode_start_message_id": player_state.chat_mode_start_message_id if player_state else None,
             "game_time": game_time,  # In-game time from filesystem
         },
     }

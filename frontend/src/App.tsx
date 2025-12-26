@@ -188,8 +188,6 @@ function AuthenticatedApp() {
         {mode === 'chat' && roomContext.selectedRoomId && (
           <ChatRoom
             roomId={roomContext.selectedRoomId}
-            onRoomRead={roomContext.refreshRooms}
-            onMarkRoomAsRead={roomContext.markRoomAsReadOptimistic}
             onRenameRoom={roomContext.renameRoom}
           />
         )}

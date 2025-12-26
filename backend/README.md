@@ -167,14 +167,15 @@ worlds/
 ```
 User Action → Action_Manager (hidden) → narration + suggest_options
                     │
-                    ├── Task(stat_calculator) → persist_stat_changes
+                    ├── change_stat (direct)
+                    ├── Task(item_designer) → persist_item
                     ├── Task(character_designer) → persist_character_design
                     └── Task(location_designer) → persist_location_design
 ```
 
 **TRPGTapeGenerator (`orchestration/tape/trpg_generator.py`):**
 - Generates single-agent tape (Action_Manager, hidden from frontend)
-- Onboarding round: Onboarding_Manager → World_Seed_Generator (via Task tool)
+- Onboarding round: Onboarding_Manager handles interview and world generation
 - Action round: Action_Manager invokes sub-agents via Task tool, outputs via `narration`/`suggest_options`
 
 **ChatOrchestrator:**
@@ -187,14 +188,14 @@ User Action → Action_Manager (hidden) → narration + suggest_options
 **AgentManager (`sdk/agent/agent_manager.py`):**
 - Client management via ClientPool with TaskIdentifier keys
 - Response generation with stream parsing
-- Model: `claude-opus-4-5-20251101` (or Haiku with `USE_HAIKU=true`)
+- Model: `claude-opus-4-5-20251101` (or Sonnet with `USE_SONNET=true`)
 
 **MCP Tools:**
 - **Action Tools:** `skip`, `memorize`, `recall`
 - **Config Tools:** `guidelines`
-- **Onboarding Tools:** `complete` (triggers World_Seed_Generator via Task tool)
-- **Gameplay Tools:** `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`
-- **Persist Tools (sub-agents):** `persist_stat_changes`, `persist_character_design`, `persist_location_design`
+- **Onboarding Tools:** `draft_world`, `persist_world`, `complete`
+- **Gameplay Tools:** `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`, `change_stat`
+- **Subagent Persist Tools:** `persist_character_design`, `persist_location_design`, `persist_item` (shared MCP server for subagents)
 
 **Fake Tool Executor (`sdk/tools/fake_tool_executor.py`):**
 
@@ -209,7 +210,7 @@ Supported formats:
 ```xml
 <!-- XML format -->
 <function_calls>
-<invoke name="mcp__action_manager__persist_character_design">
+<invoke name="mcp__subagents__persist_character_design">
 <parameter name="name">HANA-07</parameter>
 ...
 </invoke>
@@ -222,9 +223,9 @@ Supported formats:
 ```
 
 Tool inference from JSON:
-- `name + role + appearance + personality` → `persist_character_design`
-- `name + display_name + description` → `persist_location_design`
-- `summary + stat_changes/inventory_changes` → `persist_stat_changes`
+- `name + role + appearance + personality` → `mcp__subagents__persist_character_design`
+- `name + display_name + description` → `mcp__subagents__persist_location_design`
+- `summary + stat_changes/inventory_changes` → `mcp__action_manager__change_stat`
 
 ## API Endpoints
 
@@ -285,11 +286,9 @@ DELETE /rooms/{id}/messages        # Clear room messages
 - `CLAUDE_API_KEY` - Direct API key for production (uses Claude Code auth if not set)
 - `USER_NAME` - Display name for user messages (default: "User")
 - `DEBUG_AGENTS` - "true" for verbose logging
-- `RECALL_MEMORY_FILE` - Memory file: `consolidated_memory` (default) or `long_term_memory`
 - `USE_HAIKU` - "true" to use Haiku model instead of Opus
 - `FRONTEND_URL` - CORS allowed origin
 - `ENABLE_GUEST_LOGIN` - "true"/"false" (default: true)
-- `SAMPLE_SYSTEM_PROMPT` - "true" to use sampled system prompts (experimental)
 
 ### Database
 
@@ -356,11 +355,11 @@ DELETE /rooms/{id}/messages        # Clear room messages
 
 **World not creating:**
 - Check filesystem permissions for `worlds/` directory
-- Verify World_Seed_Generator completed onboarding
+- Verify Onboarding_Manager completed onboarding
 
 **Stats not updating:**
-- Verify Action_Manager called Task(stat_calculator)
-- Check if persist_stat_changes tool was called in debug output
+- Verify Action_Manager called change_stat directly
+- Check if change_stat tool was called in debug output
 
 ## Dependencies
 

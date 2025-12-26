@@ -68,7 +68,8 @@ def get_tools_config() -> Dict[str, Any]:
     Loads and merges:
     - action_tools.yaml (skip, memorize, recall)
     - guideline_tools.yaml (read, anthropic)
-    - gameplay_tools.yaml (onboarding, action_manager tools)
+    - gameplay_tools.yaml (action_manager tools)
+    - onboarding_tools.yaml (world initialization)
 
     Returns:
         Dictionary containing tool definitions from all files
@@ -92,11 +93,23 @@ def get_tools_config() -> Dict[str, Any]:
         guideline_config = get_cached_config(guideline_tools_path)
         base_config.update(guideline_config)
 
-    # Load gameplay tools config if it exists (includes onboarding tools)
+    # Load gameplay tools config if it exists
     gameplay_tools_path = config_dir / "gameplay_tools.yaml"
     if gameplay_tools_path.exists():
         gameplay_config = get_cached_config(gameplay_tools_path)
         base_config.update(gameplay_config)
+
+    # Load onboarding tools config if it exists
+    onboarding_tools_path = config_dir / "onboarding_tools.yaml"
+    if onboarding_tools_path.exists():
+        onboarding_config = get_cached_config(onboarding_tools_path)
+        base_config.update(onboarding_config)
+
+    # Load subagent tools config if it exists
+    subagent_tools_path = config_dir / "subagent_tools.yaml"
+    if subagent_tools_path.exists():
+        subagent_config = get_cached_config(subagent_tools_path)
+        base_config.update(subagent_config)
 
     return base_config
 
@@ -311,8 +324,8 @@ def merge_tool_configs(base_config: Dict[str, Any], group_config: Dict[str, Any]
 
     merged = copy.deepcopy(base_config)
 
-    # Known tool groups in tools.yaml and gameplay_tools.yaml
-    tool_groups = ["action", "guidelines", "onboarding", "game", "action_manager", "narrator"]
+    # Known tool groups in tools.yaml, gameplay_tools.yaml, and subagent_tools.yaml
+    tool_groups = ["action", "guidelines", "onboarding", "game", "action_manager", "narrator", "subagents"]
 
     # Check for new format (group names at top level in group_config)
     has_new_format = any(group_name in group_config for group_name in tool_groups)

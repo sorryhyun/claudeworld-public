@@ -38,8 +38,9 @@ def parse_location_from_task_prompt(prompt: str) -> dict | None:
     # Handles: with name "rust_byte_clinic", name "X", name should be: X
     # Also handles: Create location "name" — description
     explicit_name_patterns = [
-        # "Create location "fringe_market_descent"" - location name in quotes after "Create location"
-        r'Create\s+location\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
+        # "Create location "fringe_market_descent"" or "Create the starting location "classroom_2_3""
+        # Allows optional words (the, starting, new, a, etc.) between Create and location
+        r'Create\s+(?:the\s+)?(?:starting\s+)?(?:new\s+)?(?:a\s+)?location\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
         # "with name "rust_byte_clinic"" or 'with name "X"'
         r'with\s+name\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']',
         # "name "X"" - quoted name right after "name"
@@ -86,6 +87,8 @@ def parse_location_from_task_prompt(prompt: str) -> dict | None:
         # display_name: "value" or display_name = "value"
         r'["\']?display_name["\']?\s*[:=]\s*["\']?([^"\'\n,]+)["\']?',
         r'Display Name\s*[:=]\s*["\']?([^"\'\n,]+)["\']?',
+        # "This is X (Y)" format - extract "X (Y)" as display_name
+        r"This\s+is\s+([^\(]+?\s*\([^)]+\))",
     ]
     for pattern in display_patterns:
         match = re.search(pattern, prompt, re.IGNORECASE)

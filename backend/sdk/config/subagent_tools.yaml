@@ -1,0 +1,68 @@
+# Subagent Tools Configuration
+# This file defines tools specific to sub-agents invoked via the Task tool.
+# Sub-agents (Item Designer, Character Designer, Location Designer) are invoked
+# by Action Manager or Onboarding Manager to create game content.
+# Changes to this file apply immediately (hot-reloaded)
+
+# =============================================================================
+# SUBAGENT PERSISTENCE TOOLS
+# =============================================================================
+# These tools are available to subagents when invoked via the Task tool.
+
+subagents:
+  persist_character_design:
+    name: "mcp__subagents__persist_character_design"
+    enabled: true
+    description: |
+      Persist a character design to the game world.
+      Used by Character Designer sub-agent after designing a character.
+      Creates the character in filesystem and database.
+
+      **Parameters:**
+      - name: Character's name (required)
+      - role: Character's role or occupation (e.g., "merchant", "guard captain", "mysterious traveler")
+      - appearance: Physical description with distinctive features
+      - personality: Personality traits and behavioral tendencies
+      - which_location: Where to place the character - "current" (default) or specific location name
+      - secret: Hidden detail, motivation, or backstory element (optional)
+      - initial_disposition: Initial attitude toward player - "friendly", "neutral" (default), "wary", or "hostile"
+    response: |
+      {persist_result}
+
+  persist_location_design:
+    name: "mcp__subagents__persist_location_design"
+    enabled: true
+    description: |
+      Persist a location design to the game world.
+      Used by Location Designer sub-agent after designing a location.
+      Creates the location in filesystem and database.
+
+      **Parameters:**
+      - name: Location slug (snake_case, e.g., "abandoned_watchtower")
+      - display_name: Human-readable name (e.g., "Abandoned Watchtower")
+      - description: Rich atmospheric description (2-3 paragraphs)
+      - position_x, position_y: Map coordinates
+      - adjacent_to: Name of adjacent location to connect to (optional)
+      - is_starting: Set to true if this is the starting location (sets player's current_location)
+    response: |
+      {persist_result}
+
+  persist_item:
+    name: "mcp__subagents__persist_item"
+    enabled: true
+    description: |
+      Persist an item design to the game world.
+      Used by Item Designer sub-agent after designing an item.
+      Creates the item template in filesystem (items/[item_id].yaml).
+
+      **Parameters:**
+      - item_id: Unique identifier (snake_case, e.g., "rusty_sword", "health_potion")
+      - name: Display name (e.g., "Rusty Sword", "Health Potion")
+      - description: Item description with lore and visual details
+      - properties: Item properties dict (e.g., damage: 5, armor: 3, heal: 25)
+
+      **Returns error if:**
+      - Item ID already exists (use existing item instead)
+      - Item ID contains invalid characters
+    response: |
+      {persist_result}

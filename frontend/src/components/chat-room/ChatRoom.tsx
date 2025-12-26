@@ -11,12 +11,10 @@ import { useToast } from '../../contexts/ToastContext';
 
 interface ChatRoomProps {
   roomId: number | null;
-  onRoomRead?: () => void;
-  onMarkRoomAsRead?: (roomId: number) => void;
   onRenameRoom: (roomId: number, name: string) => Promise<Room>;
 }
 
-export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }: ChatRoomProps) => {
+export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
   const [roomName, setRoomName] = useState('');
   const [roomData, setRoomData] = useState<Room | null>(null);
   const [showAgentManager, setShowAgentManager] = useState(false);
@@ -38,57 +36,11 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
   // Focus trap for agent manager drawer
   const agentManagerRef = useFocusTrap<HTMLDivElement>(showAgentManager);
 
-  // Track the last room we marked as read to avoid duplicate calls
-  const lastMarkedRoomRef = useRef<number | null>(null);
-  // Keep stable references to callbacks
-  const onRoomReadRef = useRef(onRoomRead);
-  const onMarkRoomAsReadRef = useRef(onMarkRoomAsRead);
-  useEffect(() => {
-    onRoomReadRef.current = onRoomRead;
-    onMarkRoomAsReadRef.current = onMarkRoomAsRead;
-  }, [onRoomRead, onMarkRoomAsRead]);
-
-  // Track the last message count to detect new messages
-  const lastMessageCountRef = useRef<number>(0);
-
   useEffect(() => {
     if (roomId) {
       fetchRoomDetails();
-
-      // Mark as read when switching rooms
-      if (lastMarkedRoomRef.current !== roomId) {
-        lastMarkedRoomRef.current = roomId;
-        lastMessageCountRef.current = messages.length;
-
-        // Optimistically update UI immediately
-        onMarkRoomAsReadRef.current?.(roomId);
-
-        // Then make the API call in the background
-        api.markRoomAsRead(roomId)
-          .catch(err => {
-            console.error('Failed to mark room as read:', err);
-            // On error, refresh to get the actual state from backend
-            onRoomReadRef.current?.();
-          });
-      }
     }
   }, [roomId]);
-
-  // Mark as read when new messages arrive while viewing the room
-  useEffect(() => {
-    if (roomId && messages.length > lastMessageCountRef.current) {
-      lastMessageCountRef.current = messages.length;
-
-      // Optimistically update UI immediately
-      onMarkRoomAsReadRef.current?.(roomId);
-
-      // Then make the API call in the background
-      api.markRoomAsRead(roomId)
-        .catch(err => {
-          console.error('Failed to mark room as read:', err);
-        });
-    }
-  }, [roomId, messages.length]);
 
   // Persist collapse state to localStorage
   useEffect(() => {
@@ -228,24 +180,6 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     }
   };
 
-  // Track last mark-as-read call to throttle
-  const lastMarkAsReadRef = useRef<number>(0);
-
-  // Mark room as read when user clicks anywhere in the chatroom
-  const handleChatRoomClick = () => {
-    if (roomId) {
-      const now = Date.now();
-      // Throttle API calls to once per second
-      if (now - lastMarkAsReadRef.current > 1000) {
-        lastMarkAsReadRef.current = now;
-        onMarkRoomAsReadRef.current?.(roomId);
-        api.markRoomAsRead(roomId).catch(err => {
-          console.error('Failed to mark room as read:', err);
-        });
-      }
-    }
-  };
-
   if (!roomId) {
     return (
       <div className="flex-1 flex items-center justify-center p-4 bg-white">
@@ -263,7 +197,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
   }
 
   return (
-    <div className="flex-1 flex bg-white relative overflow-hidden min-w-0" onClick={handleChatRoomClick}>
+    <div className="flex-1 flex bg-white relative overflow-hidden min-w-0">
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}

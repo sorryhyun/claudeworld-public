@@ -2,12 +2,18 @@
 Game mechanics tools for TRPG gameplay.
 
 Contains tools for processing game mechanics:
-- persist_stat_changes: Apply stat/inventory changes (used by sub-agents via Task tool)
 - inject_memory: Inject memories into specific characters
-- narration: Create visible narrative messages
-- suggest_options: Provide suggested actions for player
+- roll_the_dice: Random outcome for uncertain events
+- list_inventory: List player's inventory items
+- list_world_item: List all item templates in the world (with keyword filtering)
+- change_stat: Apply stat/inventory changes
+- advance_time: Advance in-game time
 
 Uses PlayerFacade for FS-first player state management.
+
+Note:
+- persist_item is now in item_tools.py
+- narration and suggest_options are now in narrative_tools.py
 """
 
 import logging
@@ -16,21 +22,17 @@ from datetime import datetime
 from typing import Any
 
 import crud
-import schemas
 from claude_agent_sdk import tool
-from domain.value_objects.enums import MessageRole
 from services.agent_config_service import AgentConfigService
 from services.facades import PlayerFacade
 from services.item_service import ItemService
-from services.location_service import LocationService
 
 from sdk.config.gameplay_inputs import (
+    AdvanceTimeInput,
+    ChangeStatInput,
     InjectMemoryInput,
-    NarrationInput,
-    PersistStatChangesInput,
-    SuggestOptionsInput,
+    ListWorldItemInput,
 )
-from sdk.config.onboarding_inputs import InventoryItem
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -143,206 +145,6 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
         tools.append(inject_memory_tool)
 
     # ==========================================================================
-    # narration tool - Create visible narrative message (replaces Narrator)
-    # ==========================================================================
-    if is_tool_enabled("narration", default=True):
-        narration_description = get_tool_description(
-            "narration",
-            agent_name="Action Manager",
-            group_name=ctx.group_name,
-            default="REQUIRED: Create a visible narrative message describing the outcome. "
-            "This is the text the player will see. Make it vivid and engaging.",
-        )
-
-        @tool(
-            "narration",
-            narration_description,
-            NarrationInput.model_json_schema(),
-        )
-        async def narration_tool(args: dict[str, Any]):
-            """
-            Create a visible narrative message in the conversation.
-
-            This replaces the separate Narrator agent. Action Manager now
-            handles both interpretation and narration in a single turn.
-            """
-            # Validate input with Pydantic
-            validated = NarrationInput(**args)
-            narrative = validated.narrative
-
-            logger.info(f"📖 narration called | length={len(narrative)}")
-
-            try:
-                # Get Action Manager's agent_id and room_id from context
-                agent_id = ctx.require_agent_id()
-                room_id = ctx.require_room_id()
-
-                # Create message via crud.create_message()
-                message = schemas.MessageCreate(
-                    content=narrative,
-                    role=MessageRole.ASSISTANT,
-                    agent_id=agent_id,
-                )
-                await crud.create_message(db, room_id, message, update_room_activity=True)
-
-                # Signal that narration has been produced (allows input unblocking)
-                # Lazy import to avoid circular dependency
-                from orchestration.trpg_orchestrator import get_trpg_orchestrator
-                get_trpg_orchestrator().set_narration_produced(room_id)
-
-                logger.info(f"✅ Narrative message created | room={room_id} | agent={agent_id}")
-
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "✓ Narrative message created and displayed to player.",
-                        }
-                    ]
-                }
-
-            except Exception as e:
-                logger.error(f"narration error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating narrative: {e}"}],
-                    "is_error": True,
-                }
-
-        tools.append(narration_tool)
-
-    # ==========================================================================
-    # suggest_options tool - Provide suggested actions for player (replaces Narrator's suggest_actions)
-    # ==========================================================================
-    if is_tool_enabled("suggest_options", default=True):
-        suggest_options_description = get_tool_description(
-            "suggest_options",
-            agent_name="Action Manager",
-            group_name=ctx.group_name,
-            default="REQUIRED: Provide two suggested actions for the player. "
-            "These appear as clickable buttons in the UI.",
-        )
-
-        @tool(
-            "suggest_options",
-            suggest_options_description,
-            SuggestOptionsInput.model_json_schema(),
-        )
-        async def suggest_options_tool(args: dict[str, Any]):
-            """
-            Provide two suggested actions for the player.
-
-            These suggestions appear as clickable buttons in the UI.
-            Replaces the Narrator's suggest_actions tool.
-            """
-            # Validate input with Pydantic
-            validated = SuggestOptionsInput(**args)
-            action_1 = validated.action_1
-            action_2 = validated.action_2
-
-            logger.info(f"💡 suggest_options invoked: [{action_1}] / [{action_2}]")
-
-            if not action_1 or not action_2:
-                return {
-                    "content": [{"type": "text", "text": "Please provide both action suggestions."}],
-                    "is_error": True,
-                }
-
-            # Persist suggestions to _state.json for frontend retrieval
-            try:
-                LocationService.save_suggestions(world_name, [action_1, action_2])
-                logger.info(f"💾 Suggestions persisted to _state.json for world: {world_name}")
-            except Exception as e:
-                logger.error(f"Failed to persist suggestions: {e}")
-
-            # Format response for the system
-            response_text = f"""**Suggested Actions:**
-1. {action_1}
-2. {action_2}"""
-
-            return {
-                "content": [{"type": "text", "text": response_text}],
-            }
-
-        tools.append(suggest_options_tool)
-
-    # ==========================================================================
-    # persist_new_item tool - Create item templates in items/ directory
-    # ==========================================================================
-    if is_tool_enabled("persist_new_item", default=True):
-        persist_new_item_description = get_tool_description(
-            "persist_new_item",
-            agent_name="Action Manager",
-            group_name=ctx.group_name,
-            default="Create a new item template in the world's items/ directory. "
-            "Use this BEFORE calling stat_calc to add items to inventory.",
-        )
-
-        @tool(
-            "persist_new_item",
-            persist_new_item_description,
-            InventoryItem.model_json_schema(),
-        )
-        async def persist_new_item_tool(args: dict[str, Any]):
-            """Create a new item template in the world's items/ directory.
-
-            Items must be created here before they can be added to player inventory
-            via the stat_calculator sub-agent.
-            """
-            validated = InventoryItem(**args)
-
-            logger.info(f"📦 persist_new_item: {validated.item_id} ({validated.name})")
-
-            try:
-                # Check if item already exists
-                existing = ItemService.load_item_template(world_name, validated.item_id)
-                if existing:
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"**Error:** Item '{validated.item_id}' already exists.\n"
-                                f"Use the existing item or choose a different item_id.",
-                            }
-                        ],
-                        "is_error": True,
-                    }
-
-                # Save the new item template
-                ItemService.save_item_template(
-                    world_name,
-                    item_id=validated.item_id,
-                    name=validated.name,
-                    description=validated.description,
-                    properties=validated.properties,
-                )
-
-                logger.info(f"✅ Created item template: {validated.item_id} in {world_name}/items/")
-
-                response_text = (
-                    f"**Item Created:** {validated.name}\n"
-                    f"- ID: `{validated.item_id}`\n"
-                    f"- Location: `items/{validated.item_id}.yaml`"
-                )
-                if validated.description:
-                    response_text += f"\n- Description: {validated.description}"
-                if validated.properties:
-                    props_str = ", ".join(f"{k}: {v}" for k, v in validated.properties.items())
-                    response_text += f"\n- Properties: {props_str}"
-
-                response_text += "\n\nYou can now use stat_calculator to add this item to player inventory."
-
-                return {"content": [{"type": "text", "text": response_text}]}
-
-            except Exception as e:
-                logger.error(f"persist_new_item error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating item: {e}"}],
-                    "is_error": True,
-                }
-
-        tools.append(persist_new_item_tool)
-
-    # ==========================================================================
     # roll_the_dice tool - Random outcome for uncertain events
     # ==========================================================================
     if is_tool_enabled("roll_the_dice", default=True):
@@ -399,33 +201,193 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
         tools.append(roll_the_dice_tool)
 
     # ==========================================================================
-    # persist_stat_changes tool - For sub-agents to persist stat/inventory changes
+    # list_inventory tool - List player's inventory items
     # ==========================================================================
-    if is_tool_enabled("persist_stat_changes", default=True):
-        persist_stat_description = get_tool_description(
-            "persist_stat_changes",
+    if is_tool_enabled("list_inventory", default=True):
+        list_inventory_description = get_tool_description(
+            "list_inventory",
+            agent_name="Action Manager",
+            group_name=ctx.group_name,
+            default="List all items in the player's inventory. Returns item names, descriptions, and quantities.",
+        )
+
+        @tool(
+            "list_inventory",
+            list_inventory_description,
+            {"type": "object", "properties": {}, "required": []},  # No input required
+        )
+        async def list_inventory_tool(_args: dict[str, Any]):
+            """List all items in the player's inventory."""
+            logger.info("📦 list_inventory invoked")
+
+            try:
+                # Get resolved inventory from player facade
+                inventory = player_facade.get_inventory(resolved=True)
+
+                if not inventory:
+                    return {
+                        "content": [{"type": "text", "text": "**Inventory:** Empty"}],
+                    }
+
+                # Format inventory list
+                items_text = []
+                for item in inventory:
+                    name = item.get("name", "Unknown")
+                    quantity = item.get("quantity", 1)
+                    description = item.get("description", "")
+
+                    if quantity > 1:
+                        entry = f"- **{name}** x{quantity}"
+                    else:
+                        entry = f"- **{name}**"
+
+                    if description:
+                        # Truncate long descriptions
+                        desc_preview = description[:80]
+                        if len(description) > 80:
+                            desc_preview += "..."
+                        entry += f": {desc_preview}"
+
+                    items_text.append(entry)
+
+                response_text = f"**Inventory ({len(inventory)} items):**\n\n" + "\n".join(items_text)
+
+                return {"content": [{"type": "text", "text": response_text}]}
+
+            except Exception as e:
+                logger.error(f"list_inventory error: {e}", exc_info=True)
+                return {
+                    "content": [{"type": "text", "text": f"Error listing inventory: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(list_inventory_tool)
+
+    # ==========================================================================
+    # list_world_item tool - List all item templates in the world
+    # ==========================================================================
+    if is_tool_enabled("list_world_item", default=True):
+        list_world_item_description = get_tool_description(
+            "list_world_item",
+            agent_name="Action Manager",
+            group_name=ctx.group_name,
+            default="List all item templates available in the world. Supports keyword-based filtering.",
+        )
+
+        @tool(
+            "list_world_item",
+            list_world_item_description,
+            ListWorldItemInput.model_json_schema(),
+        )
+        async def list_world_item_tool(args: dict[str, Any]):
+            """List all item templates in the world, with optional keyword filtering."""
+            validated = ListWorldItemInput(**args)
+            keyword = validated.keyword
+
+            logger.info(f"📚 list_world_item invoked (keyword: '{keyword or 'none'}')")
+
+            try:
+                # Get all item templates from the world's items/ directory
+                all_items = ItemService.get_all_items_in_world(world_name)
+
+                if not all_items:
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "**World Items:** No items defined in this world's items/ directory.",
+                            }
+                        ],
+                    }
+
+                # Filter by keyword if provided
+                if keyword:
+                    filtered_items = []
+                    for item in all_items:
+                        name = item.get("name", "").lower()
+                        description = item.get("description", "").lower()
+                        item_id = item.get("id", "").lower()
+                        if keyword in name or keyword in description or keyword in item_id:
+                            filtered_items.append(item)
+                    items_to_show = filtered_items
+                    filter_note = f" matching '{keyword}'"
+                else:
+                    items_to_show = all_items
+                    filter_note = ""
+
+                if not items_to_show:
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"**World Items:** No items found{filter_note}.",
+                            }
+                        ],
+                    }
+
+                # Format items list
+                items_text = []
+                for item in items_to_show:
+                    item_id = item.get("id", "unknown")
+                    name = item.get("name", "Unknown")
+                    description = item.get("description", "")
+                    properties = item.get("default_properties", {})
+
+                    entry = f"- **{name}** (`{item_id}`)"
+                    if description:
+                        # Truncate long descriptions
+                        desc_preview = description[:100]
+                        if len(description) > 100:
+                            desc_preview += "..."
+                        entry += f"\n  {desc_preview}"
+                    if properties:
+                        props_str = ", ".join(f"{k}: {v}" for k, v in properties.items())
+                        entry += f"\n  Properties: {props_str}"
+
+                    items_text.append(entry)
+
+                response_text = (
+                    f"**World Items ({len(items_to_show)}{filter_note}):**\n\n"
+                    + "\n\n".join(items_text)
+                )
+
+                return {"content": [{"type": "text", "text": response_text}]}
+
+            except Exception as e:
+                logger.error(f"list_world_item error: {e}", exc_info=True)
+                return {
+                    "content": [{"type": "text", "text": f"Error listing world items: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(list_world_item_tool)
+
+    # ==========================================================================
+    # change_stat tool - For sub-agents to persist stat/inventory changes
+    # ==========================================================================
+    if is_tool_enabled("change_stat", default=True):
+        change_stat_description = get_tool_description(
+            "change_stat",
             agent_name="Stat Calculator",
             group_name=ctx.group_name,
             default="Apply stat and inventory changes to player state. Persists changes to filesystem and database.",
         )
 
         @tool(
-            "persist_stat_changes",
-            persist_stat_description,
-            PersistStatChangesInput.model_json_schema(),
+            "change_stat",
+            change_stat_description,
+            ChangeStatInput.model_json_schema(),
         )
-        async def persist_stat_changes_tool(args: dict[str, Any]):
+        async def change_stat_tool(args: dict[str, Any]):
             """Apply calculated stat and inventory changes to player state.
 
             Used by Stat Calculator sub-agent after calculating changes.
             Persists changes to filesystem (primary) and syncs to database.
             """
-            validated = PersistStatChangesInput(**args)
+            validated = ChangeStatInput(**args)
 
             logger.info(
-                f"📊 persist_stat_changes: {len(validated.stat_changes)} stats, "
-                f"{len(validated.inventory_changes)} inventory, "
-                f"{validated.time_advance_minutes}min time"
+                f"📊 change_stat: {len(validated.stat_changes)} stats, " f"{len(validated.inventory_changes)} inventory"
             )
 
             try:
@@ -457,7 +419,7 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                         if not existing_template:
                             logger.warning(
                                 f"⚠️ Item '{item_id}' not found in items/. "
-                                "Action Manager must create it with persist_new_item first."
+                                "Use Task with item_designer to create it first."
                             )
                             skipped_items.append({"item_id": item_id, "name": name})
                             continue
@@ -474,17 +436,6 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                         # Removing items doesn't require template to exist
                         await player_facade.remove_item(item_id, quantity)
                         logger.info(f"📦 Removed item: {name or item_id} (FS-first)")
-
-                # Advance time if requested
-                time_result = None
-                if validated.time_advance_minutes > 0:
-                    time_result = await player_facade.advance_time(validated.time_advance_minutes)
-                    if time_result:
-                        logger.info(
-                            f"⏰ Advanced time: +{validated.time_advance_minutes}min -> "
-                            f"{time_result.new_time['hour']:02d}:{time_result.new_time['minute']:02d} "
-                            f"Day {time_result.new_time['day']}"
-                        )
 
                 # Format response
                 response_text = f"**Changes Applied:**\n{validated.summary}"
@@ -509,25 +460,73 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 if skipped_items:
                     response_text += (
                         "\n\n**⚠️ Warning:** Some items were skipped because they don't exist "
-                        "in the world's items/ directory. Action Manager must create them "
-                        "with `persist_new_item` first."
-                    )
-                if time_result:
-                    response_text += (
-                        f"\n\n**Time Advanced:** +{validated.time_advance_minutes} minutes "
-                        f"→ {time_result.new_time['hour']:02d}:{time_result.new_time['minute']:02d} "
-                        f"Day {time_result.new_time['day']}"
+                        "in the world's items/ directory. Use Task with item_designer "
+                        "to create them first."
                     )
 
                 return {"content": [{"type": "text", "text": response_text}]}
 
             except Exception as e:
-                logger.error(f"persist_stat_changes error: {e}", exc_info=True)
+                logger.error(f"change_stat error: {e}", exc_info=True)
                 return {
                     "content": [{"type": "text", "text": f"Error applying changes: {e}"}],
                     "is_error": True,
                 }
 
-        tools.append(persist_stat_changes_tool)
+        tools.append(change_stat_tool)
+
+    # ==========================================================================
+    # advance_time tool - Advance in-game time
+    # ==========================================================================
+    if is_tool_enabled("advance_time", default=True):
+        advance_time_description = get_tool_description(
+            "advance_time",
+            agent_name="Action Manager",
+            group_name=ctx.group_name,
+            default="Advance in-game time. Use for travel, rest, or time-consuming activities.",
+        )
+
+        @tool(
+            "advance_time",
+            advance_time_description,
+            AdvanceTimeInput.model_json_schema(),
+        )
+        async def advance_time_tool(args: dict[str, Any]):
+            """Advance in-game time.
+
+            Used for travel, rest, waiting, or any time-consuming activity.
+            Updates world clock and returns new time state.
+            """
+            validated = AdvanceTimeInput(**args)
+
+            logger.info(f"⏰ advance_time: +{validated.minutes}min ({validated.reason})")
+
+            try:
+                time_result = await player_facade.advance_time(validated.minutes)
+
+                if time_result:
+                    new_time = time_result.new_time
+                    response_text = (
+                        f"**Time Advanced:** +{validated.minutes} minutes\n"
+                        f"- Reason: {validated.reason}\n"
+                        f"- New time: {new_time['hour']:02d}:{new_time['minute']:02d} "
+                        f"(Day {new_time['day']})"
+                    )
+                    logger.info(
+                        f"⏰ Time now: {new_time['hour']:02d}:{new_time['minute']:02d} " f"Day {new_time['day']}"
+                    )
+                else:
+                    response_text = f"**Time Advanced:** +{validated.minutes} minutes\n" f"- Reason: {validated.reason}"
+
+                return {"content": [{"type": "text", "text": response_text}]}
+
+            except Exception as e:
+                logger.error(f"advance_time error: {e}", exc_info=True)
+                return {
+                    "content": [{"type": "text", "text": f"Error advancing time: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(advance_time_tool)
 
     return tools

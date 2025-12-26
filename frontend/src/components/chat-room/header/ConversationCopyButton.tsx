@@ -53,8 +53,6 @@ export const ConversationCopyButton = ({ roomName, messages }: ConversationCopyB
         if (message.role === 'user') {
           if (message.participant_type === 'character' && message.participant_name) {
             sender = message.participant_name;
-          } else if (message.participant_type === 'situation_builder') {
-            sender = 'Situation Builder';
           } else {
             sender = 'User';
           }

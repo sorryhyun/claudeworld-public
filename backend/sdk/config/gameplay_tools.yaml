@@ -1,35 +1,11 @@
 # Gameplay Tools Configuration
-# This file defines tools specific to TRPG gameplay agents (Action Manager, Narrator)
-# and onboarding tools for world initialization.
+# This file defines tools specific to TRPG gameplay agents (Action Manager, Narrator).
 # Changes to this file apply immediately (hot-reloaded)
 #
-# NOTE: Input schemas are now defined in Pydantic models (gameplay_inputs.py, onboarding_inputs.py)
+# NOTE: Input schemas are defined in Pydantic models (gameplay_inputs.py)
 # and automatically generated via model_json_schema()
-
-# =============================================================================
-# ONBOARDING TOOLS (world initialization)
-# =============================================================================
-onboarding:
-  complete:
-    name: "mcp__onboarding__complete"
-    enabled: true
-    description: |
-      Complete the onboarding phase and transition the world to active.
-      Only Onboarding Manager should use this tool after gathering player preferences.
-
-      This tool:
-      1. Sets the world's genre, theme, and lore
-      2. Transitions the world phase from "onboarding" to "active"
-
-      Note: Stat system and initial location are created by World Seed Generator using structured output after this tool completes.
-    response: |
-      World initialized successfully.
-      Player: {player_name}
-      Genre: {genre}
-      Theme: {theme}
-      Phase: active
-
-      World Seed Generator will now design the stat system and starting location.
+#
+# For onboarding tools, see onboarding_tools.yaml
 
 # =============================================================================
 # ACTION MANAGER TOOLS (sub-agent invocation for TRPG gameplay)
@@ -117,28 +93,40 @@ action_manager:
     response: |
       {characters_list}
 
-  persist_new_item:
-    name: "mcp__action_manager__persist_new_item"
+  list_inventory:
+    name: "mcp__action_manager__list_inventory"
     enabled: true
     description: |
-      Create a new item template in the world's items/ directory.
-      Use this BEFORE calling stat_calc to add items to the player's inventory.
+      List all items in the player's inventory.
+      Returns item names, descriptions, and quantities.
+      Use this to check what items the player has before making decisions.
+    response: |
+      {inventory_list}
 
-      **Workflow:**
-      1. Call persist_new_item to define the item (creates items/[item_id].yaml)
-      2. Call Task with stat_calculator to add the item to player inventory
+  list_world_item:
+    name: "mcp__action_manager__list_world_item"
+    enabled: true
+    description: |
+      List all item templates available in this world's item dictionary.
+      Returns item IDs, names, descriptions, and properties.
+
+      **Use Cases:**
+      - Check what items exist before adding to player inventory
+      - Find specific items by keyword search
+      - Review available items for quest design or rewards
 
       **Parameters:**
-      - item_id: Unique identifier (snake_case, e.g., "rusty_sword", "health_potion")
-      - name: Display name (e.g., "Rusty Sword", "Health Potion")
-      - description: Item description (optional)
-      - properties: Item properties dict (e.g., damage: 5, durability: 50)
+      - keyword (optional): Filter items by name or description.
+        Leave empty to list all items in the world.
 
-      **Returns error if:**
-      - Item ID already exists (use existing item instead)
-      - Item ID contains invalid characters
+      **Returns:**
+      - Item ID (used for inventory operations)
+      - Name (display name)
+      - Description
+      - Default properties
     response: |
-      {persist_result}
+      {items_list}
+
 
   roll_the_dice:
     name: "mcp__action_manager__roll_the_dice"
@@ -156,7 +144,7 @@ action_manager:
 
       **Usage:**
       Call this tool when the player attempts something risky or uncertain.
-      Use the result to inform how you narrate the outcome and what stat changes to request from stat_calculator.
+      Use the result to inform how you narrate the outcome and what stat changes to apply via change_stat.
 
       No parameters required - just call to get a random result.
     response: |
@@ -186,7 +174,7 @@ action_manager:
       - Use purple prose or overwrite
       - Resolve situations too quickly
 
-      Call this AFTER resolving mechanics (stat changes via Task + stat_calculator, travel, etc.) to describe what happened.
+      Call this AFTER resolving mechanics (stat changes via change_stat, travel, etc.) to describe what happened.
     response: |
       ✓ Narrative message created and displayed to player.
 
@@ -207,44 +195,52 @@ action_manager:
       1. {action_1}
       2. {action_2}
 
-  # ===========================================================================
-  # PERSISTENCE TOOLS (used by sub-agents to persist their designs)
-  # These tools are exposed via the action_manager MCP server
-  # ===========================================================================
-
-  persist_character_design:
-    name: "mcp__action_manager__persist_character_design"
-    enabled: true
-    description: |
-      Persist a character design to the game world.
-      Used by Character Designer sub-agent after designing a character.
-      Creates the character in filesystem and database.
-    response: |
-      {persist_result}
-
-  persist_location_design:
-    name: "mcp__action_manager__persist_location_design"
-    enabled: true
-    description: |
-      Persist a location design to the game world.
-      Used by Location Designer sub-agent after designing a location.
-      Creates the location in filesystem and database.
-    response: |
-      {persist_result}
-
-  persist_stat_changes:
-    name: "mcp__action_manager__persist_stat_changes"
+  change_stat:
+    name: "mcp__action_manager__change_stat"
     enabled: true
     description: |
       Apply stat and inventory changes to player state.
-      Used by Stat Calculator sub-agent after calculating changes.
+      Used directly by Action Manager after determining mechanical effects.
       Persists changes to filesystem and syncs to database.
+
+      **Parameters:**
+      - summary: Brief explanation of what happened mechanically
+      - stat_changes: List of {{stat_name, delta}} objects for stat modifications
+      - inventory_changes: List of {{action, item_id, name, quantity}} for inventory
 
       **IMPORTANT: Item Handling**
       - Items can ONLY be added if they already exist in the world's items/ directory.
-      - Action Manager must create new item templates using `persist_new_item` BEFORE
-        calling stat_calculator to add items to inventory.
+      - Use Task with item_designer to create new items BEFORE adding to inventory.
       - If an item doesn't exist, it will be SKIPPED and reported in the response.
       - Removing items always works (no template required).
+
+      **Note:** For time advancement, use `advance_time` tool separately.
     response: |
       {persist_result}
+
+  advance_time:
+    name: "mcp__action_manager__advance_time"
+    enabled: true
+    description: |
+      Advance in-game time. Use this when actions take significant time:
+      - Travel between locations
+      - Resting, sleeping, waiting
+      - Long activities (crafting, studying, training)
+      - Passage of time during scenes
+
+      **Parameters:**
+      - minutes: Amount of time to advance (required, minimum 1)
+      - reason: Brief explanation of why time passes (e.g., "travel to market", "rest at inn")
+
+      **Effects:**
+      - Updates world clock (hour, minute, day)
+      - May trigger time-based events (day/night cycle, NPC schedules)
+      - Returns new time state for narration
+    response: |
+      {time_result}
+
+# =============================================================================
+# SUBAGENT TOOLS
+# =============================================================================
+# Subagent tools (persist_character_design, persist_location_design, persist_item)
+# are now defined in subagent_tools.yaml for better separation of concerns.

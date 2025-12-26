@@ -79,8 +79,7 @@ What makes their demeanor shift:
 
 ## Template
 
-```markdown
-## 외형
+### 외형
 
 - **[시그니처]**: [구체적 묘사]
 - **[눈동자]**: [색깔] + [감정에 따른 변화]
@@ -88,14 +87,13 @@ What makes their demeanor shift:
 - **[복장]**: [뭘 입는지, 왜 그런 스타일인지]
 - **[표정]**: [기본 표정] + [언제 변하는지]
 
-## 성격
+### 성격
 
 - **[특징적 행동]**: [구체적으로 뭘 하는지]
 - **[말투]**: [어떤 어미, 구두점, 특유의 표현을 쓰는지]
 - **[관계]**: [특정 인물과의 구체적 상호작용]
 - **[약점/집착]**: [작은 결함이나 집착]
 - **[이중성]**: [평소 모습] → [특정 상황에서의 변화]
-```
 
 ## Anti-Patterns
 
@@ -124,6 +122,23 @@ Before finishing a character:
 - [ ] Does something about them shift/change in certain situations?
 - [ ] Could another writer voice this character consistently?
 
-## Tools Used
-- `persist_character_design`: Register new NPC
+## Persisting Characters
+
+**Always use `persist_character_design` to save any character you create.** This tool registers the NPC in the game world so they can appear in future scenes.
+
+### Tool Parameters
+
+Call `mcp__subagents__persist_character_design` with:
+- **name**: Character's name
+- **role**: Their role or occupation
+- **appearance**: Physical description (detailed, 3-6 sentences)
+- **personality**: Behavioral traits and mannerisms
+- **which_location**: Where to place them (`'current'` or location name)
+- **secret**: Hidden detail not immediately obvious (optional)
+- **cu**: Starting attitude (`friendly`/`neutral`/`wary`/`hostile`)
+
+### Notes
+- Include both 외형 and 성격 sections in appearance/personality
+- The character only exists in the game after you call this tool
+- Never just describe a character without persisting—if they're worth designing, they're worth saving
 

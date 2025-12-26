@@ -12,47 +12,30 @@ conversation_context:
   # Recall tool reminder (only shown when MEMORY_BY=RECALL)
   recall_reminder: ""
 
-  # <remind> Avoid snap judgements on the conversation before reading guidelines. </remind> Start thinking by <antml:thinking> {user_name:이가} 말을 건 상황. {agent_name:은는} 어떻게 생각할까?
-  response_instruction_onboarding_en:  |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> Newcomer is here. How does {agent_name} think?
+  # Response instructions for Onboarding Manager
+  response_OM:
+    en: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> Newcomer is here. How does {agent_name} think?
+    ko: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 손님이 말을 건 상황. {agent_name:은는} 어떻게 생각할까요?
+    jp: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> お客さんが話しかけました。{agent_name} はどう考えるでしょうか。
 
-  response_instruction_onboarding_ko: |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 손님이 말을 건 상황. {agent_name:은는} 어떻게 생각할까요?
+  # Response instructions for regular agents (chat mode)
+  response_agent:
+    en: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name} spoke. How does {agent_name} think?
+    ko: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name:이가} 말을 건 상황. {agent_name:은는} 어떻게 생각할까?
+    jp: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name} が話しかけました。{agent_name} はどう考えるでしょうか。
 
-  response_instruction_onboarding_jp: |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> お客さんが話しかけました。{agent_name} はどう考えるでしょうか。
+  # Response instructions for Action Manager (gameplay)
+  response_AM:
+    en: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> Let me describe natural reactions.
+    ko: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 이제 무슨 일이 벌어질까요?
+    jp: |
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> これから何が起こるのでしょう。
 
-  response_instruction_with_user_active:  |
-    To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name:이가} 말을 건 상황. {agent_name:은는} 어떻게 생각할까?
-
-  response_instruction_with_agent_active: |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
-
-  response_instruction_with_multi_agent_active: |
-    To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
-
-  response_instruction_game_en: |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> Let me describe natural reactions.
-
-  response_instruction_game_ko: |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 이제 무슨 일이 벌어질까요?
-  response_instruction_game_jp: |
-    To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> これから何が起こるのでしょう。
-
-# Situation Builder Note Configuration
-situation_builder:
-  enabled: true
-  template: |
-    <situation_builder_note> **Understanding "Situation Builder" Messages:**
-    When the message by "Situation Builder" is given, these can represent:
-    - Hypothetical/fictional scenarios ("what if" stories)
-    - Past scenes or memories being recalled
-    - Situational context being established
-
-    React to these messages authentically based on what makes sense for you and the scenario being presented.
-
-    **IMPORTANT - Responding to Situation Builder:**
-    When multiple characters respond to a Situation Builder message, ALL characters reply at once. Keep your response minimal:
-    - Maximum 1 physical action/gesture
-    - A few lines of dialogue or thoughts
-    - Do NOT proceed the scene forward extensively—just establish your initial reaction. </situation_builder_note>

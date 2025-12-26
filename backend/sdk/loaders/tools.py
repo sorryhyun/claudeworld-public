@@ -21,7 +21,6 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 from .yaml_loaders import (
-    get_conversation_context_config,
     get_group_config,
     get_guidelines_config,
     get_tools_config,
@@ -82,7 +81,6 @@ def get_tool_description(
     tool_name: str,
     agent_name: str = "",
     config_sections: str = "",
-    situation_builder_note: str = "",
     memory_subtitles: str = "",
     group_name: Optional[str] = None,
     default: Optional[str] = None,
@@ -94,7 +92,6 @@ def get_tool_description(
         tool_name: Name of the tool (skip, memorize, recall, read, complete, etc.)
         agent_name: Agent name to substitute in templates
         config_sections: Configuration sections for the configuration tool
-        situation_builder_note: Situation builder note to include
         memory_subtitles: Available memory subtitles for the recall tool
         group_name: Optional agent group name to apply group-specific overrides
         default: Default description if tool not found in configuration
@@ -110,7 +107,7 @@ def get_tool_description(
         template = guidelines_config.get(active_version, {}).get("template", "")
 
         # Substitute template variables
-        description = template.format(agent_name=agent_name, situation_builder_note=situation_builder_note)
+        description = template.format(agent_name=agent_name)
         return description
 
     # For other tools, load from tools.yaml (with optional group overrides)
@@ -137,7 +134,6 @@ def get_tool_description(
     description = description.format(
         agent_name=agent_name,
         config_sections=config_sections,
-        situation_builder_note=situation_builder_note,
         memory_subtitles=memory_subtitles,
     )
 
@@ -249,32 +245,6 @@ def get_tool_response(tool_name: str, group_name: Optional[str] = None, **kwargs
     except KeyError as e:
         logger.warning(f"Missing variable in tool response template: {e}")
         return response_template
-
-
-def get_situation_builder_note(has_situation_builder: bool) -> str:
-    """
-    Get the situation builder note if enabled and needed.
-
-    Args:
-        has_situation_builder: Whether the room has a situation builder agent
-
-    Returns:
-        Situation builder note string or empty string
-    """
-    if not has_situation_builder:
-        return ""
-
-    context_config = get_conversation_context_config()
-
-    if "situation_builder" not in context_config:
-        return ""
-
-    sb_config = context_config["situation_builder"]
-
-    if not sb_config.get("enabled", False):
-        return ""
-
-    return sb_config.get("template", "")
 
 
 def is_tool_enabled(tool_name: str, default: bool = False) -> bool:

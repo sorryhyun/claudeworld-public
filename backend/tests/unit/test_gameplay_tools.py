@@ -206,6 +206,7 @@ class TestLocationToolsCreation:
 class TestActionManagerMCPServer:
     """Tests for action manager MCP server creation."""
 
+    @patch("sdk.tools.gameplay_tools.create_narrative_tools")
     @patch("sdk.tools.gameplay_tools.create_mechanics_tools")
     @patch("sdk.tools.gameplay_tools.create_location_tools")
     @patch("sdk.tools.gameplay_tools.create_character_tools")
@@ -216,6 +217,7 @@ class TestActionManagerMCPServer:
         mock_create_char,
         mock_create_loc,
         mock_create_mech,
+        mock_create_narr,
     ):
         """Test creating action manager MCP server."""
         from sdk.tools.gameplay_tools import create_action_manager_mcp_server
@@ -223,6 +225,7 @@ class TestActionManagerMCPServer:
         mock_create_char.return_value = [MagicMock(name="add_character")]
         mock_create_loc.return_value = [MagicMock(name="travel")]
         mock_create_mech.return_value = [MagicMock(name="stat_calc")]
+        mock_create_narr.return_value = [MagicMock(name="narration"), MagicMock(name="suggest_options")]
         mock_create_mcp.return_value = MagicMock()
 
         ctx = ToolContext(
@@ -239,9 +242,10 @@ class TestActionManagerMCPServer:
         mock_create_char.assert_called_once_with(ctx)
         mock_create_loc.assert_called_once_with(ctx)
         mock_create_mech.assert_called_once_with(ctx)
+        mock_create_narr.assert_called_once_with(ctx)
 
         # MCP server should be created with all tools combined
         mock_create_mcp.assert_called_once()
         call_args = mock_create_mcp.call_args
         assert call_args.kwargs["name"] == "action_manager"
-        assert len(call_args.kwargs["tools"]) == 3
+        assert len(call_args.kwargs["tools"]) == 5  # char(1) + loc(1) + mech(1) + narr(2)

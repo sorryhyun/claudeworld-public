@@ -3,7 +3,6 @@ CRUD operations for Room entities.
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import List, Optional
 
 import models
@@ -41,8 +40,7 @@ async def create_room(
 
 async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary]:
     """
-    Get all rooms with unread status computed and sorted by recency.
-    Rooms with unread messages appear first, sorted by last_activity_at descending.
+    Get all rooms sorted by recency (last_activity_at descending).
     """
     query = select(models.Room).order_by(models.Room.last_activity_at.desc())
 
@@ -53,26 +51,9 @@ async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary
     result = await db.execute(query)
     rooms = result.scalars().all()
 
-    # Convert to RoomSummary with has_unread computed
+    # Convert to RoomSummary
     room_summaries = []
     for room in rooms:
-        # Compute has_unread: True if last_activity_at > last_read_at (or last_read_at is None)
-        has_unread = False
-        if room.last_activity_at:
-            if room.last_read_at is None:
-                # Never read, but has activity
-                has_unread = True
-            else:
-                # Compare timestamps
-                has_unread = room.last_activity_at > room.last_read_at
-
-        # Debug logging
-        if has_unread:
-            logger.info(
-                f"[get_rooms] Room {room.id} ({room.name}) has_unread=True | activity={room.last_activity_at} > read={room.last_read_at}"
-            )
-
-        # Create RoomSummary with computed has_unread field
         room_summary = schemas.RoomSummary(
             id=room.id,
             name=room.name,
@@ -82,13 +63,8 @@ async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary
             is_finished=bool(room.is_finished),
             created_at=room.created_at,
             last_activity_at=room.last_activity_at,
-            last_read_at=room.last_read_at,
-            has_unread=has_unread,
         )
         room_summaries.append(room_summary)
-
-    # Sort: unread rooms first, then by last_activity_at descending
-    room_summaries.sort(key=lambda r: (not r.has_unread, -(r.last_activity_at or r.created_at).timestamp()))
 
     return room_summaries
 
@@ -152,25 +128,6 @@ async def mark_room_as_finished(db: AsyncSession, room_id: int) -> Optional[mode
     cache = get_cache()
     cache.invalidate(room_object_key(room_id))
 
-    await db.refresh(room)
-    return room
-
-
-@retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2)
-async def mark_room_as_read(db: AsyncSession, room_id: int) -> Optional[models.Room]:
-    """
-    Mark a room as read by updating last_read_at to current time.
-    This is used to track which rooms have unread messages.
-    """
-    result = await db.execute(select(models.Room).where(models.Room.id == room_id))
-    room = result.scalar_one_or_none()
-
-    if not room:
-        return None
-
-    room.last_read_at = datetime.now(timezone.utc)
-    async with serialized_write():
-        await db.commit()
     await db.refresh(room)
     return room
 

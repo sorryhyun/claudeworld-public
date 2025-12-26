@@ -18,6 +18,21 @@ from services.world_service import WorldService
 logger = logging.getLogger("ItemService")
 
 
+def _literal_str_representer(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+    """Represent multi-line strings using literal block style (|)."""
+    if "\n" in data:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+# Create a custom dumper with literal string support
+class _LiteralDumper(yaml.SafeDumper):
+    pass
+
+
+_LiteralDumper.add_representer(str, _literal_str_representer)
+
+
 @dataclass
 class CachedItemTemplates:
     """Cache entry with directory mtime for invalidation."""
@@ -101,7 +116,7 @@ class ItemService:
         }
 
         with open(item_file, "w", encoding="utf-8") as f:
-            yaml.dump(template, f, allow_unicode=True, default_flow_style=False)
+            yaml.dump(template, f, Dumper=_LiteralDumper, allow_unicode=True, default_flow_style=False)
 
         # Invalidate cache
         if world_name in _item_templates_cache:

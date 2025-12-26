@@ -81,7 +81,7 @@ backend/
 - Multi-agent orchestration with Claude SDK
 - Filesystem-primary config with hot-reloading
 - In-memory caching (70-90% performance improvement)
-- Sub-agent invocation via SDK Task tool pattern
+- Sub-agent invocation via Claude Agent SDK native Task tool
 - Chat mode for free-form NPC conversations
 
 **For detailed backend documentation**, see [backend/README.md](backend/README.md) which includes:
@@ -111,7 +111,7 @@ backend/
 
 ## Game System
 
-Eight specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (1-agent tape with SDK Task-based sub-agents).
+Seven specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (1-agent tape where Action Manager coordinates sub-agents via SDK Task tool and handles narration directly).
 
 **See [how_it_works.md](how_it_works.md) for detailed architecture:** agent roles, turn flow diagrams, sub-agent invocation, data storage, and API endpoints.
 
@@ -143,11 +143,9 @@ ClaudeWorld uses **on-demand memory retrieval** via the `recall` tool:
 - **On-demand memory retrieval** - Agents actively call the `recall` tool to fetch specific memories
 - **Lower baseline token cost** - Only memory subtitles are shown in context, full content loaded on request
 - **Agent-controlled** - Agents decide when and which memories to retrieve
-- **Memory files:** `consolidated_memory.md` (default) or `long_term_memory.md`
+- **Memory file:** `consolidated_memory.md`
 - **Format:** Memories organized with `## [subtitle]` headers
 - **Context injection:** Memory subtitles list shown in `<long_term_memory_index>`
-
-**Configuration:** Set `RECALL_MEMORY_FILE` in `.env` to choose between `consolidated_memory` (default) or `long_term_memory`.
 
 ### Filesystem-Primary Architecture
 
@@ -170,13 +168,13 @@ Tool descriptions and debug settings are configured via YAML files in `backend/s
 - Changes apply immediately (no restart required)
 
 **`gameplay_tools.yaml`** - Gameplay phase tools
-- Action Manager tools: `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`
-- Sub-agent persist tools: `persist_stat_changes`, `persist_character_design`, `persist_location_design`
-- Sub-agents invoked via SDK Task tool (stat_calculator, character_designer, location_designer)
+- Action Manager tools: `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`, `change_stat`
+- Sub-agent persist tools: `persist_item`, `persist_character_design`, `persist_location_design`
+- Sub-agents (item_designer, character_designer, location_designer) invoked via SDK native Task tool with AgentDefinitions
 
 **`onboarding_tools.yaml`** - Onboarding phase tools
-- `complete` tool for World_Seed_Generator invocation
-- Interview completion tools
+- `complete` tool for completing onboarding
+- World generation tools (stats, locations, inventory)
 
 ### Group-Specific Tool Overrides
 
@@ -368,10 +366,7 @@ This creates `dist/ClaudeWorld.exe` with:
 **Optional:**
 - `USER_NAME` - Display name for user messages in chat (default: "User")
 - `DEBUG_AGENTS` - Set to "true" for verbose agent logging
-- `RECALL_MEMORY_FILE` - Memory file for recall mode: `consolidated_memory` (default) or `long_term_memory`
-- `READ_GUIDELINE_BY` - Guideline delivery mode: `active_tool` (default) or `description`
-- `SAMPLE_SYSTEM_PROMPT` - Set to "true" to use sampled system prompts from guidelines_sep.yaml (experimental)
-- `USE_HAIKU` - Set to "true" to use Haiku model instead of Opus (default: false)
+- `USE_SONNET` - Set to "true" to use Sonnet model instead of Opus (default: false)
 - `PRIORITY_AGENTS` - Comma-separated agent names for priority responding
 - `MAX_CONCURRENT_ROOMS` - Max rooms for background scheduler (default: 5)
 - `ENABLE_GUEST_LOGIN` - Enable/disable guest login (default: true)
@@ -423,7 +418,7 @@ ClaudeWorld supports both SQLite and PostgreSQL:
 
 **Update agent:** Edit `.md` files directly (changes apply immediately)
 
-**Update system agent:** Edit files in `agents/group_onboarding/{agent_name}/` or `agents/group_gameplay/{agent_name}/` (changes apply immediately)
+**Update system agent:** Edit files in `agents/group_gameplay/{agent_name}/` or `agents/group_subagent/{agent_name}/` (changes apply immediately)
 
 **Update system prompt:** Edit `system_prompt` section in `backend/sdk/config/guidelines_3rd.yaml` (changes apply immediately)
 
@@ -466,7 +461,7 @@ Or use the script directly:
 
 **Features:**
 - Authenticates and creates rooms via API
-- Sends scenarios as `situation_builder` participant type
+- Sends scenarios as user messages
 - Polls for messages and saves formatted transcripts
 - Auto-detects conversation completion
 - Supports custom room names, max interactions, and output files

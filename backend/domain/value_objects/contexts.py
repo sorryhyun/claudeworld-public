@@ -113,7 +113,6 @@ class AgentResponseContext:
         conversation_history: Optional recent conversation context for multi-agent rooms
         task_id: Optional unique identifier for tracking this task (for interruption)
         conversation_started: Optional timestamp when the conversation started
-        has_situation_builder: Whether the room has a situation builder participant
         image: Optional image attachment for multimodal messages
         output_format: Optional structured output format (e.g., {"type": "json_schema", "schema": ...})
         world_name: Optional world name for TRPG mode (used by WorldSeedManager)
@@ -132,7 +131,6 @@ class AgentResponseContext:
     conversation_history: Optional[str] = None
     task_id: Optional[TaskIdentifier] = None
     conversation_started: Optional[str] = None
-    has_situation_builder: bool = False
     image: Optional[ImageAttachment] = None
     output_format: Optional[dict] = None
     world_name: Optional[str] = None

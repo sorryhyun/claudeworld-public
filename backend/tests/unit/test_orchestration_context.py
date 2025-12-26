@@ -160,25 +160,6 @@ class TestBuildConversationContext:
         assert "Charlie: Hello from character!" in context
 
     @patch("orchestration.context.get_conversation_context_config")
-    def test_build_context_with_situation_builder(self, mock_get_config):
-        """Test building context with situation_builder participant."""
-        mock_get_config.return_value = {"conversation_context": {"header": "", "footer": ""}}
-
-        msg = Mock(
-            role="user",
-            content="Scenario description",
-            participant_type="situation_builder",
-            participant_name=None,
-            agent_id=None,
-            image_data=None,
-        )
-
-        context = build_conversation_context([msg])
-
-        # Should use "Situation Builder" as speaker
-        assert "Situation Builder: Scenario description" in context
-
-    @patch("orchestration.context.get_conversation_context_config")
     @patch("orchestration.context.format_with_particles")
     def test_build_context_one_on_one_with_user_instruction(self, mock_format_particles, mock_get_config):
         """Test 1-on-1 conversation instruction with user."""
@@ -186,7 +167,11 @@ class TestBuildConversationContext:
             "conversation_context": {
                 "header": "",
                 "footer": "",
-                "response_instruction_with_user_active": "Respond to {user_name}.",
+                "response_agent": {
+                    "en": "Respond to {user_name}.",
+                    "ko": "Respond to {user_name}.",
+                    "jp": "Respond to {user_name}.",
+                },
             }
         }
         mock_format_particles.return_value = "Respond to TestUser."
@@ -197,7 +182,7 @@ class TestBuildConversationContext:
 
         context = build_conversation_context([msg], agent_name="Alice", agent_count=1, user_name="TestUser")
 
-        # Should use 1-on-1 instruction template
+        # Should use response_agent instruction template
         mock_format_particles.assert_called_once()
         assert "Respond to TestUser." in context
 
@@ -209,7 +194,11 @@ class TestBuildConversationContext:
             "conversation_context": {
                 "header": "",
                 "footer": "",
-                "response_instruction_with_multi_agent_active": "Respond as {agent_name}.",
+                "response_agent": {
+                    "en": "Respond as {agent_name}.",
+                    "ko": "Respond as {agent_name}.",
+                    "jp": "Respond as {agent_name}.",
+                },
             }
         }
         mock_format_particles.return_value = "Respond as Alice."
@@ -229,7 +218,7 @@ class TestBuildConversationContext:
             agent_count=3,  # Multiple agents
         )
 
-        # Should use multi-agent instruction template
+        # Should use response_agent instruction template
         mock_format_particles.assert_called_once()
         assert "Respond as Alice." in context
 

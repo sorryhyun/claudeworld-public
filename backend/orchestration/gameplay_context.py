@@ -14,7 +14,6 @@ from typing import Optional
 
 from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config
-from services.agent_filesystem_service import AgentFilesystemService
 from services.location_service import LocationService
 from services.player_service import PlayerService
 from services.world_service import WorldService
@@ -33,10 +32,8 @@ class ActionManagerContext:
     location_description: str
     adjacent_locations: list[str]
     player_stats: dict[str, int]
-    player_inventory: list[dict]
-    # World history and characters
+    # World history (characters and inventory available via tools)
     world_history: str = ""  # Content from world-level history.md
-    present_npcs: list[str] = field(default_factory=list)  # Character agents at this location (excludes system agents)
     # In-game time
     game_time: dict[str, int] = field(default_factory=lambda: {"hour": 8, "minute": 0, "day": 1})
 
@@ -87,19 +84,13 @@ class GameplayContextBuilder:
                     self.world_name, self._player_state.current_location
                 )
 
-    def build_action_manager_context(
-        self,
-        present_npcs: Optional[list[str]] = None,
-    ) -> ActionManagerContext:
+    def build_action_manager_context(self) -> ActionManagerContext:
         """
         Build context for Action Manager.
 
-        Args:
-            present_npcs: Optional list of NPC names. If not provided,
-                         loads from world's agents folder.
-
         Returns:
-            ActionManagerContext with lore and current location info
+            ActionManagerContext with lore, location, and player stats.
+            Characters and inventory are available via list_characters/list_inventory tools.
         """
         self._ensure_loaded()
 
@@ -118,12 +109,10 @@ class GameplayContextBuilder:
         world_history = WorldService.load_history(self.world_name)
 
         player_stats = {}
-        player_inventory = []
         game_time = {"hour": 8, "minute": 0, "day": 1}
 
         if self._player_state:
             player_stats = self._player_state.stats or {}
-            player_inventory = self._player_state.inventory or []
             game_time = self._player_state.game_time or {"hour": 8, "minute": 0, "day": 1}
 
         # Get user_name from world config, with fallback
@@ -137,12 +126,6 @@ class GameplayContextBuilder:
         else:
             user_name = "The traveler"
 
-        # Load NPCs from world's agents folder if not provided
-        if present_npcs is None:
-            # Get agent folder names and convert to display names
-            agent_folders = AgentFilesystemService.list_world_agents(self.world_name)
-            present_npcs = [name.replace("_", " ") for name in agent_folders]
-
         return ActionManagerContext(
             lore=self._lore or "",
             user_name=user_name,
@@ -151,9 +134,7 @@ class GameplayContextBuilder:
             location_description=location_description,
             adjacent_locations=adjacent_locations,
             player_stats=player_stats,
-            player_inventory=player_inventory,
             world_history=world_history,
-            present_npcs=present_npcs,
             game_time=game_time,
         )
 
@@ -209,30 +190,12 @@ class GameplayContextBuilder:
             parts.append(f"Adjacent locations: {', '.join(context.adjacent_locations)}")
         parts.append("")
 
-        # Characters present at location
-        if context.present_npcs:
-            parts.append("# Characters Present in the world")
+        # Player stats (inventory and characters available via list_inventory/list_characters tools)
+        if context.player_stats:
+            parts.append("# Player Stats")
             parts.append("")
-            for npc_name in context.present_npcs:
-                parts.append(f"- {npc_name}")
-            parts.append("")
-        # Player state
-        if context.player_stats or context.player_inventory:
-            parts.append("# Player State")
-            parts.append("")
-            if context.player_stats:
-                for stat_name, stat_value in context.player_stats.items():
-                    parts.append(f"- {stat_name}: {stat_value}")
-            if context.player_inventory:
-                parts.append("")
-                parts.append("**Inventory:**")
-                for item in context.player_inventory:
-                    item_name = item.get("name", "Unknown")
-                    item_desc = item.get("description", "")
-                    if item_desc:
-                        parts.append(f"- {item_name}: {item_desc}")
-                    else:
-                        parts.append(f"- {item_name}")
+            for stat_name, stat_value in context.player_stats.items():
+                parts.append(f"- {stat_name}: {stat_value}")
             parts.append("")
 
         return "\n".join(parts)
@@ -284,12 +247,13 @@ class GameplayContextBuilder:
         # Determine language from world config
         world_lang = self._world_config.language if self._world_config else None
         if world_lang == "jp":
-            instruction_key = "response_instruction_game_jp"
+            lang_key = "jp"
         elif world_lang == "ko":
-            instruction_key = "response_instruction_game_ko"
+            lang_key = "ko"
         else:
-            instruction_key = "response_instruction_game_en"
-        instruction = config.get(instruction_key, "")
+            lang_key = "en"
+        response_am = config.get("response_AM", {})
+        instruction = response_am.get(lang_key, "")
 
         # Format and prefix the response instruction
         if instruction and agent_name:

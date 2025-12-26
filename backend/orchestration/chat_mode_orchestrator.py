@@ -70,7 +70,9 @@ def create_chat_mode_tape(npcs: List[models.Agent]) -> Optional[TurnTape]:
             )
         )
 
-    logger.info(f"Created chat mode tape: {len(regular_agents)} regular NPCs (sequential), {len(interrupt_agents)} interrupt NPCs")
+    logger.info(
+        f"Created chat mode tape: {len(regular_agents)} regular NPCs (sequential), {len(interrupt_agents)} interrupt NPCs"
+    )
     return tape
 
 

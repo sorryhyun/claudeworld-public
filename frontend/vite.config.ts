@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      host: '0.0.0.0', // Allow access from Windows host in WSL2
+      host: 'localhost',
       port: 5173,
     },
     build: {

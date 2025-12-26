@@ -228,7 +228,6 @@ class AgentManager:
                     "recent_events": context.config.recent_events,
                 },
                 options=options,
-                has_situation_builder=context.has_situation_builder,
             )
 
             # Send the message via query() - this is the correct SDK pattern

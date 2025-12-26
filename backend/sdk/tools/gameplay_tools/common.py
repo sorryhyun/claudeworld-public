@@ -25,7 +25,7 @@ def build_action_context(world_name: str, player_action: str) -> ActionContext:
 
     return ActionContext(
         player_action=player_action,
-        current_location=state.current_location if state else "unknown",
+        current_location=state.current_location if state and state.current_location else "unknown",
         current_stats=state.stats if state else {},
         current_inventory=state.inventory if state else [],
         world_genre=config.genre if config else None,

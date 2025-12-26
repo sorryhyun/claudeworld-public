@@ -22,9 +22,9 @@ from services.world_service import WorldService
 
 from sdk.config.gameplay_inputs import (
     ListLocationsInput,
-    PersistLocationDesignInput,
     TravelInput,
 )
+from sdk.config.subagent_inputs import PersistLocationDesignInput
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -455,7 +455,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                         description=validated.description,
                         position=(validated.position_x, validated.position_y),
                         adjacent_hints=adjacent_hints,
-                        is_starting=False,
+                        is_starting=validated.is_starting,
                     )
 
                     # Connect to adjacent locations in DB
@@ -466,11 +466,36 @@ def create_location_tools(ctx: ToolContext) -> list:
                                 await crud.add_adjacent_location(db, new_location_id, adj_loc.id)
                                 await crud.add_adjacent_location(db, adj_loc.id, new_location_id)
 
+                    # If this is the starting location, set player's current_location
+                    if validated.is_starting:
+                        from services.world_reset_service import WorldResetService
+
+                        # Update player state
+                        fs_state = PlayerService.load_player_state(world_name)
+                        if fs_state:
+                            fs_state.current_location = validated.name
+                            PlayerService.save_player_state(world_name, fs_state)
+                            logger.info(f"Set starting location: {validated.name}")
+
+                        # Update initial state for world reset
+                        try:
+                            initial_state = WorldResetService.load_initial_state(world_name)
+                            if initial_state:
+                                initial_state.starting_location = validated.name
+                                WorldResetService.save_initial_state(world_name, initial_state)
+                                logger.info("Updated initial state with starting location")
+                        except Exception as reset_err:
+                            logger.warning(f"Failed to update initial state: {reset_err}")
+
+                        # Set current location in DB
+                        await crud.set_current_location(db, world_id, new_location_id)
+
                     logger.info(f"Created location: {validated.display_name} (id={new_location_id})")
 
                     response_text = f"""**Location Created:**
 - Name: {validated.display_name}
 - Position: ({validated.position_x}, {validated.position_y})
+- Is Starting: {validated.is_starting}
 - Description: {validated.description[:200]}..."""
 
                     return {"content": [{"type": "text", "text": response_text}]}

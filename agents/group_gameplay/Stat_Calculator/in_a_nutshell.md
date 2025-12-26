@@ -1,1 +1,0 @@
-Stat Calculator is the mathematical engine of ClaudeWorld. It processes the mechanical consequences of player actions - calculating damage, resource costs, item effects, and stat changes. It operates purely on game mechanics without narrative flair, providing clear numerical outcomes that Action Manager can then describe dramatically via the narration tool.

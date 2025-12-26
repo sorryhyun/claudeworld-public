@@ -171,16 +171,14 @@ ClaudeWorldは、複数のAIエージェントが協力してゲームを運営�
 
 新しいワールドを作成する際、2フェーズのオンボーディングプロセスが行われます：
 
-**フェーズ1：インタビュー（Onboarding_Manager）**
+**Onboarding_Manager：**
 - プレイヤーが望むジャンル、テーマ、雰囲気を把握します
 - キャラクターと世界設定に関する具体的なリクエストを収集します
-- 十分な情報が集まったら`complete`ツールを呼び出します
-
-**フェーズ2：ワールド生成（World_Seed_Generator）**
 - ステータスシステムを設計します（HP、マナなどのmin/max/default値）
 - 開始地点を作成します（詳細な説明付き）
 - 初期インベントリを設定します
 - 他のエージェントのためのワールドノートを作成します
+- 完了したら`complete`ツールを呼び出します
 
 ### 1エージェントテープシステム
 
@@ -189,7 +187,8 @@ ClaudeWorldは、複数のAIエージェントが協力してゲームを運営�
 ```
 プレイヤーの行動 → Action Manager（非表示）
                     │
-                    ├── Task(stat_calculator)     → ステータス/インベントリの計算
+                    ├── change_stat()             → ステータス/インベントリの変更
+                    ├── Task(item_designer)       → アイテムテンプレートの作成
                     ├── Task(character_designer)  → NPCの作成
                     ├── Task(location_designer)   → 場所の作成
                     ├── narration()               → 結果の描写
@@ -209,9 +208,11 @@ Action ManagerはSDK Taskツールを介して専門のサブエージェント�
 
 | サブエージェント | Persistツール | 役割 |
 |-----------------|---------------|------|
-| `stat_calculator` | `persist_stat_changes` | ステータス/インベントリの変化を計算・保存 |
+| `item_designer` | `persist_item` | アイテムテンプレートの設計・保存 |
 | `character_designer` | `persist_character_design` | 新しいNPCを作成・保存 |
 | `location_designer` | `persist_location_design` | 新しい場所を作成・保存 |
+
+注意: `change_stat`はAction Managerが直接使用します（サブエージェントなし）。
 
 各サブエージェントはpersistツールを使用して、結果をファイルシステムに直接保存します。
 

@@ -4,13 +4,16 @@ TRPG-specific tape generator for turn-based gameplay.
 Unlike chat mode, TRPG mode has strict turn ordering (1-agent system):
 1. Action Manager interprets the player's action, invokes sub-agents as needed,
    creates narrative via `narration` tool, and suggests options via `suggest_options` tool
-   - Uses Task tool with stat_calculator to calculate stat/inventory changes
+   - Uses change_stat directly for stat/inventory changes
+   - Uses Task tool with item_designer to create new item templates
    - Uses Task tool with character_designer to create NPCs
    - Uses Task tool with location_designer to create locations
    - Uses remove_character for NPC removal
    - Uses narration tool to create visible message
    - Uses suggest_options tool to provide action suggestions
 
+Onboarding Manager handles both interviewing AND world seed generation directly
+(no separate World Seed Generator agent).
 """
 
 import logging
@@ -37,44 +40,37 @@ class TRPGTapeGenerator:
     def __init__(
         self,
         onboarding_manager_id: int,
-        world_seed_generator_id: int,
         action_manager_id: int,
     ):
         """
         Initialize with system agent IDs.
 
         Args:
-            onboarding_manager_id: Agent for onboarding interviews
-            world_seed_generator_id: Agent for world creation
+            onboarding_manager_id: Agent for onboarding interviews and world seed generation
             action_manager_id: Agent for interpreting actions and narration
         """
         self.onboarding_manager_id = onboarding_manager_id
-        self.world_seed_generator_id = world_seed_generator_id
         self.action_manager_id = action_manager_id
 
-        logger.info(
-            f"TRPGTapeGenerator initialized with 1-agent system: "
-            f"OM={onboarding_manager_id}, WSG={world_seed_generator_id}, "
-            f"AM={action_manager_id}"
-        )
+        logger.info(f"TRPGTapeGenerator initialized: OM={onboarding_manager_id}, AM={action_manager_id}")
 
-    def generate_onboarding_round(self, include_world_seed: bool = False) -> TurnTape:
+    def generate_onboarding_round(self, include_initial_scene: bool = False) -> TurnTape:
         """
         Generate tape for onboarding phase.
 
-        During onboarding, the Onboarding Manager conducts the interview.
-        When onboarding is complete, World Seed Generator creates the world.
+        During onboarding, the Onboarding Manager conducts the interview
+        and generates the world via draft_world and persist_world tools.
 
         Args:
-            include_world_seed: If True, adds World Seed Generator after
-                              Onboarding Manager (used for final onboarding turn)
+            include_initial_scene: If True, adds Action Manager after
+                                  Onboarding Manager to create the initial scene
 
         Returns:
             TurnTape with onboarding sequence
         """
         tape = TurnTape()
 
-        # Onboarding Manager always responds during onboarding
+        # Onboarding Manager handles interview AND world seed generation
         tape.cells.append(
             TurnCell(
                 cell_type=CellType.SEQUENTIAL,
@@ -82,15 +78,7 @@ class TRPGTapeGenerator:
             )
         )
 
-        if include_world_seed:
-            # World Seed Generator creates the world
-            tape.cells.append(
-                TurnCell(
-                    cell_type=CellType.SEQUENTIAL,
-                    agent_ids=[self.world_seed_generator_id],
-                )
-            )
-
+        if include_initial_scene:
             # Action Manager creates the initial scene using narration tool
             # Note: Initial NPCs can be created via Task tool with character_designer
             tape.cells.append(
@@ -101,7 +89,7 @@ class TRPGTapeGenerator:
                 )
             )
 
-        logger.info(f"Generated onboarding tape (include_world_seed={include_world_seed}): {tape}")
+        logger.info(f"Generated onboarding tape (include_initial_scene={include_initial_scene}): {tape}")
         return tape
 
     def generate_action_round(self) -> TurnTape:
@@ -109,8 +97,8 @@ class TRPGTapeGenerator:
         Generate tape for a player action during active gameplay.
 
         1-agent sequence:
-        1. Action Manager - Interprets the action, invokes sub-agents as needed
-           via Task tool (stat_calculator, character_designer, location_designer),
+        1. Action Manager - Interprets the action, uses change_stat directly,
+           invokes sub-agents via Task tool (item_designer, character_designer, location_designer),
            creates narrative via narration tool, and suggests options.
            Hidden from frontend - visible message created via narration tool.
 
@@ -201,10 +189,10 @@ def create_trpg_generator_from_room(
 
     # Check if all required agents are present (1-agent system)
     # Note: narrator is no longer required - Action Manager handles narration
-    # character_designer, stat_calculator, location_designer are sub-agents invoked via tools
+    # item_designer, character_designer, location_designer are sub-agents invoked via tools
+    # world_seed_generator was merged into onboarding_manager
     required = [
         "onboarding_manager",
-        "world_seed_generator",
         "action_manager",
     ]
 
@@ -215,7 +203,6 @@ def create_trpg_generator_from_room(
 
     return TRPGTapeGenerator(
         onboarding_manager_id=agent_map["onboarding_manager"],
-        world_seed_generator_id=agent_map["world_seed_generator"],
         action_manager_id=agent_map["action_manager"],
     )
 
@@ -230,7 +217,7 @@ def has_gameplay_agents(agents: list) -> bool:
     """Check if the agent list contains gameplay agents (1-agent system)."""
     agent_map = find_trpg_agents(agents)
     # Only action_manager is required in the tape (it handles narration via tools)
-    # Sub-agents (character_designer, stat_calculator, location_designer) are invoked via tools
+    # Sub-agents (item_designer, character_designer, location_designer) are invoked via tools
     return "action_manager" in agent_map
 
 
@@ -293,15 +280,13 @@ def create_gameplay_tape(agents: list) -> Optional[TurnTape]:
 
 def create_trpg_generator_from_agent_ids(
     onboarding_manager_id: int,
-    world_seed_generator_id: int,
     action_manager_id: int,
 ) -> TRPGTapeGenerator:
     """
     Create a TRPGTapeGenerator from explicit agent IDs.
 
     Args:
-        onboarding_manager_id: Agent ID for onboarding manager
-        world_seed_generator_id: Agent ID for world seed generator
+        onboarding_manager_id: Agent ID for onboarding manager (handles world seed too)
         action_manager_id: Agent ID for action manager and narration
 
     Returns:
@@ -309,6 +294,5 @@ def create_trpg_generator_from_agent_ids(
     """
     return TRPGTapeGenerator(
         onboarding_manager_id=onboarding_manager_id,
-        world_seed_generator_id=world_seed_generator_id,
         action_manager_id=action_manager_id,
     )

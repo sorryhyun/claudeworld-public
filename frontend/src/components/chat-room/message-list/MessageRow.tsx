@@ -179,8 +179,6 @@ export const MessageRow = memo(({
                   <span className="font-semibold text-sm text-slate-700">
                     {message.participant_type === 'character' && message.participant_name
                       ? message.participant_name
-                      : message.participant_type === 'situation_builder'
-                      ? 'Situation Builder'
                       : 'You'}
                   </span>
                   {!message.is_typing && !message.is_chatting && (

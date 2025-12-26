@@ -11,7 +11,6 @@ interface UseRoomsReturn {
   deleteRoom: (roomId: number) => Promise<void>;
   renameRoom: (roomId: number, name: string) => Promise<Room>;
   refreshRooms: () => Promise<void>;
-  markRoomAsReadOptimistic: (roomId: number) => void;
 }
 
 const POLL_INTERVAL = 5000; // Poll every 5 seconds
@@ -47,9 +46,7 @@ export const useRooms = (): UseRoomsReturn => {
             prevRoom.name !== newRoom.name ||
             prevRoom.is_paused !== newRoom.is_paused ||
             prevRoom.max_interactions !== newRoom.max_interactions ||
-            prevRoom.last_activity_at !== newRoom.last_activity_at ||
-            prevRoom.last_read_at !== newRoom.last_read_at ||
-            prevRoom.has_unread !== newRoom.has_unread
+            prevRoom.last_activity_at !== newRoom.last_activity_at
           );
         });
 
@@ -99,9 +96,7 @@ export const useRooms = (): UseRoomsReturn => {
               prevRoom.name !== newRoom.name ||
               prevRoom.is_paused !== newRoom.is_paused ||
               prevRoom.max_interactions !== newRoom.max_interactions ||
-              prevRoom.last_activity_at !== newRoom.last_activity_at ||
-              prevRoom.last_read_at !== newRoom.last_read_at ||
-              prevRoom.has_unread !== newRoom.has_unread
+              prevRoom.last_activity_at !== newRoom.last_activity_at
             );
           });
 
@@ -154,8 +149,6 @@ export const useRooms = (): UseRoomsReturn => {
         is_paused: newRoom.is_paused,
         created_at: newRoom.created_at,
         last_activity_at: newRoom.last_activity_at,
-        last_read_at: newRoom.last_read_at,
-        has_unread: false, // Newly created room has no unread messages
       };
       setRooms((prev) => [...prev, roomSummary]);
       return newRoom;
@@ -193,14 +186,5 @@ export const useRooms = (): UseRoomsReturn => {
     }
   };
 
-  const markRoomAsReadOptimistic = useCallback((roomId: number) => {
-    // Optimistically update the room's has_unread status immediately
-    setRooms((prev) => prev.map(room =>
-      room.id === roomId
-        ? { ...room, has_unread: false, last_read_at: new Date().toISOString() }
-        : room
-    ));
-  }, []);
-
-  return { rooms, loading, error, createRoom, deleteRoom, renameRoom, refreshRooms: fetchRooms, markRoomAsReadOptimistic };
+  return { rooms, loading, error, createRoom, deleteRoom, renameRoom, refreshRooms: fetchRooms };
 };

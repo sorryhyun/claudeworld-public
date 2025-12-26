@@ -14,7 +14,7 @@ from domain.value_objects.enums import ParticipantType
 _settings = get_settings()
 
 
-def detect_conversation_type(messages: List, agent_count: int) -> Tuple[bool, Optional[str], bool]:
+def detect_conversation_type(messages: List, agent_count: int) -> Tuple[bool, Optional[str]]:
     """
     Analyze messages to detect conversation type and participants.
 
@@ -23,20 +23,16 @@ def detect_conversation_type(messages: List, agent_count: int) -> Tuple[bool, Op
         agent_count: Number of agents in the room
 
     Returns:
-        Tuple of (is_one_on_one, user_name, has_situation_builder):
+        Tuple of (is_one_on_one, user_name):
             - is_one_on_one: True if this is a 1-on-1 conversation between agent and user/character
             - user_name: Name of the user/character participant (None if not found or not 1-on-1)
-            - has_situation_builder: True if conversation includes situation_builder messages
     """
     user_name = None
     has_user_or_character = False
-    has_situation_builder = False
 
     for msg in messages:
         if msg.role == "user":
-            if msg.participant_type == ParticipantType.SITUATION_BUILDER:
-                has_situation_builder = True
-            elif msg.participant_type == ParticipantType.CHARACTER and msg.participant_name:
+            if msg.participant_type == ParticipantType.CHARACTER and msg.participant_name:
                 has_user_or_character = True
                 if user_name is None:  # Take the first one found
                     user_name = msg.participant_name
@@ -48,10 +44,9 @@ def detect_conversation_type(messages: List, agent_count: int) -> Tuple[bool, Op
     # It's a 1-on-1 conversation if:
     # - Only 1 agent in the room
     # - At least one user/character message exists
-    # - No situation_builder messages
-    is_one_on_one = agent_count == 1 and has_user_or_character and not has_situation_builder
+    is_one_on_one = agent_count == 1 and has_user_or_character
 
-    return is_one_on_one, user_name, has_situation_builder
+    return is_one_on_one, user_name
 
 
 def get_user_name_from_messages(messages: List) -> Optional[str]:

@@ -14,7 +14,6 @@ interface RoomContextValue {
   deleteRoom: (roomId: number) => Promise<void>;
   renameRoom: (roomId: number, name: string) => Promise<Room>;
   refreshRooms: () => Promise<void>;
-  markRoomAsReadOptimistic: (roomId: number) => void;
   clearSelection: () => void;
 }
 
@@ -40,7 +39,6 @@ export function RoomProvider({ children }: RoomProviderProps) {
     deleteRoom: deleteRoomHook,
     renameRoom: renameRoomHook,
     refreshRooms,
-    markRoomAsReadOptimistic
   } = useRooms();
 
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -78,7 +76,6 @@ export function RoomProvider({ children }: RoomProviderProps) {
     deleteRoom,
     renameRoom,
     refreshRooms,
-    markRoomAsReadOptimistic,
     clearSelection,
   };
 

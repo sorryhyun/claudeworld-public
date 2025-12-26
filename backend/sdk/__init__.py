@@ -6,18 +6,20 @@ managing agent lifecycle, response generation, and debugging.
 
 Package structure:
 - sdk/client/ - Claude SDK integration infrastructure (client pooling, stream parsing, MCP registry)
-- sdk/agent/ - High-level agent orchestration (agent manager, agent definitions, subagent prompts)
+- sdk/agent/ - High-level agent orchestration (agent manager, agent definitions)
 - sdk/tools/ - MCP tool implementations (onboarding_tools includes sub-agent tools for SDK native pattern)
 - sdk/config/ - YAML configurations (tools, guidelines, debug)
 """
 
 from infrastructure.logging.formatters import format_message_for_debug
 
-from sdk.agent.agent_definitions import build_subagent_definition, build_subagent_definitions
-
 # Re-exports from agent
 from sdk.agent.agent_manager import AgentManager
-from sdk.agent.subagent_prompts import SUBAGENT_PROMPTS, get_subagent_prompt
+from sdk.agent.task_subagent_definitions import (
+    SUBAGENT_TYPES,
+    build_subagent_definition,
+    build_subagent_definitions,
+)
 
 # Re-exports from client for backwards compatibility
 from sdk.client.client_pool import ClientPool
@@ -32,10 +34,8 @@ from sdk.tools.gameplay_tools.onboarding_tools import SUBAGENT_TOOL_NAMES, creat
 __all__ = [
     # Agent orchestration
     "AgentManager",
-    # Sub-agent prompts
-    "SUBAGENT_PROMPTS",
-    "get_subagent_prompt",
-    # AgentDefinition builders
+    # Sub-agent types and AgentDefinition builders
+    "SUBAGENT_TYPES",
     "build_subagent_definition",
     "build_subagent_definitions",
     # Subagent tools

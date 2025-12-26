@@ -74,7 +74,6 @@ export interface Room {
   is_paused: boolean;
   created_at: string;
   last_activity_at: string | null;
-  last_read_at: string | null;
   agents: Agent[];
   messages: Message[];
   // World info (for TRPG rooms)
@@ -90,8 +89,6 @@ export interface RoomSummary {
   is_paused: boolean;
   created_at: string;
   last_activity_at: string | null;
-  last_read_at: string | null;
-  has_unread: boolean;
 }
 
 export interface RoomCreate {
@@ -105,7 +102,7 @@ export interface RoomUpdate {
   is_paused?: boolean;
 }
 
-export type ParticipantType = 'user' | 'situation_builder' | 'character';
+export type ParticipantType = 'user' | 'character';
 
 // =============================================================================
 // GAME/TRPG TYPES - Re-export from GameContext for convenience

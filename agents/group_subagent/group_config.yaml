@@ -1,0 +1,60 @@
+# Sub-Agent Configuration
+# These agents are invoked via the SDK Task tool by parent agents
+# (Action Manager, Onboarding Manager). They are NOT part of the normal
+# turn-based flow.
+#
+# ARCHITECTURE: Task-tool Sub-Agents
+# - Invoked on-demand by parent agents
+# - Use persist tools to save their results
+# - Return control to parent agent after completion
+
+# =============================================================================
+# GROUP-WIDE BEHAVIOR SETTINGS
+# =============================================================================
+
+# Sub-agents don't participate in interrupt-based flow
+interrupt_every_turn: false
+
+# Not used for sub-agents (they're invoked via Task tool)
+priority: 0
+
+# Sub-agent responses are internal (returned via Task tool result)
+transparent: true
+
+# =============================================================================
+# GROUP-WIDE TOOL SETTINGS
+# =============================================================================
+# Sub-agents only have access to their specific persist tools.
+# All common tools are disabled since they operate in a focused context.
+
+disabled_tools:
+  - memorize
+  - recall
+  - skip
+
+# =============================================================================
+# PER-AGENT TOOL CONFIGURATION
+# =============================================================================
+# Each sub-agent has access to its specific persist tool
+
+agents:
+  Character_Designer:
+    # Creates NPCs when invoked via Task tool
+    enabled_tool_groups:
+      - subagent
+    enabled_tools:
+      - persist_character_design
+
+  Item_Designer:
+    # Creates item templates when invoked via Task tool
+    enabled_tool_groups:
+      - subagent
+    enabled_tools:
+      - persist_item
+
+  Location_Designer:
+    # Creates locations when invoked via Task tool
+    enabled_tool_groups:
+      - subagent
+    enabled_tools:
+      - persist_location_design

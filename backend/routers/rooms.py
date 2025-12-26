@@ -126,20 +126,6 @@ async def resume_room(
     return room
 
 
-@router.post("/{room_id}/mark-read")
-async def mark_room_read(
-    room_id: int,
-    identity: RequestIdentity = Depends(get_request_identity),
-    db: AsyncSession = Depends(get_db),
-):
-    """Mark a room as read by updating last_read_at timestamp."""
-    await ensure_room_access(db, room_id, identity)
-    room = await crud.mark_room_as_read(db, room_id)
-    if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-    return {"message": "Room marked as read", "last_read_at": room.last_read_at}
-
-
 @router.delete("/{room_id}", dependencies=[Depends(require_admin)])
 async def delete_room(
     room_id: int,

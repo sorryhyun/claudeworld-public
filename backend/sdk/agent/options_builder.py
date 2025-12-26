@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 from claude_agent_sdk import ClaudeAgentOptions
 from core import get_settings
 
-from sdk.agent.agent_definitions import build_subagent_definitions_for_agent
 from sdk.agent.hooks import build_hooks
+from sdk.agent.task_subagent_definitions import build_subagent_definitions_for_agent
 from sdk.client.mcp_registry import get_mcp_registry
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Get settings singleton
 _settings = get_settings()
-USE_HAIKU = _settings.use_haiku
+USE_SONNET = _settings.use_sonnet
 
 # Cached cwd for Claude agent SDK (created once per process)
 _claude_cwd: str | None = None
@@ -80,7 +80,7 @@ def build_agent_options(
         logger.debug(f"Adding {len(agents)} sub-agent definitions for {context.agent_name}")
 
     options = ClaudeAgentOptions(
-        model="claude-opus-4-5-20251101" if not USE_HAIKU else "claude-haiku-4-5-20251001",
+        model="claude-opus-4-5-20251101" if not USE_SONNET else "claude-sonnet-4-5-20250929",
         system_prompt=system_prompt,
         permission_mode="default",
         max_thinking_tokens=32768,

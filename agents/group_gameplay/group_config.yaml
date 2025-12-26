@@ -1,10 +1,10 @@
-# Gameplay Phase Agents Configuration
-# These agents handle the turn-based gameplay loop after world is created.
+# System Agents Configuration
+# Core agents for onboarding and gameplay phases.
 #
-# ARCHITECTURE: 1-Agent System
-# Action Manager handles all gameplay: interprets player actions, invokes sub-agents
-# (stat_calculator, character_designer, location_designer) via Task tool,
-# and creates visible output via narration and suggest_options tools.
+# AGENTS:
+# - Onboarding_Manager: Conducts player interview, generates world seed
+# - Action_Manager: Main gameplay orchestrator (invokes sub-agents from group_subagent)
+# - Chat_Summarizer: Independent agent invoked by application for summaries
 
 # =============================================================================
 # GROUP-WIDE BEHAVIOR SETTINGS
@@ -19,6 +19,9 @@ priority: 5
 # System messages are visible and can affect game state
 transparent: false
 
+# Allow agents to see system messages (used by Onboarding_Manager for triggers)
+can_see_system_messages: true
+
 # =============================================================================
 # GROUP-WIDE TOOL SETTINGS
 # =============================================================================
@@ -32,14 +35,28 @@ disabled_tools:
 # =============================================================================
 # PER-AGENT TOOL CONFIGURATION
 # =============================================================================
-# 1-agent system: Action_Manager handles all gameplay via tools
-# Sub-agents are invoked via Task tool, not separate tape cells
 
 agents:
+  Onboarding_Manager:
+    # Conducts player interview, generates world seed, completes setup
+    enabled_tool_groups:
+      - onboarding
+      - subagent
+    disabled_tools:
+      - memorize  # Use complete tool instead
+    enabled_tools:
+      - draft_world         # Lightweight draft to unblock sub-agents
+      - persist_world       # Comprehensive: full lore + stats
+      - persist_character_design
+      - persist_item
+      - persist_location_design
+      - complete            # Finalize phase transition
+
   Action_Manager:
     # Interprets player actions, invokes sub-agents via Task tool
     enabled_tool_groups:
       - action_manager  # For gameplay tools
+      - subagent
     enabled_tools:
       # Game state tools
       - get_game_state
@@ -49,35 +66,12 @@ agents:
       - suggest_options
       - remove_character  # Direct NPC removal
       - persist_character_design
-      - persist_stat_changes
+      - persist_item
+      - change_stat
       - persist_location_design
 
-  # ===========================================================================
-  # SUB-AGENTS (invoked via Task tool)
-  # These agents use persist tools to save their results
-  # ===========================================================================
-
-  Character_Designer:
-    # Creates NPCs when invoked via Task tool with character_designer
-    # Uses persist_character_design tool to save the character
-    enabled_tool_groups:
-      - action_manager  # For persist_character_design tool
-    enabled_tools:
-      - persist_character_design
-
-  Stat_Calculator:
-    # Processes mechanical game effects when invoked via Task tool
-    # Uses persist_stat_changes tool to save the changes
-    enabled_tool_groups:
-      - action_manager  # For persist_stat_changes tool
-    enabled_tools:
-      - persist_stat_changes
-
-  Location_Designer:
-    # Creates locations when invoked via Task tool with location_designer
-    # Uses persist_location_design tool to save the location
-    enabled_tool_groups:
-      - action_manager  # For persist_location_design tool
-    enabled_tools:
-      - persist_location_design
+  Chat_Summarizer:
+    # Invoked independently by the application (not via Task tool)
+    # Used to summarize chat conversations
+    enabled_tools: []
 

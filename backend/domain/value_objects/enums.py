@@ -10,7 +10,6 @@ class ParticipantType(str, Enum):
 
     USER = "user"
     CHARACTER = "character"
-    SITUATION_BUILDER = "situation_builder"
     SYSTEM = "system"
     AGENT = "agent"  # For backwards compatibility with evaluation scripts
 
@@ -93,13 +92,12 @@ class InventoryChangeAction(str, Enum):
 
 
 # Agent name patterns for specialized agent types (case-insensitive matching)
-WORLD_SEED_GENERATOR_PATTERNS = frozenset(["world_seed_generator", "worldseedgenerator", "world seed generator"])
 ACTION_MANAGER_PATTERNS = frozenset(["action_manager", "actionmanager", "action manager"])
 ONBOARDING_MANAGER_PATTERNS = frozenset(["onboarding_manager", "onboardingmanager", "onboarding manager"])
 
 # Sub-agent patterns (invoked via tools during gameplay, not used in tape generation)
 CHARACTER_DESIGNER_PATTERNS = frozenset(["character_designer", "characterdesigner", "character designer"])
-STAT_CALCULATOR_PATTERNS = frozenset(["stat_calculator", "statcalculator", "stat calculator"])
+ITEM_DESIGNER_PATTERNS = frozenset(["item_designer", "itemdesigner", "item designer"])
 LOCATION_DESIGNER_PATTERNS = frozenset(["location_designer", "locationdesigner", "location designer"])
 CHAT_SUMMARIZER_PATTERNS = frozenset(["chat_summarizer", "chatsummarizer", "chat summarizer"])
 

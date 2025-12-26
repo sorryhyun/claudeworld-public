@@ -9,11 +9,10 @@ from .agent import (
     is_action_manager,
     is_character_designer,
     is_chat_summarizer,
+    is_item_designer,
     is_location_designer,
     is_onboarding_manager,
-    is_stat_calculator,
     is_system_agent,
-    is_world_seed_generator,
 )
 from .agent_config import AgentConfigData
 from .gameplay_models import (
@@ -46,14 +45,13 @@ from .world_models import (
 __all__ = [
     # agent.py
     "Agent",
-    "is_world_seed_generator",
     "is_action_manager",
     "is_system_agent",
     "get_present_characters",
     "is_onboarding_manager",
     "is_character_designer",
     "is_chat_summarizer",
-    "is_stat_calculator",
+    "is_item_designer",
     "is_location_designer",
     "find_trpg_agents",
     # agent_config.py

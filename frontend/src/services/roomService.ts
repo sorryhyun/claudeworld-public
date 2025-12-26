@@ -53,14 +53,6 @@ export const roomService = {
     return response.json();
   },
 
-  async markRoomAsRead(roomId: number): Promise<{ message: string; last_read_at: string }> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/mark-read`, getFetchOptions({
-      method: 'POST',
-    }));
-    if (!response.ok) throw new Error('Failed to mark room as read');
-    return response.json();
-  },
-
   async deleteRoom(roomId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions({
       method: 'DELETE',

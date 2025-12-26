@@ -95,15 +95,8 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
 
         return None
 
-    # Import here to avoid circular dependency
-    from core.settings import get_settings
-
-    settings = get_settings()
-
-    # Parse long-term memory file based on environment configuration
-    # Support both "long_term_memory.md" and "consolidated_memory.md"
-    memory_filename = f"{settings.recall_memory_file}.md"
-    long_term_memory_file = folder_path / memory_filename
+    # Parse long-term memory file (consolidated_memory.md)
+    long_term_memory_file = folder_path / "consolidated_memory.md"
     long_term_memory_index = None
     long_term_memory_subtitles = None
 

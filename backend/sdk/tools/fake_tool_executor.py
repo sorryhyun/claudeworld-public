@@ -11,14 +11,14 @@ the corresponding handlers directly.
 Supported formats:
 1. XML format:
     <function_calls>
-    <invoke name="mcp__action_manager__persist_character_design">
+    <invoke name="mcp__subagents__persist_character_design">
     <parameter name="name">HANA-07</parameter>
     ...
     </invoke>
     </function_calls>
 
 2. JSON format with explicit tool_name and tool_input:
-    {"tool_name": "mcp__action_manager__persist_character_design", "tool_input": {...}}
+    {"tool_name": "mcp__subagents__persist_character_design", "tool_input": {...}}
 
 3. JSON format (raw parameters, tool inferred from fields):
     {"name": "HANA-07", "role": "...", "appearance": "...", ...}
@@ -94,19 +94,68 @@ def _extract_json_objects(text: str) -> list[str]:
     return results
 
 
+def _try_parse_json_value(value: str) -> Any:
+    """
+    Try to parse a string value as JSON (for arrays, objects, booleans, numbers).
+
+    XML parameters are always strings, but sub-agents often output JSON content
+    within parameter tags. This function attempts to parse such values.
+
+    Args:
+        value: The string value from an XML parameter
+
+    Returns:
+        Parsed JSON value if successful, otherwise the original string
+    """
+    stripped = value.strip()
+
+    # Empty string stays as empty string
+    if not stripped:
+        return value
+
+    # Try to parse JSON arrays and objects
+    if stripped.startswith(("[", "{")):
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+
+    # Handle boolean strings
+    if stripped.lower() == "true":
+        return True
+    if stripped.lower() == "false":
+        return False
+
+    # Handle numeric strings
+    try:
+        if "." in stripped:
+            return float(stripped)
+        return int(stripped)
+    except ValueError:
+        pass
+
+    # Return original string if no conversion succeeded
+    return value
+
+
 def _infer_tool_from_json(params: dict[str, Any]) -> Optional[str]:
     """Infer the tool name from JSON parameters based on field signatures."""
     # Character design: has name, role, appearance, personality
     if all(k in params for k in ["name", "role", "appearance", "personality"]):
-        return "mcp__action_manager__persist_character_design"
+        return "mcp__subagents__persist_character_design"
 
     # Location design: has name, display_name, description
     if all(k in params for k in ["name", "display_name", "description"]):
-        return "mcp__action_manager__persist_location_design"
+        return "mcp__subagents__persist_location_design"
+
+    # Item design: has items array with item_id, name, description
+    if "items" in params and isinstance(params["items"], list):
+        if params["items"] and all(k in params["items"][0] for k in ["item_id", "name", "description"]):
+            return "mcp__subagents__persist_item"
 
     # Stat changes: has summary and at least one of stat_changes/inventory_changes
     if "summary" in params and ("stat_changes" in params or "inventory_changes" in params):
-        return "mcp__action_manager__persist_stat_changes"
+        return "mcp__action_manager__change_stat"
 
     return None
 
@@ -142,7 +191,9 @@ def parse_fake_tool_calls(text: str) -> list[ParsedFakeToolCall]:
                     param_name = param.get("name")
                     param_value = param.text or ""
                     if param_name:
-                        params[param_name] = param_value
+                        # Try to parse JSON-like values (arrays, objects, booleans)
+                        parsed_value = _try_parse_json_value(param_value)
+                        params[param_name] = parsed_value
 
                 calls.append(ParsedFakeToolCall(tool_name=tool_name, parameters=params))
                 logger.info(f"Parsed XML fake tool call: {tool_name}")
@@ -200,14 +251,26 @@ async def execute_fake_tool_call(
     logger.info(f"Executing fake tool call: {call.tool_name}")
 
     try:
-        if call.tool_name == "mcp__action_manager__persist_stat_changes":
-            return await _execute_persist_stat_changes(call.parameters, ctx)
+        if call.tool_name == "mcp__action_manager__change_stat":
+            return await _execute_change_stat(call.parameters, ctx)
 
-        elif call.tool_name == "mcp__action_manager__persist_character_design":
+        elif call.tool_name in (
+            "mcp__subagents__persist_character_design",
+            "mcp__action_manager__persist_character_design",  # Legacy support
+        ):
             return await _execute_persist_character_design(call.parameters, ctx)
 
-        elif call.tool_name == "mcp__action_manager__persist_location_design":
+        elif call.tool_name in (
+            "mcp__subagents__persist_location_design",
+            "mcp__action_manager__persist_location_design",  # Legacy support
+        ):
             return await _execute_persist_location_design(call.parameters, ctx)
+
+        elif call.tool_name in (
+            "mcp__subagents__persist_item",
+            "mcp__action_manager__persist_item",  # Legacy support
+        ):
+            return await _execute_persist_item(call.parameters, ctx)
 
         else:
             logger.warning(f"No handler for fake tool: {call.tool_name}")
@@ -218,17 +281,17 @@ async def execute_fake_tool_call(
         return {"success": False, "error": str(e)}
 
 
-async def _execute_persist_stat_changes(
+async def _execute_change_stat(
     params: dict[str, Any],
     ctx: "ToolContext",
 ) -> dict[str, Any]:
-    """Execute persist_stat_changes tool."""
+    """Execute change_stat tool."""
     from services.facades import PlayerFacade
     from services.item_service import ItemService
 
-    from sdk.config.gameplay_inputs import PersistStatChangesInput
+    from sdk.config.gameplay_inputs import ChangeStatInput
 
-    validated = PersistStatChangesInput(**params)
+    validated = ChangeStatInput(**params)
     world_name = ctx.require_world_name()
     world_id = ctx.require_world_id()
     db = ctx.require_db()
@@ -290,7 +353,7 @@ async def _execute_persist_character_design(
     from services.agent_filesystem_service import AgentFilesystemService
     from services.location_service import LocationService
 
-    from sdk.config.gameplay_inputs import PersistCharacterDesignInput
+    from sdk.config.subagent_inputs import PersistCharacterDesignInput
     from sdk.tools.gameplay_tools.common import build_action_context
 
     validated = PersistCharacterDesignInput(**params)
@@ -301,7 +364,8 @@ async def _execute_persist_character_design(
 
     # Create agent files in filesystem
     agent_name = validated.name.replace(" ", "_")
-    in_a_nutshell = f"{validated.name} is a {validated.role}. {validated.appearance}"
+    # in_a_nutshell should be brief - appearance details go in characteristics only
+    in_a_nutshell = f"{validated.name} is a {validated.role}."
     characteristics = f"""## Role
 {validated.role}
 
@@ -379,7 +443,7 @@ async def _execute_persist_location_design(
     from services.location_service import LocationService
     from services.persistence_manager import PersistenceManager
 
-    from sdk.config.gameplay_inputs import PersistLocationDesignInput
+    from sdk.config.subagent_inputs import PersistLocationDesignInput
 
     validated = PersistLocationDesignInput(**params)
     world_name = ctx.require_world_name()
@@ -453,7 +517,7 @@ async def _execute_persist_location_design(
         description=validated.description,
         position=(validated.position_x, validated.position_y),
         adjacent_hints=adjacent_hints,
-        is_starting=False,
+        is_starting=validated.is_starting,
     )
 
     # Connect to adjacent locations in DB
@@ -464,6 +528,99 @@ async def _execute_persist_location_design(
                 await crud.add_adjacent_location(db, new_location_id, adj_loc.id)
                 await crud.add_adjacent_location(db, adj_loc.id, new_location_id)
 
+    # If this is the starting location, set player's current_location
+    if validated.is_starting:
+        from services.player_service import PlayerService
+        from services.world_reset_service import WorldResetService
+
+        # Update player state
+        fs_state = PlayerService.load_player_state(world_name)
+        if fs_state:
+            fs_state.current_location = validated.name
+            PlayerService.save_player_state(world_name, fs_state)
+            logger.info(f"Set starting location: {validated.name}")
+
+        # Update initial state for world reset
+        try:
+            initial_state = WorldResetService.load_initial_state(world_name)
+            if initial_state:
+                initial_state.starting_location = validated.name
+                WorldResetService.save_initial_state(world_name, initial_state)
+                logger.info("Updated initial state with starting location")
+        except Exception as reset_err:
+            logger.warning(f"Failed to update initial state: {reset_err}")
+
+        # Set current location in DB
+        await crud.set_current_location(db, world_id, new_location_id)
+
     logger.info(f"Created location: {validated.display_name} (id={new_location_id})")
 
-    return {"success": True, "display_name": validated.display_name, "id": new_location_id}
+    return {
+        "success": True,
+        "display_name": validated.display_name,
+        "id": new_location_id,
+        "is_starting": validated.is_starting,
+    }
+
+
+async def _execute_persist_item(
+    params: dict[str, Any],
+    ctx: "ToolContext",
+) -> dict[str, Any]:
+    """Execute persist_item tool."""
+    from services.item_service import ItemService
+    from services.player_service import PlayerService
+
+    from sdk.config.subagent_inputs import PersistItemInput
+
+    validated = PersistItemInput(**params)
+    world_name = ctx.require_world_name()
+
+    created_items = []
+    skipped_items = []
+    inventory_added = []
+
+    # Process each item
+    for item in validated.items:
+        # Check if item already exists
+        existing = ItemService.load_item_template(world_name, item.item_id)
+        if existing:
+            skipped_items.append(item.item_id)
+            logger.warning(f"Item '{item.item_id}' already exists, skipping")
+            continue
+
+        # Save the new item template
+        ItemService.save_item_template(
+            world_name,
+            item_id=item.item_id,
+            name=item.name,
+            description=item.description,
+            properties=item.properties,
+        )
+        created_items.append(item)
+        logger.info(f"Created item template: {item.item_id}")
+
+    # Add to inventory if requested (used during onboarding for starting items)
+    if validated.add_to_inventory and created_items:
+        player_state = PlayerService.load_player_state(world_name)
+        if player_state:
+            for item in created_items:
+                inventory_entry = {
+                    "item_id": item.item_id,
+                    "quantity": item.quantity,
+                }
+                player_state.inventory.append(inventory_entry)
+                inventory_added.append(f"{item.quantity}x {item.name}")
+                logger.info(f"Added {item.quantity}x {item.item_id} to inventory")
+            PlayerService.save_player_state(world_name, player_state)
+        else:
+            logger.warning("Could not load player state to add items to inventory")
+
+    logger.info(f"persist_item: created={len(created_items)}, skipped={len(skipped_items)}")
+
+    return {
+        "success": True,
+        "created": [item.item_id for item in created_items],
+        "skipped": skipped_items,
+        "inventory_added": inventory_added,
+    }

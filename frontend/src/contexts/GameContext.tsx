@@ -4,7 +4,6 @@ import {
   useState,
   useCallback,
   useEffect,
-  useRef,
   ReactNode,
 } from 'react';
 import * as gameService from '../services/gameService';
@@ -309,23 +308,6 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
     clearWorld();
     setMode('chat');
   }, [clearWorld, setMode]);
-
-  // ==========================================================================
-  // SYNC MODE WITH PHASE CHANGES FROM BACKEND
-  // ==========================================================================
-
-  // Track previous phase to detect transitions
-  const prevPhaseRef = useRef<GamePhase>(phase);
-
-  useEffect(() => {
-    const prevPhase = prevPhaseRef.current;
-    prevPhaseRef.current = phase;
-
-    // When phase transitions from onboarding to active, switch mode to game
-    if (prevPhase === 'onboarding' && phase === 'active' && mode === 'onboarding') {
-      setMode('game');
-    }
-  }, [phase, mode, setMode]);
 
   // ==========================================================================
   // CONTEXT VALUE

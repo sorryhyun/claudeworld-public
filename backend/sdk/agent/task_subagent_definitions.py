@@ -1,20 +1,24 @@
 """
-AgentDefinition Builder for SDK Native Sub-Agent Pattern.
+Task Sub-Agent Definition Builder for SDK Native Pattern.
 
 This module builds AgentDefinition objects for sub-agents that can be invoked
-via the Task tool by Action Manager and Onboarding Manager.
+via the SDK Task tool by parent agents (Action Manager, Onboarding Manager).
 
 Key features:
 - Loads agent identity from filesystem (in_a_nutshell.md, characteristics.md)
-- Uses prompts from subagent_prompts.py
+- All sub-agent prompts are defined in characteristics.md files
 - Specifies persist tools for each sub-agent type
 - Integrates with ClaudeAgentOptions.agents parameter
 
+IMPORTANT: This module is ONLY for Task-tool sub-agents. Standalone agents
+like Chat_Summarizer (which are invoked directly via AgentManager) should
+NOT be defined here.
+
 Usage:
-    from sdk.agent.agent_definitions import build_subagent_definitions
+    from sdk.agent.task_subagent_definitions import build_subagent_definitions_for_agent
 
     # In AgentManager._build_agent_options():
-    agents = build_subagent_definitions()
+    agents = build_subagent_definitions_for_agent(agent_name)
     options = ClaudeAgentOptions(
         ...,
         agents=agents,
@@ -35,9 +39,11 @@ from claude_agent_sdk.types import AgentDefinition
 
 from sdk.tools.gameplay_tools.onboarding_tools import SUBAGENT_TOOL_NAMES
 
-from .subagent_prompts import SUBAGENT_PROMPTS
+# Valid sub-agent types (formerly sourced from subagent_prompts.py)
+# Now sub-agent prompts are defined in characteristics.md files
+SUBAGENT_TYPES = {"item_designer", "character_designer", "location_designer"}
 
-logger = logging.getLogger("AgentDefinitions")
+logger = logging.getLogger("TaskSubagentDefinitions")
 
 # Cache for sub-agent definitions with mtime tracking for hot-reload support
 # Structure: {agent_name: {"definitions": dict, "mtimes": {path: mtime}}}
@@ -52,34 +58,36 @@ def _get_agents_dir() -> Path:
 
 
 def _get_subagent_paths() -> dict[str, Path]:
-    """Get sub-agent paths dynamically to support PyInstaller bundles."""
+    """Get sub-agent paths dynamically to support PyInstaller bundles.
+
+    NOTE: Only Task-tool sub-agents are included here. Standalone agents
+    (like Chat_Summarizer) are NOT included.
+
+    World Seed Generator was merged into Onboarding_Manager (no longer a sub-agent).
+    """
     agents_dir = _get_agents_dir()
     return {
-        # Gameplay sub-agents (invoked by Action Manager)
-        "stat_calculator": agents_dir / "group_gameplay" / "Stat_Calculator",
-        "character_designer": agents_dir / "group_gameplay" / "Character_Designer",
-        "location_designer": agents_dir / "group_gameplay" / "Location_Designer",
-        # Chat mode sub-agent (invoked on chat mode exit)
-        "chat_summarizer": agents_dir / "group_gameplay" / "Chat_Summarizer",
-        # Onboarding sub-agents (invoked by Onboarding Manager)
-        "world_seed_generator": agents_dir / "group_onboarding" / "World_Seed_Generator",
+        # Task-tool sub-agents (invoked by Action Manager / Onboarding Manager)
+        "item_designer": agents_dir / "group_subagent" / "Item_Designer",
+        "character_designer": agents_dir / "group_subagent" / "Character_Designer",
+        "location_designer": agents_dir / "group_subagent" / "Location_Designer",
     }
 
-# Human-readable names for sub-agents (used in descriptions)
+
+# Human-readable names for Task-tool sub-agents (used in descriptions)
 SUBAGENT_DISPLAY_NAMES = {
-    "stat_calculator": "Stat Calculator",
+    "item_designer": "Item Designer",
     "character_designer": "Character Designer",
     "location_designer": "Location Designer",
-    "chat_summarizer": "Chat Summarizer",
-    "world_seed_generator": "World Seed Generator",
 }
 
-# Sub-agent descriptions for the Task tool
+# Task-tool sub-agent descriptions for the Task tool
 SUBAGENT_DESCRIPTIONS = {
-    "stat_calculator": (
-        "Invoke for calculating game mechanics effects (stat changes, inventory "
-        "modifications) when a player action requires mechanical resolution. "
-        "Returns structured JSON with stat_changes, inventory_changes, and summary."
+    "item_designer": (
+        "Invoke to design a new item template for the game world. Provide the "
+        "purpose, context, and any specific requirements. Returns structured JSON "
+        "with item_id, name, description, and properties. Use this when players "
+        "find, craft, or receive new items that don't exist yet."
     ),
     "character_designer": (
         "Invoke to design a new NPC character for the game world. Provide the "
@@ -92,15 +100,6 @@ SUBAGENT_DESCRIPTIONS = {
         "along with the purpose and adjacent location. Returns structured JSON with name, "
         "display_name, description, position, and adjacent_hints."
     ),
-    "chat_summarizer": (
-        "Summarize a chat mode conversation when transitioning back to gameplay. "
-        "Provide the conversation transcript. Returns a concise 2-4 sentence summary."
-    ),
-    "world_seed_generator": (
-        "Invoke to generate a complete world seed from onboarding data. Provide the "
-        "genre, theme, and lore from the player interview. Returns structured JSON "
-        "with stat_system, initial_location, initial_inventory, and world_notes."
-    ),
 }
 
 
@@ -109,7 +108,7 @@ def _load_agent_identity(agent_type: str) -> tuple[str, str]:
     Load agent identity from filesystem config files.
 
     Args:
-        agent_type: Type of agent (stat_calculator, character_designer, etc.)
+        agent_type: Type of agent (item_designer, character_designer, etc.)
 
     Returns:
         Tuple of (in_a_nutshell, characteristics)
@@ -136,23 +135,20 @@ def _build_subagent_prompt(
     agent_type: str,
     identity: str,
     characteristics: str,
-    task_prompt: str,
     persist_tool_name: Optional[str],
 ) -> str:
     """
-    Build the complete system prompt for a sub-agent.
+    Build the complete system prompt for a Task-tool sub-agent.
 
     The prompt includes:
     - Agent identity (from in_a_nutshell.md)
-    - Behavior guidelines (from characteristics.md)
-    - Task instructions (from subagent_prompts.py)
+    - Behavior guidelines (from characteristics.md, which now includes tool usage)
     - Persist tool instructions (if applicable)
 
     Args:
         agent_type: Type of sub-agent
         identity: Content from in_a_nutshell.md
         characteristics: Content from characteristics.md
-        task_prompt: Task-specific prompt from subagent_prompts.py
         persist_tool_name: Name of the persist tool to use (None for no-persist agents)
 
     Returns:
@@ -165,11 +161,8 @@ def _build_subagent_prompt(
 ## Identity
 {identity or f"A specialized {display_name} for ClaudeWorld TRPG."}
 
-## Behavior
-{characteristics or "Follow the task instructions carefully and provide accurate results."}
-
-## Task Instructions
-{task_prompt}"""
+## Guidelines
+{characteristics or "Follow the task instructions carefully and provide accurate results."}"""
 
     if persist_tool_name:
         prompt += f"""
@@ -188,15 +181,15 @@ returned to the parent agent via the Task tool result."""
 
 def build_subagent_definition(agent_type: str) -> Optional[AgentDefinition]:
     """
-    Build an AgentDefinition for a specific sub-agent type.
+    Build an AgentDefinition for a specific Task-tool sub-agent type.
 
     Args:
-        agent_type: Type of sub-agent (stat_calculator, character_designer, etc.)
+        agent_type: Type of sub-agent (item_designer, character_designer, etc.)
 
     Returns:
         AgentDefinition or None if agent type is not recognized
     """
-    if agent_type not in SUBAGENT_PROMPTS:
+    if agent_type not in SUBAGENT_TYPES:
         logger.warning(f"Unknown sub-agent type: {agent_type}")
         return None
 
@@ -206,15 +199,11 @@ def build_subagent_definition(agent_type: str) -> Optional[AgentDefinition]:
     # Load identity from filesystem
     identity, characteristics = _load_agent_identity(agent_type)
 
-    # Get task prompt
-    task_prompt = SUBAGENT_PROMPTS[agent_type]
-
     # Build the complete system prompt
     prompt = _build_subagent_prompt(
         agent_type=agent_type,
         identity=identity,
         characteristics=characteristics,
-        task_prompt=task_prompt,
         persist_tool_name=persist_tool_name,
     )
 
@@ -244,19 +233,17 @@ def build_subagent_definition(agent_type: str) -> Optional[AgentDefinition]:
 
 def build_subagent_definitions() -> dict[str, AgentDefinition]:
     """
-    Build AgentDefinition dict for all sub-agents.
+    Build AgentDefinition dict for all Task-tool sub-agents.
 
-    This is the main entry point for creating sub-agent definitions.
-    Call this when building ClaudeAgentOptions for Action Manager or
-    Onboarding Manager.
+    This is a utility function for building all definitions at once.
 
     Returns:
         Dictionary mapping agent type to AgentDefinition
-        Example: {"stat_calculator": AgentDefinition(...), ...}
+        Example: {"item_designer": AgentDefinition(...), ...}
     """
     definitions = {}
 
-    for agent_type in SUBAGENT_PROMPTS.keys():
+    for agent_type in SUBAGENT_TYPES:
         definition = build_subagent_definition(agent_type)
         if definition:
             definitions[agent_type] = definition
@@ -290,7 +277,7 @@ def _cache_is_valid(agent_name: str, current_mtimes: dict[str, float]) -> bool:
 
 def build_subagent_definitions_for_agent(agent_name: str) -> Optional[dict[str, AgentDefinition]]:
     """
-    Build sub-agent definitions based on the parent agent name.
+    Build Task-tool sub-agent definitions based on the parent agent name.
 
     Only certain agents (Action Manager, Onboarding Manager) should have
     access to sub-agents. Results are cached with mtime-based invalidation
@@ -302,15 +289,17 @@ def build_subagent_definitions_for_agent(agent_name: str) -> Optional[dict[str, 
     Returns:
         Dictionary of sub-agent definitions, or None if agent doesn't need sub-agents
     """
-    # Agents that can invoke sub-agents
+    # Agents that can invoke Task-tool sub-agents
     SUBAGENT_ENABLED_AGENTS = {
         "Action_Manager": [
-            "stat_calculator",
+            "item_designer",
             "character_designer",
             "location_designer",
         ],
         "Onboarding_Manager": [
-            "world_seed_generator",
+            "item_designer",
+            "character_designer",
+            "location_designer",
         ],
     }
 

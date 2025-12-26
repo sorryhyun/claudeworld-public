@@ -153,18 +153,16 @@ class TestCreateGuidelinesMCPServer:
 
     @patch("sdk.tools.guidelines_tools.is_tool_enabled")
     @patch("sdk.tools.guidelines_tools.get_tool_description")
-    @patch("sdk.tools.guidelines_tools.get_situation_builder_note")
     @patch("sdk.tools.guidelines_tools.create_sdk_mcp_server")
     def test_create_guidelines_mcp_server_description_mode(
-        self, mock_create_mcp, mock_get_note, mock_get_description, mock_is_enabled
+        self, mock_create_mcp, mock_get_description, mock_is_enabled
     ):
         """Test creating guidelines MCP server."""
         mock_is_enabled.return_value = True
         mock_get_description.return_value = "Guidelines content"
-        mock_get_note.return_value = ""
         mock_create_mcp.return_value = Mock()
 
-        server = create_guidelines_mcp_server(agent_name="TestAgent", has_situation_builder=False)
+        server = create_guidelines_mcp_server(agent_name="TestAgent")
 
         # Should create MCP server
         assert server is not None
@@ -172,18 +170,14 @@ class TestCreateGuidelinesMCPServer:
 
     @patch("sdk.tools.guidelines_tools.is_tool_enabled")
     @patch("sdk.tools.guidelines_tools.get_tool_description")
-    @patch("sdk.tools.guidelines_tools.get_situation_builder_note")
     @patch("sdk.tools.guidelines_tools.create_sdk_mcp_server")
-    def test_create_guidelines_mcp_server_active_mode(
-        self, mock_create_mcp, mock_get_note, mock_get_description, mock_is_enabled
-    ):
-        """Test creating guidelines MCP server with situation builder."""
+    def test_create_guidelines_mcp_server_with_group_name(self, mock_create_mcp, mock_get_description, mock_is_enabled):
+        """Test creating guidelines MCP server with group name."""
         mock_is_enabled.return_value = True
         mock_get_description.return_value = "Read tool description"
-        mock_get_note.return_value = ""
         mock_create_mcp.return_value = Mock()
 
-        server = create_guidelines_mcp_server(agent_name="TestAgent", has_situation_builder=True)
+        server = create_guidelines_mcp_server(agent_name="TestAgent", group_name="test_group")
 
         # Should create MCP server with read tool
         assert server is not None

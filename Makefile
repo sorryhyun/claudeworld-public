@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-backend-sqlite run-backend-perf run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -17,6 +17,7 @@ help:
 	@echo "  make run-frontend      - Run frontend server only"
 	@echo ""
 	@echo "Setup:"
+	@echo "  make setup             - Run .env setup wizard (or re-run with --force)"
 	@echo "  make generate-hash     - Generate password hash for authentication"
 	@echo ""
 	@echo "Testing & Simulation:"
@@ -45,20 +46,37 @@ install:
 	uv sync
 	@echo "Installing frontend dependencies..."
 	cd frontend && npm install
+	@echo ""
+	@echo "Checking .env configuration..."
+	@if uv run python scripts/setup/setup_env.py --check 2>/dev/null; then \
+		echo ""; \
+	else \
+		echo ""; \
+		echo "Running first-time setup wizard..."; \
+		uv run python scripts/setup/setup_env.py; \
+	fi
 	@echo "Done!"
+
+setup:
+	@echo "Running .env setup wizard..."
+	@if [ "$(FORCE)" = "1" ]; then \
+		uv run python scripts/setup/setup_env.py --force; \
+	else \
+		uv run python scripts/setup/setup_env.py; \
+	fi
 
 run-backend:
 	@echo "Starting backend server (PostgreSQL)..."
-	cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 run-backend-sqlite:
 	@echo "Starting backend server (SQLite)..."
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
 	@echo "Performance metrics will be written to ./latency.log"
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 run-frontend:
 	@echo "Starting frontend server..."
@@ -114,7 +132,7 @@ prod:
 	@echo "Prerequisites: vercel CLI logged in (run 'vercel login' first)"
 	@echo ""
 	@# Start backend in background
-	@cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
+	@cd backend && uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000 &
 	@sleep 2
 	@# Run tunnel script (handles URL detection, Vercel update, and redeploy)
 	@./scripts/deploy/update_vercel_backend_url.sh

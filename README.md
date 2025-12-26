@@ -48,16 +48,16 @@ Open http://localhost:5173 and login with your password.
 ### Onboarding Phase
 
 1. Create a new world
-2. The **Onboarding Manager** interviews you about your ideal world
-3. The **World Seed Generator** creates lore, stat system, and starting location
-4. The game begins at your starting location
+2. The **Onboarding Manager** interviews you about your ideal world, then creates lore, stat system, and starting location
+3. The game begins at your starting location
 
 ### Active Gameplay
 
 ```
 Your Action → Action_Manager (hidden)
                     │
-                    ├── Task(stat_calculator)     → Calculate stat/inventory changes
+                    ├── change_stat()             → Apply stat/inventory changes
+                    ├── Task(item_designer)       → Create new item templates
                     ├── Task(character_designer)  → Create NPCs if needed
                     ├── Task(location_designer)   → Create locations if needed
                     ├── narration()               → Describe the outcome
@@ -72,16 +72,15 @@ Each turn:
 
 ## System Agents
 
-Eight specialized agents in `agents/group_onboarding/` and `agents/group_gameplay/`:
+Six specialized agents in `agents/group_gameplay/` and `agents/group_subagent/`:
 
 | Agent | Role |
 |-------|------|
-| **Onboarding_Manager** | Interviews player about world preferences |
-| **World_Seed_Generator** | Creates world lore, stat system, locations (sub-agent) |
+| **Onboarding_Manager** | Interviews player and generates world (lore, stat system, locations) |
 | **Action_Manager** | Interprets actions, coordinates sub-agents, creates narration |
+| **Item_Designer** | Creates new item templates with balanced stats and lore (sub-agent) |
 | **Character_Designer** | Creates NPCs when interactions require them (sub-agent) |
 | **Location_Designer** | Creates new locations during exploration (sub-agent) |
-| **Stat_Calculator** | Processes mechanical game effects (sub-agent) |
 | **Chat_Summarizer** | Summarizes chat mode conversations (sub-agent) |
 
 ## API
@@ -114,19 +113,16 @@ System agents use a folder-based structure:
 
 ```
 agents/
-  group_onboarding/
-    ├── group_config.yaml        # Group behavior settings
-    ├── Onboarding_Manager/
-    │   ├── in_a_nutshell.md     # Brief identity (third-person)
-    │   └── characteristics.md    # Personality traits (third-person)
-    └── World_Seed_Generator/
   group_gameplay/
+    ├── group_config.yaml        # Group behavior settings
+    ├── Onboarding_Manager/      # Interviews player, generates world
+    ├── Action_Manager/          # Main gameplay orchestrator
+    └── Chat_Summarizer/         # Summarizes chat conversations
+  group_subagent/
     ├── group_config.yaml
-    ├── Action_Manager/
-    ├── Character_Designer/
-    ├── Location_Designer/
-    ├── Stat_Calculator/
-    └── Chat_Summarizer/
+    ├── Item_Designer/           # Creates items (sub-agent via Task tool)
+    ├── Character_Designer/      # Creates NPCs (sub-agent via Task tool)
+    └── Location_Designer/       # Creates locations (sub-agent via Task tool)
 ```
 
 All agents use **third-person perspective** (e.g., "Action_Manager is..." not "You are...").
@@ -171,7 +167,7 @@ See [SETUP.md](SETUP.md) for deployment details.
 - `CLAUDE_API_KEY` - Direct API key for production (optional, uses Claude Code auth if not set)
 - `USER_NAME` - Display name for user messages
 - `DEBUG_AGENTS` - "true" for verbose logging
-- `USE_HAIKU` - "true" to use Haiku model instead of Opus
+- `USE_SONNET` - "true" to use Sonnet model instead of Opus
 - `ENABLE_GUEST_LOGIN` - "true"/"false" to enable guest access (default: true)
 - `FRONTEND_URL` - CORS origin for production deployments
 

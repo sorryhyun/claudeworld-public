@@ -13,7 +13,7 @@ import crud
 import schemas
 from core.settings import SKIP_MESSAGE_TEXT
 from domain import Agent
-from domain.entities.agent import is_action_manager, is_world_seed_generator
+from domain.entities.agent import is_action_manager
 from domain.value_objects.contexts import (
     AgentMessageData,
     AgentResponseContext,
@@ -56,10 +56,6 @@ class ResponseGenerator:
             last_user_message_time: Shared dict tracking last user message timestamp per room
         """
         self.last_user_message_time = last_user_message_time
-
-    def _is_world_seed_generator(self, agent_name: str) -> bool:
-        """Check if agent is World Seed Generator."""
-        return is_world_seed_generator(agent_name)
 
     def _is_action_manager(self, agent_name: str) -> bool:
         """Check if agent is Action Manager (for gameplay context)."""
@@ -137,7 +133,7 @@ class ResponseGenerator:
         agent_count = len(room.agents) if room else 0
 
         # Determine conversation type and participants using shared utility
-        _, user_name, has_situation_builder = detect_conversation_type(room_messages, agent_count)
+        _, user_name = detect_conversation_type(room_messages, agent_count)
 
         # Check if this is a game room and get world settings for context building
         is_onboarding = room and room.world and room.world.phase == WorldPhase.ONBOARDING
@@ -214,11 +210,8 @@ class ResponseGenerator:
                 agent.name,
                 orch_context.room_id,
                 type="action_manager",
-                npcs=len(am_context.present_npcs),
             )
-            logger.info(
-                f"[Gameplay] Built Action Manager context for world '{world_name}' with {len(am_context.present_npcs)} characters"
-            )
+            logger.info(f"[Gameplay] Built Action Manager context for world '{world_name}'")
 
         # Fall back to conversation context if not using gameplay context
         if message_to_agent is None:
@@ -229,18 +222,13 @@ class ResponseGenerator:
         if room and room.created_at:
             conversation_started = format_kst_timestamp(room.created_at, "%Y-%m-%d %H:%M:%S KST")
 
-        # Check if this is World Seed Generator (uses persist_world_seed tool)
-        is_world_seed_gen = self._is_world_seed_generator(agent.name)
-
         # Build agent response context
         # Determine effective system prompt based on context:
-        # 1. Gameplay agents (Action Manager, Narrator): use stored prompt + gameplay suffix
+        # 1. Gameplay agents (Action Manager): use stored prompt + gameplay suffix
         # 2. Chat mode NPCs: build runtime prompt with lore injected between guideline and traits
         # 3. Other agents: use stored prompt as-is
         sys_prompt_start = time.perf_counter()
         effective_system_prompt = agent.system_prompt
-
-        is_gameplay_agent = is_action_mgr or is_world_seed_gen
 
         if gameplay_system_prompt_suffix:
             # Gameplay agents get lore appended as suffix (existing behavior)
@@ -254,7 +242,7 @@ class ResponseGenerator:
                 type="gameplay_suffix",
                 prompt_len=len(effective_system_prompt),
             )
-        elif is_chat_mode and world_name and not is_gameplay_agent:
+        elif is_chat_mode and world_name and not is_action_mgr:
             # Chat mode NPCs: build runtime prompt with lore injected in the middle
             # Structure: [platform_guideline] -> [lore] -> [character_traits]
             lore = WorldService.load_lore(world_name)
@@ -320,7 +308,6 @@ class ResponseGenerator:
             conversation_history=None,  # Not needed - already in message_to_agent
             task_id=task_id,
             conversation_started=conversation_started,
-            has_situation_builder=has_situation_builder,
             image=image,  # Native SDK image support
             world_name=world_name,
             db=orch_context.db,  # Pass db for TRPG game tools

@@ -154,8 +154,8 @@ describe('usePolling', () => {
 
     result.current.sendMessage(
       'Test',
-      'situation_builder',
-      'Builder',
+      'character',
+      'CharacterName',
       'base64data',
       'image/png'
     )
@@ -169,8 +169,8 @@ describe('usePolling', () => {
       expect(body).toMatchObject({
         content: 'Test',
         role: 'user',
-        participant_type: 'situation_builder',
-        participant_name: 'Builder',
+        participant_type: 'character',
+        participant_name: 'CharacterName',
         image_data: 'base64data',
         image_media_type: 'image/png',
       })

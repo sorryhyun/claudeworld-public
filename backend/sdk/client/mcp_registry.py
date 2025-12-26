@@ -30,6 +30,7 @@ from sdk.tools import (
     create_action_mcp_server,
     create_guidelines_mcp_server,
     create_onboarding_mcp_server,
+    create_subagents_mcp_server,
 )
 from sdk.tools.context import ToolContext
 
@@ -81,7 +82,6 @@ class MCPRegistry:
         - agent_name, agent_id: affect tool context
         - group_name: affects enabled tool groups
         - config_file, long_term_memory_index: affect action MCP server
-        - has_situation_builder: affects guidelines MCP server
         - world_name, world_id, room_id: affect onboarding/action_manager/narrator servers
 
         Note: db session is excluded as it's a runtime dependency, not config.
@@ -93,12 +93,9 @@ class MCPRegistry:
             str(getattr(context, "group_name", "")),
             str(context.config.config_file) if context.config.config_file else "",
             str(context.config.long_term_memory_index) if context.config.long_term_memory_index else "",
-            str(context.has_situation_builder),
             str(context.world_name) if context.world_name else "",
             str(context.world_id) if context.world_id else "",
             str(context.room_id) if context.room_id else "",
-            # Include read_guideline_by setting as it affects MCP server creation
-            str(self.settings.read_guideline_by),
         ]
         hash_input = "|".join(hash_parts)
         return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
@@ -243,13 +240,9 @@ class MCPRegistry:
             mcp_servers["action"] = create_action_mcp_server(action_ctx)
 
         # Always create guidelines MCP server
-        logger.debug(
-            f"Creating guidelines MCP server for agent: '{context.agent_name}' "
-            f"(mode: {self.settings.read_guideline_by})"
-        )
+        logger.debug(f"Creating guidelines MCP server for agent: '{context.agent_name}'")
         mcp_servers["guidelines"] = create_guidelines_mcp_server(
             agent_name=context.agent_name,
-            has_situation_builder=context.has_situation_builder,
             group_name=context.group_name,
         )
 
@@ -290,6 +283,28 @@ class MCPRegistry:
                     f"world_name={context.world_name})"
                 )
 
+        # Subagents MCP server (persist tools for subagents invoked via Task tool)
+        # Available to both Action Manager and Onboarding Manager
+        if "subagent" in enabled_groups:
+            if context.db is not None and context.world_id is not None and context.world_name:
+                logger.debug(f"Adding subagents tools for agent: {context.agent_name}")
+                subagents_ctx = ToolContext(
+                    agent_name=context.agent_name,
+                    agent_id=context.agent_id,
+                    group_name=context.group_name,
+                    room_id=context.room_id,
+                    world_name=context.world_name,
+                    world_id=context.world_id,
+                    db=context.db,
+                )
+                mcp_servers["subagents"] = create_subagents_mcp_server(subagents_ctx)
+            else:
+                logger.warning(
+                    f"subagents tool group enabled but missing required context "
+                    f"(db={context.db is not None}, world_id={context.world_id}, "
+                    f"world_name={context.world_name})"
+                )
+
         # Note: narrator MCP server removed - narration now handled via Action Manager's narration tool
 
         return mcp_servers
@@ -308,25 +323,32 @@ class MCPRegistry:
 
         # Add subagent persist tools based on enabled groups
         # These tools are dynamically created (not in YAML config) so we add them manually
-        # Each persist tool belongs to its parent's MCP server:
-        # - action_manager: persist_stat_changes, persist_character_design, persist_location_design
-        # - onboarding: persist_world_seed
         if "action_manager" in enabled_groups:
-            # Add gameplay persist tools (used by subagents invoked via Task tool)
-            action_manager_persist_tools = [
-                SUBAGENT_TOOL_NAMES["stat_calculator"],
+            # Action Manager direct tools
+            action_manager_tools = [
+                "mcp__action_manager__change_stat",  # Direct AM tool
+            ]
+            allowed_tool_names.extend(action_manager_tools)
+            logger.debug(f"Added action_manager tools: {action_manager_tools}")
+
+        if "subagent" in enabled_groups:
+            # Subagent persist tools (used by subagents invoked via Task tool)
+            subagent_persist_tools = [
+                SUBAGENT_TOOL_NAMES["item_designer"],
                 SUBAGENT_TOOL_NAMES["character_designer"],
                 SUBAGENT_TOOL_NAMES["location_designer"],
             ]
-            allowed_tool_names.extend(action_manager_persist_tools)
-            logger.debug(f"Added action_manager persist tools: {action_manager_persist_tools}")
+            allowed_tool_names.extend(subagent_persist_tools)
+            logger.debug(f"Added subagent persist tools: {subagent_persist_tools}")
 
         if "onboarding" in enabled_groups:
-            # Add onboarding persist tool (used by world_seed_generator subagent)
-            onboarding_persist_tool = SUBAGENT_TOOL_NAMES["world_seed_generator"]
-            if onboarding_persist_tool:
-                allowed_tool_names.append(onboarding_persist_tool)
-                logger.debug(f"Added onboarding persist tool: {onboarding_persist_tool}")
+            # Add onboarding tools (used by Onboarding_Manager directly)
+            onboarding_tools = [
+                "mcp__onboarding__draft_world",
+                "mcp__onboarding__persist_world",
+            ]
+            allowed_tool_names.extend(onboarding_tools)
+            logger.debug(f"Added onboarding tools: {onboarding_tools}")
 
         # Apply specific tool filtering (disabled_tools)
         if agent_tool_config.get("disabled_tools"):

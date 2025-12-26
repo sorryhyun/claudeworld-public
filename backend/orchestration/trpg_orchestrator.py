@@ -2,7 +2,8 @@
 TRPG orchestrator for turn-based gameplay.
 
 Handles the 1-agent gameplay system where Action Manager interprets player actions,
-invokes sub-agents (stat_calculator, character_designer, location_designer) via Task tool,
+invokes sub-agents (item_designer, character_designer, location_designer) via Task tool,
+uses change_stat directly for stat/inventory changes,
 and creates visible output via narration and suggest_options tools.
 """
 

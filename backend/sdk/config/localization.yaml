@@ -21,5 +21,5 @@ onboarding:
 game:
   arrival:
     en: "{user_name} arrived at {location_name}, entering ClaudeWorld for the first time. Proceed after checking are the characters in the current location or not."
-    ko: "{user_name:이가} {location_name}에 도착했습니다. ClaudeWorld에 처음으로 발을 디딥니다. 캐릭터들이 현재 장소에 있는지 확인한 다음 진행해주세요."
+    ko: "{user_name:이가} {location_name}에 도착했습니다. ClaudeWorld에 처음으로 발을 디딥니다. 현재 시간이 정확하게 설정돼있는지, 그리고 캐릭터들이 현재 장소에 있는지 확인한 다음 진행해주세요."
     jp: "{user_name}が{location_name}に到着しました。ClaudeWorldに初めて足を踏み入れます。現在の場所にキャラクターがいるかどうか確認してから進めてください。"

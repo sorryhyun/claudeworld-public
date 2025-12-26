@@ -75,9 +75,7 @@ async def _warm_chat_summarizer(room_id: int, agent_manager: AgentManager) -> No
             options, config_hash = build_agent_options(context, system_prompt, [])
 
             # Pre-create the client in the pool
-            _pooled, is_new, _lock = await agent_manager.client_pool.get_or_create(
-                task_id, options, config_hash
-            )
+            _pooled, is_new, _lock = await agent_manager.client_pool.get_or_create(task_id, options, config_hash)
 
             if is_new:
                 logger.info(f"Chat_Summarizer client warmed for room {room_id}")

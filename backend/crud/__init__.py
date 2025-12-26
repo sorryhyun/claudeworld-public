@@ -92,7 +92,6 @@ from .rooms import (
     get_room,
     get_rooms,
     mark_room_as_finished,
-    mark_room_as_read,
     update_room,
 )
 
@@ -117,7 +116,6 @@ __all__ = [
     "get_rooms",
     "get_room",
     "update_room",
-    "mark_room_as_read",
     "mark_room_as_finished",
     "delete_room",
     "get_or_create_direct_room",

@@ -171,16 +171,14 @@ ClaudeWorld operates through multiple AI agents collaborating to run the game.
 
 When creating a new world, a two-phase onboarding process occurs:
 
-**Phase 1: Interview (Onboarding_Manager)**
+**Onboarding_Manager:**
 - Identifies the player's desired genre, theme, and atmosphere
 - Collects specific requests about characters and world setting
-- Calls the `complete` tool when sufficient information is gathered
-
-**Phase 2: World Generation (World_Seed_Generator)**
 - Designs the stat system (min/max/default values for HP, mana, etc.)
 - Creates the starting location (with detailed descriptions)
 - Sets up initial inventory
 - Writes world notes for other agents
+- Calls the `complete` tool when finished
 
 ### 1-Agent Tape System
 
@@ -189,7 +187,8 @@ Gameplay is handled by a single **Action Manager** agent that calls sub-agents v
 ```
 Player Action → Action Manager (hidden)
                     │
-                    ├── Task(stat_calculator)     → Calculate stats/inventory
+                    ├── change_stat()             → Apply stat/inventory changes
+                    ├── Task(item_designer)       → Create item templates
                     ├── Task(character_designer)  → Create NPCs
                     ├── Task(location_designer)   → Create locations
                     ├── narration()               → Describe outcomes
@@ -209,9 +208,11 @@ Action Manager calls specialized sub-agents via SDK Task tool:
 
 | Sub-Agent | Persist Tool | Role |
 |-----------|-------------|------|
-| `stat_calculator` | `persist_stat_changes` | Calculate and save stat/inventory changes |
+| `item_designer` | `persist_item` | Design and save item templates |
 | `character_designer` | `persist_character_design` | Create and save new NPCs |
 | `location_designer` | `persist_location_design` | Create and save new locations |
+
+Note: `change_stat` is used directly by Action Manager (no sub-agent).
 
 Each sub-agent uses persist tools to save results directly to the filesystem.
 

@@ -20,8 +20,8 @@ from sqlalchemy.orm import selectinload
 logger = logging.getLogger("WorldCRUD")
 
 # Gameplay agents that should be added to location rooms
-# Only Action_Manager and Narrator are in the tape - sub-agents (Character_Designer,
-# Stat_Calculator, Location_Designer) are invoked via tools, not added to rooms
+# Only Action_Manager and Narrator are in the tape - sub-agents (Item_Designer,
+# Character_Designer, Location_Designer) are invoked via tools, not added to rooms
 GAMEPLAY_AGENT_NAMES = [
     "Action_Manager",
     "Narrator",
