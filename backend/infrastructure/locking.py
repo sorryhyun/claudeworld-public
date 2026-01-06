@@ -14,8 +14,13 @@ import os
 import sys
 import threading
 from contextlib import contextmanager
+from typing import Any
 
 # Platform-specific imports
+# Type stubs for conditional imports
+fcntl: Any = None
+msvcrt: Any = None
+
 try:
     import fcntl
 

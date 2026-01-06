@@ -3,14 +3,13 @@
 import json
 import secrets
 
-from auth import generate_jwt_token, validate_password_with_role
+from infrastructure.auth import generate_jwt_token, validate_password_with_role
 from fastapi import APIRouter, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 router = APIRouter()
 
-# Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
 
@@ -41,21 +40,18 @@ async def login(request: Request):
         if not password:
             raise HTTPException(status_code=400, detail="Password is required")
 
-        # Validate password and get role
         role = validate_password_with_role(password)
 
         if role:
-            # Generate a unique user_id for this session (admin is fixed)
             from domain.value_objects.enums import UserRole
 
             user_id = "admin" if role == UserRole.ADMIN else f"guest-{secrets.token_hex(6)}"
 
-            # Generate a JWT token with the appropriate role (valid for 7 days by default)
             token = generate_jwt_token(role=role, user_id=user_id, expiration_hours=168)
             return {
                 "success": True,
-                "api_key": token,  # Return JWT token (not the password!)
-                "role": role.value,  # Return the user's role as string
+                "api_key": token,
+                "role": role.value,
                 "user_id": user_id,
                 "message": f"Login successful as {role.value}",
             }

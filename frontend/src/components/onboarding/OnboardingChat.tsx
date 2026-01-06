@@ -1,13 +1,13 @@
-import { useState, KeyboardEvent } from 'react';
-import { MessageList } from '../chat-room/message-list/MessageList';
-import type { GameMessage } from '../../contexts/GameContext';
-import type { Message } from '../../types';
+import { useState, KeyboardEvent } from "react";
+import { MessageList } from "../chat-room/message-list/MessageList";
+import type { GameMessage } from "../../contexts/GameContext";
+import type { Message } from "../../types";
 
 interface OnboardingChatProps {
   messages: GameMessage[];
   onSendMessage: (message: string) => void;
   isProcessing: boolean;
-  worldPhase: 'onboarding' | 'active' | 'ended';
+  worldPhase: "onboarding" | "active" | "ended";
 }
 
 // Convert GameMessage to Message format for MessageList compatibility
@@ -30,16 +30,16 @@ export function OnboardingChat({
   isProcessing,
   worldPhase,
 }: OnboardingChatProps) {
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
 
   const handleSend = () => {
     if (!inputValue.trim() || isProcessing) return;
     onSendMessage(inputValue.trim());
-    setInputValue('');
+    setInputValue("");
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSend();
     }
@@ -54,8 +54,18 @@ export function OnboardingChat({
       {displayMessages.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-slate-500">
-            <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            <svg
+              className="w-12 h-12 mx-auto mb-3 text-slate-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
             </svg>
             <p className="text-sm">Waiting for your guide...</p>
           </div>
@@ -66,9 +76,12 @@ export function OnboardingChat({
 
       {/* Input Area */}
       <div className="border-t border-slate-200 p-4 bg-white">
-        {worldPhase === 'active' ? (
+        {worldPhase === "active" ? (
           <div className="text-center text-slate-500 py-2">
-            <p className="text-sm">Your world is ready! Click "Enter World" above to begin your adventure.</p>
+            <p className="text-sm">
+              Your world is ready! Click "Enter World" above to begin your
+              adventure.
+            </p>
           </div>
         ) : (
           <div className="flex gap-2">
@@ -80,7 +93,7 @@ export function OnboardingChat({
               disabled={isProcessing}
               rows={1}
               className="flex-1 px-4 py-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent disabled:bg-slate-100 disabled:cursor-not-allowed text-sm sm:text-[15px]"
-              style={{ minHeight: '48px', maxHeight: '120px' }}
+              style={{ minHeight: "48px", maxHeight: "120px" }}
             />
             <button
               onClick={handleSend}
@@ -90,8 +103,18 @@ export function OnboardingChat({
               {isProcessing ? (
                 <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
               ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
                 </svg>
               )}
             </button>

@@ -10,18 +10,17 @@ from typing import Optional
 
 import crud
 import schemas
-from database import async_session_maker, get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     get_agent_manager,
     get_request_identity,
 )
-from fastapi import BackgroundTasks
 from domain.entities.agent import is_action_manager
 from domain.services.access_control import AccessControl
 from domain.services.localization import Localization
 from domain.value_objects.enums import Language, MessageRole, WorldPhase
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from infrastructure.database.connection import async_session_maker, get_db
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
 from services.location_service import LocationService
@@ -137,9 +136,7 @@ async def poll_updates(
 
                         # Trigger initial scene generation in background
                         target_room_for_scene = arrival_location.room_id
-                        arrival_content = Localization.get_arrival_message(
-                            user_name, location_name, world.language
-                        )
+                        arrival_content = Localization.get_arrival_message(user_name, location_name, world.language)
 
                         async def trigger_initial_scene():
                             async with async_session_maker() as session:
@@ -205,10 +202,12 @@ async def poll_updates(
                 "role": m.role,
                 "agent_id": m.agent_id,
                 "agent_name": m.agent.name if m.agent else None,
+                "agent_profile_pic": m.agent.profile_pic if m.agent else None,
                 "thinking": m.thinking,
                 "timestamp": m.timestamp.isoformat() if m.timestamp else None,
                 "image_data": m.image_data,
                 "image_media_type": m.image_media_type,
+                "game_time_snapshot": json.loads(m.game_time_snapshot) if m.game_time_snapshot else None,
             }
             for m in visible_messages
         ],
@@ -219,6 +218,7 @@ async def poll_updates(
             else 0,
             "turn_count": player_state.turn_count if player_state else 0,
             "phase": current_phase,  # Use synced phase from filesystem
+            "pending_phase": fs_config.pending_phase if fs_config else None,  # For "Enter World" button
             "is_chat_mode": player_state.is_chat_mode if player_state else False,  # Chat mode state
             # Resume message ID: when exiting chat mode, frontend should use this as lastMessageId
             # to avoid re-fetching old narration from before chat mode

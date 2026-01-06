@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { api } from '../services';
-import { useAuth } from '../contexts/AuthContext';
-import type { RoomSummary, Room } from '../types';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { api } from "../services";
+import { useAuth } from "../contexts/AuthContext";
+import type { RoomSummary, Room } from "../types";
 
 interface UseRoomsReturn {
   rooms: RoomSummary[];
@@ -38,7 +38,7 @@ export const useRooms = (): UseRoomsReturn => {
 
         // Check if any room has changed
         const hasChanges = data.some((newRoom) => {
-          const prevRoom = prevRooms.find(r => r.id === newRoom.id);
+          const prevRoom = prevRooms.find((r) => r.id === newRoom.id);
           if (!prevRoom) return true;
 
           // Compare relevant properties
@@ -55,7 +55,7 @@ export const useRooms = (): UseRoomsReturn => {
 
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       if (isInitial) {
         setLoading(false);
@@ -88,7 +88,7 @@ export const useRooms = (): UseRoomsReturn => {
 
           // Check if any room has changed
           const hasChanges = data.some((newRoom) => {
-            const prevRoom = prevRooms.find(r => r.id === newRoom.id);
+            const prevRoom = prevRooms.find((r) => r.id === newRoom.id);
             if (!prevRoom) return true;
 
             // Compare relevant properties
@@ -105,7 +105,7 @@ export const useRooms = (): UseRoomsReturn => {
 
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
         if (isInitial) {
           setLoading(false);
@@ -153,7 +153,7 @@ export const useRooms = (): UseRoomsReturn => {
       setRooms((prev) => [...prev, roomSummary]);
       return newRoom;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
       throw err;
     }
@@ -164,7 +164,7 @@ export const useRooms = (): UseRoomsReturn => {
       await api.deleteRoom(roomId);
       setRooms((prev) => prev.filter((room) => room.id !== roomId));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
       throw err;
     }
@@ -173,18 +173,26 @@ export const useRooms = (): UseRoomsReturn => {
   const renameRoom = async (roomId: number, name: string): Promise<Room> => {
     try {
       const updatedRoom = await api.updateRoom(roomId, { name });
-      setRooms((prev) => prev.map((room) => (
-        room.id === roomId
-          ? { ...room, name: updatedRoom.name }
-          : room
-      )));
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.id === roomId ? { ...room, name: updatedRoom.name } : room,
+        ),
+      );
       return updatedRoom;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
       throw err;
     }
   };
 
-  return { rooms, loading, error, createRoom, deleteRoom, renameRoom, refreshRooms: fetchRooms };
+  return {
+    rooms,
+    loading,
+    error,
+    createRoom,
+    deleteRoom,
+    renameRoom,
+    refreshRooms: fetchRooms,
+  };
 };

@@ -15,9 +15,21 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from domain.entities.world_models import PlayerState as FSPlayerState
 from domain.services.player_rules import (
     InventoryItem,
+    apply_affordance_costs,
+    apply_affordance_effects,
     apply_stat_changes,
+    check_affordance_requirements,
+    check_charges_available,
+    check_cooldown_ready,
+    # Phase 2: Equipment and affordance functions
+    equip_item,
+    find_inventory_item,
+    get_equipped_passive_effects,
     merge_inventory_item,
     remove_inventory_item,
+    unequip_slot,
+    update_charges_and_cooldown,
+    update_inventory_item_props,
 )
 from domain.services.player_state_serializer import PlayerStateSerializer
 
@@ -54,6 +66,27 @@ class TimeAdvanceResult:
     old_time: Dict[str, int]
     new_time: Dict[str, int]
     minutes_advanced: int
+
+
+@dataclass
+class EquipmentResult:
+    """Result of an equipment operation."""
+
+    success: bool
+    message: str
+    equipped_item_id: Optional[str] = None
+    unequipped_item_id: Optional[str] = None
+
+
+@dataclass
+class UseItemResult:
+    """Result of using an item affordance."""
+
+    success: bool
+    message: str
+    stat_changes: Optional[Dict[str, int]] = None
+    flags_changed: Optional[Dict[str, bool]] = None
+    item_removed: bool = False
 
 
 class PlayerFacade:
@@ -109,8 +142,8 @@ class PlayerFacade:
             return
 
         try:
-            import models
-            from database import serialized_write
+            from infrastructure.database import models
+            from infrastructure.database.connection import serialized_write
             from sqlalchemy.future import select
 
             result = await self.db.execute(
@@ -414,3 +447,248 @@ class PlayerFacade:
                 results["inventory_results"].append(result)
 
         return results
+
+    # =========================================================================
+    # Equipment Operations (Phase 2)
+    # =========================================================================
+
+    async def equip_item_to_slot(
+        self,
+        item_id: str,
+        slot: Optional[str] = None,
+    ) -> EquipmentResult:
+        """
+        Equip an item from inventory to a slot.
+
+        Args:
+            item_id: Item to equip
+            slot: Target slot (auto-detect from item if not specified)
+        """
+        from services.catalog_service import CatalogService
+        from services.item_service import ItemService
+
+        state = self._load_state()
+        if not state:
+            return EquipmentResult(success=False, message="Player state not found")
+
+        templates = ItemService.load_all_item_templates(self.world_name)
+        slot_catalog = CatalogService.load_equipment_slots(self.world_name)
+
+        # Get item template
+        template = templates.get(item_id)
+        if not template:
+            return EquipmentResult(success=False, message=f"Item not found: {item_id}")
+
+        # Auto-detect slot if not specified
+        if not slot:
+            equippable = template.get("equippable", {})
+            slot = equippable.get("slot")
+            if not slot:
+                return EquipmentResult(success=False, message=f"Item is not equippable: {item_id}")
+
+        # Perform equip
+        new_equipment, unequipped_id, message = equip_item(
+            inventory=state.inventory,
+            equipment=state.equipment,
+            item_id=item_id,
+            slot=slot,
+            item_template=template,
+            slot_catalog=slot_catalog,
+        )
+
+        if new_equipment == state.equipment:
+            return EquipmentResult(success=False, message=message)
+
+        # Update state
+        state.equipment = new_equipment
+        self._save_state(state)
+        await self._sync_to_db(state)
+
+        logger.info(f"⚔️ Equipped {item_id} to {slot} in {self.world_name}")
+
+        return EquipmentResult(
+            success=True,
+            message=message,
+            equipped_item_id=item_id,
+            unequipped_item_id=unequipped_id,
+        )
+
+    async def unequip_from_slot(self, slot: str) -> EquipmentResult:
+        """Unequip an item from a slot."""
+        state = self._load_state()
+        if not state:
+            return EquipmentResult(success=False, message="Player state not found")
+
+        new_equipment, unequipped_id, message = unequip_slot(
+            equipment=state.equipment,
+            slot=slot,
+        )
+
+        if not unequipped_id:
+            return EquipmentResult(success=False, message=message)
+
+        state.equipment = new_equipment
+        self._save_state(state)
+        await self._sync_to_db(state)
+
+        logger.info(f"⚔️ Unequipped {unequipped_id} from {slot} in {self.world_name}")
+
+        return EquipmentResult(
+            success=True,
+            message=message,
+            unequipped_item_id=unequipped_id,
+        )
+
+    async def use_item_affordance(
+        self,
+        item_id: str,
+        affordance_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> UseItemResult:
+        """
+        Use an item's affordance.
+
+        Checks requirements, applies costs, applies effects, updates charges/cooldowns.
+        """
+        from services.item_service import ItemService
+
+        # Load state and templates
+        state = self._load_state()
+        if not state:
+            return UseItemResult(success=False, message="Player state not found")
+
+        templates = ItemService.load_all_item_templates(self.world_name)
+        stat_defs = self._load_stat_definitions()
+
+        # Get item template
+        template = templates.get(item_id)
+        if not template:
+            return UseItemResult(success=False, message=f"Item not found: {item_id}")
+
+        # Find affordance
+        usable = template.get("usable", {})
+        affordances = usable.get("affordances", [])
+        affordance = next((a for a in affordances if a.get("id") == affordance_id), None)
+
+        if not affordance:
+            return UseItemResult(success=False, message=f"Affordance not found: {affordance_id}")
+
+        # Get item instance for charges/cooldown tracking
+        item_instance, _ = find_inventory_item(state.inventory, item_id)
+        if not item_instance:
+            return UseItemResult(success=False, message=f"Item not in inventory: {item_id}")
+
+        instance_props = item_instance.get("instance_properties", {})
+
+        # Check cooldown
+        current_turn = state.turn_count
+        is_ready, cooldown_msg = check_cooldown_ready(instance_props, affordance, current_turn)
+        if not is_ready:
+            return UseItemResult(success=False, message=cooldown_msg)
+
+        # Check charges
+        has_charges, charges, charges_msg = check_charges_available(instance_props, affordance)
+        if not has_charges:
+            return UseItemResult(success=False, message=charges_msg)
+
+        # Check requirements
+        can_use, req_msg = check_affordance_requirements(affordance, state.stats, state.flags, state.inventory)
+        if not can_use:
+            return UseItemResult(success=False, message=req_msg)
+
+        # Apply costs
+        new_stats, cost_success, cost_msg = apply_affordance_costs(affordance, state.stats, stat_defs)
+        if not cost_success:
+            return UseItemResult(success=False, message=cost_msg)
+
+        # Apply effects
+        new_stats, new_flags, effect_msg = apply_affordance_effects(affordance, new_stats, state.flags, stat_defs)
+
+        # Update charges and cooldown
+        new_instance_props = update_charges_and_cooldown(instance_props, affordance, state.game_time, current_turn)
+
+        # Check if item should be removed
+        effects = affordance.get("effects", {})
+        remove_self = effects.get("remove_self", False)
+
+        # Update state
+        state.stats = new_stats
+        state.flags = new_flags
+
+        # Update item instance properties
+        state.inventory = update_inventory_item_props(state.inventory, item_id, new_instance_props)
+
+        # Remove item if consumed
+        item_removed = False
+        if remove_self:
+            new_inventory, success, _ = remove_inventory_item(state.inventory, item_id, 1)
+            if success:
+                state.inventory = new_inventory
+                item_removed = True
+
+        self._save_state(state)
+        await self._sync_to_db(state)
+
+        logger.info(f"🎯 Used {item_id}.{affordance_id} in {self.world_name}: {effect_msg}")
+
+        return UseItemResult(
+            success=True,
+            message=f"Used {template.get('name', item_id)}: {effect_msg}",
+            stat_changes=new_stats,
+            flags_changed=new_flags,
+            item_removed=item_removed,
+        )
+
+    def get_equipment(self) -> Dict[str, Optional[Dict[str, Any]]]:
+        """Get current equipment with resolved item data."""
+        from services.item_service import ItemService
+
+        state = self._load_state()
+        if not state:
+            return {}
+
+        templates = ItemService.load_all_item_templates(self.world_name)
+
+        result: Dict[str, Optional[Dict[str, Any]]] = {}
+        for slot, item_id in state.equipment.items():
+            if item_id:
+                template = templates.get(item_id, {})
+                result[slot] = {
+                    "item_id": item_id,
+                    "name": template.get("name", item_id),
+                    "description": template.get("description", ""),
+                    "passive_effects": template.get("equippable", {}).get("passive_effects", {}),
+                }
+            else:
+                result[slot] = None
+
+        return result
+
+    def get_flags(self) -> Dict[str, bool]:
+        """Get current player flags."""
+        state = self._load_state()
+        return state.flags if state else {}
+
+    async def set_flags(self, flags: Dict[str, bool]) -> bool:
+        """Set multiple flags at once."""
+        state = self._load_state()
+        if not state:
+            return False
+
+        state.flags.update(flags)
+        self._save_state(state)
+        await self._sync_to_db(state)
+
+        logger.info(f"🚩 Set flags in {self.world_name}: {flags}")
+        return True
+
+    def get_equipped_effects(self) -> Dict[str, float]:
+        """Get total passive effects from all equipped items."""
+        from services.item_service import ItemService
+
+        state = self._load_state()
+        if not state:
+            return {}
+
+        templates = ItemService.load_all_item_templates(self.world_name)
+        return get_equipped_passive_effects(state.equipment, templates)

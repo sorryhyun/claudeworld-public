@@ -1,14 +1,14 @@
 // Re-export everything from services
-export * from './apiClient';
-export * from './roomService';
-export * from './agentService';
-export * from './messageService';
-export * as gameService from './gameService';
+export * from "./apiClient";
+export * from "./roomService";
+export * from "./agentService";
+export * from "./messageService";
+export * as gameService from "./gameService";
 
 // Import services
-import { roomService } from './roomService';
-import { agentService } from './agentService';
-import { messageService } from './messageService';
+import { roomService } from "./roomService";
+import { agentService } from "./agentService";
+import { messageService } from "./messageService";
 
 /**
  * Legacy API object for backward compatibility.

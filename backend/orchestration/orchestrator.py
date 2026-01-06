@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger("ChatOrchestrator")
 
 import crud
-import models
 import schemas
 from domain.value_objects.contexts import OrchestrationContext
+from infrastructure.database import models
 from sdk import AgentManager
 
 from .agent_ordering import separate_interrupt_agents

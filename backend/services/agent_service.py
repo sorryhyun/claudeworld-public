@@ -166,8 +166,8 @@ async def clear_room_messages_with_cleanup(
 
     # Clear all session IDs for this room (fresh start)
     # This is done by deleting the RoomAgentSession records
-    from database import serialized_write
-    from models import RoomAgentSession
+    from infrastructure.database.connection import serialized_write
+    from infrastructure.database.models import RoomAgentSession
     from sqlalchemy import delete
 
     async with serialized_write():

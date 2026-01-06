@@ -348,3 +348,399 @@ def normalize_properties(properties: Optional[Dict[str, Any]]) -> Dict[str, Any]
         return {}
 
     return {name: normalize_property_value(value, name) for name, value in properties.items()}
+
+
+# =============================================================================
+# EQUIPMENT FUNCTIONS (Phase 2)
+# =============================================================================
+
+
+def equip_item(
+    inventory: List[Dict[str, Any]],
+    equipment: Dict[str, Optional[str]],
+    item_id: str,
+    slot: str,
+    item_template: Dict[str, Any],
+    slot_catalog: Dict[str, Any],
+) -> Tuple[Dict[str, Optional[str]], Optional[str], str]:
+    """
+    Equip an item from inventory to a slot.
+
+    Args:
+        inventory: Current inventory list
+        equipment: Current equipment dict
+        item_id: Item to equip
+        slot: Target slot
+        item_template: Template for the item
+        slot_catalog: World's slot definitions
+
+    Returns:
+        Tuple of (new_equipment, unequipped_item_id, message)
+    """
+    # Validate slot exists
+    if slot_catalog and slot not in slot_catalog:
+        return equipment, None, f"Invalid slot: {slot}"
+
+    # Validate item is in inventory
+    item_in_inventory = any(inv.get("item_id") == item_id or inv.get("id") == item_id for inv in inventory)
+    if not item_in_inventory:
+        return equipment, None, f"Item not in inventory: {item_id}"
+
+    # Validate item is equippable to this slot
+    equippable = item_template.get("equippable", {})
+    if not equippable:
+        return equipment, None, f"Item is not equippable: {item_id}"
+
+    item_slot = equippable.get("slot")
+    if item_slot != slot:
+        return equipment, None, f"Item cannot be equipped to {slot} (requires {item_slot})"
+
+    # Check accepts_as compatibility
+    if slot_catalog:
+        slot_def = slot_catalog.get(slot, {})
+        slot_accepts = slot_def.get("accepts_as", [])
+        item_accepts_as = equippable.get("accepts_as", [])
+
+        if slot_accepts and item_accepts_as:
+            if not any(t in slot_accepts for t in item_accepts_as):
+                return equipment, None, f"Slot {slot} does not accept this item type"
+
+    # Unequip current item in slot (if any)
+    new_equipment = equipment.copy()
+    unequipped_id = new_equipment.get(slot)
+
+    # Equip new item
+    new_equipment[slot] = item_id
+
+    item_name = item_template.get("name", item_id)
+    if unequipped_id:
+        return new_equipment, unequipped_id, f"Equipped {item_name} to {slot} (unequipped previous)"
+    else:
+        return new_equipment, None, f"Equipped {item_name} to {slot}"
+
+
+def unequip_slot(
+    equipment: Dict[str, Optional[str]],
+    slot: str,
+) -> Tuple[Dict[str, Optional[str]], Optional[str], str]:
+    """
+    Unequip an item from a slot.
+
+    Returns:
+        Tuple of (new_equipment, unequipped_item_id, message)
+    """
+    new_equipment = equipment.copy()
+    unequipped_id = new_equipment.get(slot)
+
+    if not unequipped_id:
+        return equipment, None, f"Nothing equipped in {slot}"
+
+    new_equipment[slot] = None
+    return new_equipment, unequipped_id, f"Unequipped item from {slot}"
+
+
+def get_equipped_passive_effects(
+    equipment: Dict[str, Optional[str]],
+    item_templates: Dict[str, Dict[str, Any]],
+) -> Dict[str, float]:
+    """
+    Calculate total passive effects from all equipped items.
+
+    Returns:
+        Dict of stat_name -> total_modifier
+    """
+    total_effects: Dict[str, float] = {}
+
+    for slot, item_id in equipment.items():
+        if not item_id:
+            continue
+
+        template = item_templates.get(item_id, {})
+        equippable = template.get("equippable", {})
+        passive_effects = equippable.get("passive_effects", {})
+
+        for stat, modifier in passive_effects.items():
+            total_effects[stat] = total_effects.get(stat, 0) + modifier
+
+    return total_effects
+
+
+# =============================================================================
+# AFFORDANCE FUNCTIONS (Phase 2)
+# =============================================================================
+
+
+def check_affordance_requirements(
+    affordance: Dict[str, Any],
+    current_stats: Dict[str, int],
+    flags: Dict[str, bool],
+    inventory: List[Dict[str, Any]],
+) -> Tuple[bool, str]:
+    """
+    Check if affordance requirements are met.
+
+    Returns:
+        Tuple of (can_use, reason)
+    """
+    requirements = affordance.get("requirements", {})
+
+    if not requirements:
+        return True, "No requirements"
+
+    # Check stat requirements
+    stat_reqs = requirements.get("stats", {})
+    for stat_name, bounds in stat_reqs.items():
+        current_value = current_stats.get(stat_name, 0)
+
+        min_val = bounds.get("min")
+        max_val = bounds.get("max")
+
+        if min_val is not None and current_value < min_val:
+            return False, f"Requires {stat_name} >= {min_val} (current: {current_value})"
+        if max_val is not None and current_value > max_val:
+            return False, f"Requires {stat_name} <= {max_val} (current: {current_value})"
+
+    # Check flags_all (all must be true)
+    flags_all = requirements.get("flags_all", [])
+    for flag in flags_all:
+        if not flags.get(flag, False):
+            return False, f"Requires flag: {flag}"
+
+    # Check flags_any (at least one must be true)
+    flags_any = requirements.get("flags_any", [])
+    if flags_any:
+        if not any(flags.get(flag, False) for flag in flags_any):
+            return False, f"Requires one of: {', '.join(flags_any)}"
+
+    # Check flags_none (none can be true)
+    flags_none = requirements.get("flags_none", [])
+    for flag in flags_none:
+        if flags.get(flag, False):
+            return False, f"Cannot have flag: {flag}"
+
+    # Check required items
+    required_items = requirements.get("items", [])
+    inventory_ids = {inv.get("item_id") or inv.get("id") for inv in inventory}
+    for item_id in required_items:
+        if item_id not in inventory_ids:
+            return False, f"Requires item: {item_id}"
+
+    return True, "Requirements met"
+
+
+def apply_affordance_costs(
+    affordance: Dict[str, Any],
+    current_stats: Dict[str, int],
+    stat_definitions: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, int], bool, str]:
+    """
+    Apply affordance costs (deduct stats).
+
+    Returns:
+        Tuple of (new_stats, success, message)
+    """
+    cost = affordance.get("cost", {})
+    stat_changes = cost.get("stat_changes", [])
+
+    if not stat_changes:
+        return current_stats, True, "No costs"
+
+    stat_map = build_stat_map(stat_definitions)
+    new_stats = current_stats.copy()
+
+    for change in stat_changes:
+        stat_name = change.get("stat")
+        delta = change.get("delta", 0)
+
+        current_value = new_stats.get(stat_name, 0)
+        new_value = current_value + delta
+
+        # Check stat bounds
+        stat_def = stat_map.get(stat_name, {})
+        min_val = stat_def.get("min")
+        max_val = stat_def.get("max")
+
+        if min_val is not None and new_value < min_val:
+            return (
+                current_stats,
+                False,
+                f"Not enough {stat_name} (need {abs(delta)}, have {current_value})",
+            )
+
+        if max_val is not None:
+            new_value = min(new_value, max_val)
+
+        new_stats[stat_name] = new_value
+
+    return new_stats, True, "Costs applied"
+
+
+def apply_affordance_effects(
+    affordance: Dict[str, Any],
+    current_stats: Dict[str, int],
+    flags: Dict[str, bool],
+    stat_definitions: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, int], Dict[str, bool], str]:
+    """
+    Apply affordance effects (stat changes, flag changes).
+
+    Returns:
+        Tuple of (new_stats, new_flags, message)
+    """
+    effects = affordance.get("effects", {})
+
+    stat_map = build_stat_map(stat_definitions)
+    new_stats = current_stats.copy()
+    new_flags = flags.copy()
+    effect_messages = []
+
+    # Apply stat changes
+    stat_changes = effects.get("stat_changes", [])
+    for change in stat_changes:
+        stat_name = change.get("stat")
+        delta = change.get("delta", 0)
+
+        current_value = new_stats.get(stat_name, 0)
+        new_value = current_value + delta
+
+        # Clamp to stat bounds
+        stat_def = stat_map.get(stat_name, {})
+        min_val = stat_def.get("min")
+        max_val = stat_def.get("max")
+
+        if min_val is not None:
+            new_value = max(new_value, min_val)
+        if max_val is not None:
+            new_value = min(new_value, max_val)
+
+        new_stats[stat_name] = new_value
+
+        sign = "+" if delta > 0 else ""
+        effect_messages.append(f"{stat_name} {sign}{delta}")
+
+    # Apply flag changes
+    flag_changes = effects.get("set_flags", [])
+    for flag_change in flag_changes:
+        flag_name = flag_change.get("flag")
+        flag_value = flag_change.get("value", True)
+        new_flags[flag_name] = flag_value
+        effect_messages.append(f"{flag_name} = {flag_value}")
+
+    message = ", ".join(effect_messages) if effect_messages else "No effects"
+    return new_stats, new_flags, message
+
+
+def update_charges_and_cooldown(
+    instance_properties: Dict[str, Any],
+    affordance: Dict[str, Any],
+    current_time: Dict[str, int],
+    time_domain_value: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Update charges and cooldown in instance properties after using an affordance.
+
+    Returns:
+        Updated instance properties dict
+    """
+    new_props = instance_properties.copy()
+    affordance_id = affordance.get("id", "default")
+
+    # Handle charges
+    charges_config = affordance.get("charges", {})
+    if charges_config.get("max") is not None:
+        charges_key = f"charges_{affordance_id}"
+        current_charges = new_props.get(charges_key, charges_config.get("max", 0))
+        consume = charges_config.get("consume", 1)
+        new_props[charges_key] = max(0, current_charges - consume)
+
+    # Handle cooldown
+    cooldown_config = affordance.get("cooldown", {})
+    if cooldown_config.get("domain") and cooldown_config.get("value"):
+        cooldown_key = f"cooldown_{affordance_id}"
+        domain = cooldown_config.get("domain")
+        value = cooldown_config.get("value")
+
+        # Store when the cooldown expires
+        if time_domain_value is not None:
+            new_props[cooldown_key] = {
+                "domain": domain,
+                "expires_at": time_domain_value + value,
+            }
+
+    return new_props
+
+
+def check_cooldown_ready(
+    instance_properties: Dict[str, Any],
+    affordance: Dict[str, Any],
+    current_domain_value: int,
+) -> Tuple[bool, str]:
+    """
+    Check if an affordance is off cooldown.
+
+    Returns:
+        Tuple of (is_ready, message)
+    """
+    affordance_id = affordance.get("id", "default")
+    cooldown_key = f"cooldown_{affordance_id}"
+    cooldown_data = instance_properties.get(cooldown_key)
+
+    if not cooldown_data:
+        return True, "Ready"
+
+    expires_at = cooldown_data.get("expires_at", 0)
+    domain = cooldown_data.get("domain", "turn")
+
+    if current_domain_value >= expires_at:
+        return True, "Ready"
+
+    remaining = expires_at - current_domain_value
+    return False, f"On cooldown ({remaining} {domain}s remaining)"
+
+
+def check_charges_available(
+    instance_properties: Dict[str, Any],
+    affordance: Dict[str, Any],
+) -> Tuple[bool, int, str]:
+    """
+    Check if an affordance has charges available.
+
+    Returns:
+        Tuple of (has_charges, current_charges, message)
+    """
+    charges_config = affordance.get("charges", {})
+    max_charges = charges_config.get("max")
+
+    if max_charges is None:
+        return True, -1, "Unlimited uses"
+
+    affordance_id = affordance.get("id", "default")
+    charges_key = f"charges_{affordance_id}"
+    current_charges = instance_properties.get(charges_key, max_charges)
+    consume = charges_config.get("consume", 1)
+
+    if current_charges >= consume:
+        return True, current_charges, f"{current_charges} charges remaining"
+    else:
+        return False, current_charges, f"No charges remaining ({current_charges}/{max_charges})"
+
+
+def update_inventory_item_props(
+    inventory: List[Dict[str, Any]],
+    item_id: str,
+    new_props: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    Update instance_properties for a specific inventory item.
+
+    Returns:
+        New inventory list with updated item properties
+    """
+    new_inventory = [i.copy() for i in inventory]
+
+    for item in new_inventory:
+        if item.get("item_id") == item_id or item.get("id") == item_id:
+            item["instance_properties"] = new_props
+            break
+
+    return new_inventory

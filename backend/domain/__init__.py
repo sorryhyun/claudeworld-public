@@ -59,7 +59,6 @@ from .services import (
 # Re-export from value_objects
 # Note: Input models (SkipInput, MemorizeInput, RecallInput) are in sdk.config.action_inputs
 from .value_objects import (
-    AgentMessageData,
     AgentResponseContext,
     ImageAttachment,
     MemorizeOutput,
@@ -129,7 +128,6 @@ __all__ = [
     "ToolResponse",
     # Value objects - contexts
     "MessageContext",
-    "AgentMessageData",
     "OrchestrationContext",
     "ImageAttachment",
     "AgentResponseContext",

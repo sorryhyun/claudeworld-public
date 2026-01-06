@@ -141,19 +141,26 @@ If a world becomes corrupted, click the world refresh button in the left sidebar
 
 ---
 
-The following features are planned for future updates but not fully implemented yet:
+## Implemented Features
 
 ### World Import/Export System
 
-All worlds are file-based (lore book, locations, characters, item dictionary), so you can load a world by placing its folder in the worlds directory. We hope users will create and share elaborate worlds and stat systems with each other.
+All worlds are file-based (lore book, locations, characters, item dictionary), so you can load a world by placing its folder in the `worlds/` directory. Users can create and share elaborate worlds and stat systems with each other.
+
+### Memory System
+
+Characters have a sophisticated memory system:
+- **Memorize tool**: Characters can save important moments to `consolidated_memory.md`
+- **Recall tool**: On-demand memory retrieval - only memory subtitles are shown in context, and characters actively decide which memories to recall
+- **History compression**: The History Summarizer periodically compresses turn history into `history.md` for long-term context
+
+---
+
+The following features are planned for future updates:
 
 ### Item Listing/MCP System
 
 While characters and locations have full CRUD (create, read, update, delete) MCP implementation, items don't have this yet. We're considering implementing item-specific MCPs or skill.md files for more sophisticated gameplay.
-
-### History RAG System
-
-Characters currently have a "memorize" tool that updates content in user prompts. We have a RAG system that exposes only memory indices so characters can decide which memories to recall. We're considering applying this to world history as well.
 
 ### Action Undo System
 
@@ -167,9 +174,24 @@ The following explains internal workings:
 
 ClaudeWorld operates through multiple AI agents collaborating to run the game.
 
+### System Agents
+
+ClaudeWorld uses seven specialized agents organized into two groups:
+
+**System Agents** (group_gameplay):
+- **Onboarding_Manager**: Interviews player, generates world seed
+- **Action_Manager**: Interprets actions, coordinates sub-agents, generates narration
+- **Chat_Summarizer**: Summarizes chat mode conversations
+- **History_Summarizer**: Compresses turn history into long-term summaries
+
+**Sub-Agents** (group_subagent):
+- **Item_Designer**: Creates item templates
+- **Character_Designer**: Creates NPCs
+- **Location_Designer**: Creates new locations
+
 ### Onboarding System
 
-When creating a new world, a two-phase onboarding process occurs:
+When creating a new world, the onboarding process occurs:
 
 **Onboarding_Manager:**
 - Identifies the player's desired genre, theme, and atmosphere
@@ -191,6 +213,7 @@ Player Action → Action Manager (hidden)
                     ├── Task(item_designer)       → Create item templates
                     ├── Task(character_designer)  → Create NPCs
                     ├── Task(location_designer)   → Create locations
+                    ├── travel()                  → Move player to location
                     ├── narration()               → Describe outcomes
                     └── suggest_options()         → Suggest next actions
 ```
@@ -262,6 +285,9 @@ This structured output ensures:
    - Display messages
    - Update stat panel
    - Show suggested actions
+   ↓
+6. (Periodically) History Summarizer compresses old turns
+   - Saves summaries to history.md for long-term recall
 ```
 
 ---

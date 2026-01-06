@@ -41,8 +41,6 @@ class CacheService:
         """
         self._cache = cache_manager or get_cache()
 
-    # Read operations
-
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache."""
         return self._cache.get(key)
@@ -58,8 +56,6 @@ class CacheService:
     async def get_or_set_async(self, key: str, factory: Callable[[], Any], ttl_seconds: float = 60) -> Any:
         """Async version of get_or_set."""
         return await self._cache.get_or_set_async(key, factory, ttl_seconds)
-
-    # Invalidation operations
 
     def invalidate(self, key: str) -> bool:
         """Invalidate a specific cache key."""
@@ -117,8 +113,6 @@ class CacheService:
         self._cache.invalidate_pattern(room_messages_key(room_id))
         logger.debug(f"Invalidated message cache for room {room_id}")
 
-    # Maintenance operations
-
     def cleanup_expired(self):
         """Remove all expired entries from cache."""
         self._cache.cleanup_expired()
@@ -126,8 +120,6 @@ class CacheService:
     def clear(self):
         """Clear all cache entries."""
         self._cache.clear()
-
-    # Statistics and monitoring
 
     def get_stats(self) -> Dict[str, int]:
         """

@@ -15,27 +15,26 @@ conversation_context:
   # Response instructions for Onboarding Manager
   response_OM:
     en: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> Newcomer is here. How does {agent_name} think?
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> How will {agent_name} think?
     ko: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 손님이 말을 건 상황. {agent_name:은는} 어떻게 생각할까요?
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까?
     jp: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> お客さんが話しかけました。{agent_name} はどう考えるでしょうか。
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name}はどう考えるでしょうか。
 
   # Response instructions for regular agents (chat mode)
   response_agent:
     en: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name} spoke. How does {agent_name} think?
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> How will {agent_name} think?
     ko: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name:이가} 말을 건 상황. {agent_name:은는} 어떻게 생각할까?
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까?
     jp: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {user_name} が話しかけました。{agent_name} はどう考えるでしょうか。
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name}はどう考えるでしょうか。
 
   # Response instructions for Action Manager (gameplay)
   response_AM:
     en: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> Let me describe natural reactions.
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> Let me describe natural reactions.
     ko: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> 이제 무슨 일이 벌어질까요?
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> 이제 무슨 일이 벌어질까?
     jp: |
-      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> これから何が起こるのでしょう。
-
+      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> これから何が起こるのでしょう。

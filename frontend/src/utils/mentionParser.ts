@@ -3,7 +3,7 @@
  * Parses and removes @AgentName mentions from message text
  */
 
-import type { Agent } from '../types';
+import type { Agent } from "../types";
 
 export interface ParsedMention {
   agentId: number;
@@ -27,12 +27,14 @@ export function parseMentions(text: string, agents: Agent[]): ParsedMention[] {
 
   // Sort agents by name length (descending) to match longest names first
   // This handles cases like "@Alice" vs "@Alice Smith"
-  const sortedAgents = [...agents].sort((a, b) => b.name.length - a.name.length);
+  const sortedAgents = [...agents].sort(
+    (a, b) => b.name.length - a.name.length,
+  );
 
   // Find all @ symbols
   let searchStart = 0;
   while (searchStart < text.length) {
-    const atIndex = text.indexOf('@', searchStart);
+    const atIndex = text.indexOf("@", searchStart);
     if (atIndex === -1) break;
 
     const afterAt = text.slice(atIndex + 1);
@@ -43,7 +45,7 @@ export function parseMentions(text: string, agents: Agent[]): ParsedMention[] {
       // Case-insensitive match
       if (afterAt.toLowerCase().startsWith(agent.name.toLowerCase())) {
         // Avoid duplicate mentions of the same agent
-        if (!mentions.some(m => m.agentId === agent.id)) {
+        if (!mentions.some((m) => m.agentId === agent.id)) {
           mentions.push({
             agentId: agent.id,
             agentName: agent.name,
@@ -73,7 +75,10 @@ export function parseMentions(text: string, agents: Agent[]): ParsedMention[] {
  * @param mentions - The parsed mentions to remove
  * @returns Clean text without @mentions
  */
-export function removeMentions(text: string, mentions: ParsedMention[]): string {
+export function removeMentions(
+  text: string,
+  mentions: ParsedMention[],
+): string {
   if (mentions.length === 0) return text;
 
   // Sort by startIndex descending to remove from end first
@@ -84,7 +89,7 @@ export function removeMentions(text: string, mentions: ParsedMention[]): string 
   for (const mention of sorted) {
     const before = result.slice(0, mention.startIndex);
     // Remove the mention and any trailing whitespace (but preserve newlines)
-    const after = result.slice(mention.endIndex).replace(/^[ \t]+/, '');
+    const after = result.slice(mention.endIndex).replace(/^[ \t]+/, "");
     result = before + after;
   }
 
@@ -101,11 +106,11 @@ export function removeMentions(text: string, mentions: ParsedMention[]): string 
  */
 export function extractMentionsAndClean(
   text: string,
-  agents: Agent[]
+  agents: Agent[],
 ): { cleanContent: string; mentionedAgentIds: number[] } {
   const mentions = parseMentions(text, agents);
   const cleanContent = removeMentions(text, mentions);
-  const mentionedAgentIds = mentions.map(m => m.agentId);
+  const mentionedAgentIds = mentions.map((m) => m.agentId);
 
   return { cleanContent, mentionedAgentIds };
 }

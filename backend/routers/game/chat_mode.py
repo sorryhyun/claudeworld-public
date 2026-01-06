@@ -9,13 +9,13 @@ import logging
 from typing import Optional
 
 import crud
-import models
 import schemas
 from domain.entities.agent import is_chat_summarizer
 from domain.entities.agent_config import AgentConfigData
 from domain.value_objects.contexts import AgentResponseContext
 from domain.value_objects.enums import MessageRole
 from domain.value_objects.task_identifier import TaskIdentifier
+from infrastructure.database import models
 from orchestration import get_chat_mode_orchestrator
 from sdk import AgentManager
 from sdk.agent.options_builder import build_agent_options
@@ -38,7 +38,7 @@ async def _warm_chat_summarizer(room_id: int, agent_manager: AgentManager) -> No
         room_id: Room ID for the client pool key
         agent_manager: AgentManager instance with client pool
     """
-    from database import get_db as get_db_generator
+    from infrastructure.database.connection import get_db as get_db_generator
 
     async for db in get_db_generator():
         try:
@@ -223,7 +223,7 @@ async def handle_chat_mode_action(
     # Trigger chat mode NPC responses in background
     async def trigger_chat_responses():
         """Background task to trigger chat mode NPC responses."""
-        from database import get_db as get_db_generator
+        from infrastructure.database.connection import get_db as get_db_generator
 
         async for task_db in get_db_generator():
             try:
@@ -475,7 +475,7 @@ async def _summarize_and_continue(
 
     If no chat interaction happened, skips summarization entirely.
     """
-    from database import get_db as get_db_generator
+    from infrastructure.database.connection import get_db as get_db_generator
     from orchestration import get_trpg_orchestrator
 
     trpg_orchestrator = get_trpg_orchestrator()

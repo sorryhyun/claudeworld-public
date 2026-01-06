@@ -9,10 +9,10 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-import models
 import schemas
-from database import serialized_write
 from domain.value_objects.enums import WorldPhase
+from infrastructure.database import models
+from infrastructure.database.connection import serialized_write
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload

@@ -39,8 +39,13 @@ export interface AgentConfig {
   [key: string]: string;
 }
 
+export interface ImageItem {
+  data: string; // Base64-encoded image data
+  media_type: string; // MIME type (e.g., 'image/png', 'image/webp')
+}
+
 export interface Message {
-  id: number | string;  // Can be temp_id (string) during streaming or real DB id (number) after
+  id: number | string; // Can be temp_id (string) during streaming or real DB id (number) after
   room_id?: number;
   agent_id: number | null;
   content: string;
@@ -51,13 +56,16 @@ export interface Message {
   agent_name?: string;
   agent_profile_pic?: string | null;
   is_typing?: boolean;
-  is_chatting?: boolean;  // True when agent is generating a response (polling-based indicator)
+  is_chatting?: boolean; // True when agent is generating a response (polling-based indicator)
   thinking?: string | null;
-  is_streaming?: boolean;  // True while message is being streamed
-  temp_id?: string;  // Temporary ID for streaming messages
-  is_skipped?: boolean;  // True when agent chose to skip/ignore the message
-  image_data?: string | null;  // Base64-encoded image data
-  image_media_type?: string | null;  // MIME type (e.g., 'image/png', 'image/jpeg')
+  is_streaming?: boolean; // True while message is being streamed
+  temp_id?: string; // Temporary ID for streaming messages
+  is_skipped?: boolean; // True when agent chose to skip/ignore the message
+  images?: ImageItem[] | null; // Multiple images (up to 5)
+  // DEPRECATED: Keep for backward compatibility
+  image_data?: string | null;
+  image_media_type?: string | null;
+  game_time_snapshot?: { hour: number; minute: number; day: number } | null; // In-game time for display
 }
 
 export interface MessageCreate {
@@ -69,7 +77,7 @@ export interface MessageCreate {
 export interface Room {
   id: number;
   name: string;
-   owner_id?: string | null;
+  owner_id?: string | null;
   max_interactions: number | null;
   is_paused: boolean;
   created_at: string;
@@ -78,13 +86,13 @@ export interface Room {
   messages: Message[];
   // World info (for TRPG rooms)
   world_id?: number | null;
-  world_phase?: 'onboarding' | 'active' | 'ended' | null;
+  world_phase?: "onboarding" | "active" | "ended" | null;
 }
 
 export interface RoomSummary {
   id: number;
   name: string;
-   owner_id?: string | null;
+  owner_id?: string | null;
   max_interactions: number | null;
   is_paused: boolean;
   created_at: string;
@@ -102,7 +110,7 @@ export interface RoomUpdate {
   is_paused?: boolean;
 }
 
-export type ParticipantType = 'user' | 'character';
+export type ParticipantType = "user" | "character";
 
 // =============================================================================
 // GAME/TRPG TYPES - Re-export from GameContext for convenience
@@ -116,4 +124,4 @@ export type {
   GameMessage,
   StatDefinition,
   GamePhase,
-} from '../contexts/GameContext';
+} from "../contexts/GameContext";

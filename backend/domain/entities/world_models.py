@@ -39,6 +39,14 @@ class PlayerState:
     recent_actions: List[Dict[str, Any]] = field(default_factory=list)
     game_time: Dict[str, int] = field(default_factory=lambda: {"hour": 8, "minute": 0, "day": 1})
 
+    # Equipment slots: slot_name -> item_id (or None if empty)
+    # e.g., {"main_hand": "iron_sword", "body": "leather_armor", "head": None}
+    equipment: Dict[str, Optional[str]] = field(default_factory=dict)
+
+    # Flags for affordance conditions and game state tracking
+    # e.g., {"in_conversation": True, "route_unlocked": False, "boss_defeated": True}
+    flags: Dict[str, bool] = field(default_factory=dict)
+
 
 @dataclass
 class LocationConfig:

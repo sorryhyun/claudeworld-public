@@ -1,0 +1,1 @@
+detailed_character_designer is a specialized agent for creating comprehensive, memorable characters with rich backstories and consolidated memories during world onboarding.

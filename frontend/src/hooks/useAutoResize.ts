@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from "react";
 
 /**
  * Hook for auto-resizing textarea elements based on content.
@@ -24,11 +24,7 @@ import { useEffect, useRef, useCallback } from 'react';
  * }
  * ```
  */
-export function useAutoResize(
-  value: string,
-  minHeight = 40,
-  maxHeight = 200
-) {
+export function useAutoResize(value: string, minHeight = 40, maxHeight = 200) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -36,12 +32,12 @@ export function useAutoResize(
     if (!textarea) return;
 
     // Reset height to auto to get the correct scrollHeight
-    textarea.style.height = 'auto';
+    textarea.style.height = "auto";
 
     // Calculate new height within bounds
     const newHeight = Math.min(
       Math.max(textarea.scrollHeight, minHeight),
-      maxHeight
+      maxHeight,
     );
 
     textarea.style.height = `${newHeight}px`;
@@ -51,7 +47,7 @@ export function useAutoResize(
   const reset = useCallback(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
+      textarea.style.height = "auto";
     }
   }, []);
 

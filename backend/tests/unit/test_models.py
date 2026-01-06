@@ -7,8 +7,8 @@ and their relationships.
 
 from datetime import datetime
 
-import models
 import pytest
+from infrastructure.database import models
 from sqlalchemy import select
 
 

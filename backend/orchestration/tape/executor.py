@@ -12,8 +12,8 @@ saved to the database.
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import crud
 from domain.value_objects.contexts import OrchestrationContext
@@ -33,6 +33,7 @@ class CellExecutionResult:
     responses: int = 0
     skips: int = 0
     output_text: Optional[str] = None  # Captured output for passes_output cells
+    reactions: List[Dict[str, Any]] = field(default_factory=list)  # NPC reactions
 
 
 class TapeExecutor:
@@ -86,6 +87,7 @@ class TapeExecutor:
         """
         result = ExecutionResult()
         running_total = current_total
+        collected_reactions: List[Dict[str, Any]] = []  # Accumulate NPC reactions
 
         # Performance tracking
         tape_start = time.perf_counter()
@@ -129,7 +131,18 @@ class TapeExecutor:
                 cell_start = time.perf_counter()
                 cell_count += 1
 
-                cell_result = await self._execute_cell(cell, orch_context, user_message_content)
+                # Pass collected reactions to non-reaction cells
+                cell_result = await self._execute_cell(
+                    cell,
+                    orch_context,
+                    user_message_content,
+                    npc_reactions=collected_reactions if not cell.is_reaction else None,
+                )
+
+                # Collect reactions from reaction cells
+                if cell.is_reaction and cell_result.reactions:
+                    collected_reactions.extend(cell_result.reactions)
+                    logger.info(f"📚 Total reactions collected: {len(collected_reactions)}")
 
                 # Log cell execution timing
                 cell_duration_ms = (time.perf_counter() - cell_start) * 1000
@@ -191,6 +204,7 @@ class TapeExecutor:
         cell: TurnCell,
         orch_context: OrchestrationContext,
         user_message_content: Optional[str],
+        npc_reactions: Optional[List[Dict[str, Any]]] = None,
     ) -> CellExecutionResult:
         """
         Execute a single cell.
@@ -199,6 +213,7 @@ class TapeExecutor:
             cell: The cell to execute
             orch_context: Orchestration context
             user_message_content: User's action/message
+            npc_reactions: Collected NPC reactions to pass to this cell's agents
 
         Returns:
             CellExecutionResult with response counts and optional captured output
@@ -215,11 +230,12 @@ class TapeExecutor:
 
         if cell.is_concurrent:
             # Concurrent execution (multiple agents at once)
-            # Note: hidden not supported for concurrent cells
             return await self._execute_concurrent(agents, orch_context, user_message_content, cell)
         else:
             # Sequential execution (one agent, or interrupt agents one by one)
-            return await self._execute_sequential(agents, orch_context, user_message_content, cell)
+            return await self._execute_sequential(
+                agents, orch_context, user_message_content, cell, npc_reactions=npc_reactions
+            )
 
     async def _execute_sequential(
         self,
@@ -227,6 +243,7 @@ class TapeExecutor:
         orch_context: OrchestrationContext,
         user_message_content: Optional[str],
         cell: TurnCell,
+        npc_reactions: Optional[List[Dict[str, Any]]] = None,
     ) -> CellExecutionResult:
         """
         Execute agents sequentially (one at a time).
@@ -243,6 +260,7 @@ class TapeExecutor:
             orch_context: Orchestration context
             user_message_content: User's action/message
             cell: The cell being executed
+            npc_reactions: Collected NPC reactions to pass to response generator
         """
         result = CellExecutionResult()
 
@@ -260,6 +278,7 @@ class TapeExecutor:
                     agent=agent,
                     user_message_content=user_message_content,
                     hidden=cell.hidden,
+                    npc_reactions=npc_reactions,
                 )
 
                 # Handle response result (can be bool or tuple for hidden agents)
@@ -273,6 +292,17 @@ class TapeExecutor:
                     result.responses += 1
                     hidden_str = " (hidden)" if cell.hidden else ""
                     logger.debug(f"✅ Agent {agent.name} responded{hidden_str}")
+
+                    # Collect reactions for reaction cells (even with single agent)
+                    if cell.is_reaction and response_text:
+                        result.reactions.append(
+                            {
+                                "agent_id": agent.id,
+                                "agent_name": agent.name,
+                                "content": response_text,
+                            }
+                        )
+                        logger.debug(f"📝 Collected reaction from {agent.name}")
 
                     # Capture output for passes_output cells (if needed)
                     if cell.passes_output and response_text:
@@ -292,6 +322,13 @@ class TapeExecutor:
                 except Exception as rollback_err:
                     logger.error(f"❌ Rollback failed for {agent.name}: {rollback_err}")
 
+        # Log reaction cell completion (for single-agent reaction cells)
+        if cell.is_reaction:
+            logger.info(
+                f"Sequential reaction cell complete: {result.responses} responses, "
+                f"{len(result.reactions)} reactions collected"
+            )
+
         return result
 
     async def _execute_concurrent(
@@ -303,13 +340,15 @@ class TapeExecutor:
     ) -> CellExecutionResult:
         """Execute multiple agents concurrently via asyncio.gather.
 
-        Note: hidden/passes_output not supported for concurrent cells.
+        For reaction cells (is_reaction=True), agents run hidden and their
+        responses are collected for passing to the next cell (Action Manager).
         """
         tasks = [
             self.response_generator.generate_response(
                 orch_context=orch_context,
                 agent=agent,
                 user_message_content=user_message_content,
+                hidden=cell.hidden,  # Pass hidden flag for reaction cells
             )
             for agent in agents
         ]
@@ -323,18 +362,44 @@ class TapeExecutor:
             if isinstance(res, Exception):
                 logger.error(f"❌ Agent {agents[i].name} error: {res}")
                 # Errors don't count as skips
-            elif res is True or (isinstance(res, tuple) and res[0]):
+            elif isinstance(res, tuple):
+                # Hidden agent returns (responded: bool, response_text: str)
+                responded, response_text = res
+                if responded:
+                    cell_result.responses += 1
+                    # Collect reactions for reaction cells
+                    if cell.is_reaction and response_text:
+                        cell_result.reactions.append(
+                            {
+                                "agent_id": agents[i].id,
+                                "agent_name": agents[i].name,
+                                "content": response_text,
+                            }
+                        )
+                        logger.debug(f"📝 Collected reaction from {agents[i].name}")
+                    else:
+                        logger.debug(f"✅ Agent {agents[i].name} responded")
+                else:
+                    cell_result.skips += 1
+                    logger.debug(f"⏭️  Agent {agents[i].name} skipped")
+            elif res is True:
                 cell_result.responses += 1
                 logger.debug(f"✅ Agent {agents[i].name} responded")
             else:
                 cell_result.skips += 1
                 logger.debug(f"⏭️  Agent {agents[i].name} skipped")
 
+        if cell.is_reaction:
+            logger.info(
+                f"Concurrent reaction cell complete: {cell_result.responses} responses, "
+                f"{len(cell_result.reactions)} reactions collected"
+            )
+
         return cell_result
 
     async def _count_agent_messages(self, db, room_id: int) -> int:
         """Count agent messages in room."""
-        import models
+        from infrastructure.database import models
         from sqlalchemy import func
         from sqlalchemy.future import select
 
@@ -364,7 +429,7 @@ class TapeExecutor:
         if not orch_context.world_id:
             return False
 
-        import models
+        from infrastructure.database import models
         from sqlalchemy.future import select
 
         # Force fresh data from DB for this specific query

@@ -16,16 +16,16 @@ export interface WhiteboardState {
 }
 
 export type DiffOperation =
-  | { type: 'add'; content: string }
-  | { type: 'remove'; content: string }
-  | { type: 'modify'; oldContent: string; newContent: string }
-  | { type: 'clear' };
+  | { type: "add"; content: string }
+  | { type: "remove"; content: string }
+  | { type: "modify"; oldContent: string; newContent: string }
+  | { type: "clear" };
 
 /**
  * Check if a message contains whiteboard diff
  */
 export function isWhiteboardDiff(content: string): boolean {
-  return content.includes('[화이트보드 diff]');
+  return content.includes("[화이트보드 diff]");
 }
 
 /**
@@ -36,8 +36,8 @@ export function parseWhiteboardDiff(content: string): DiffOperation[] {
 
   // Strip code block markers if present
   let cleanContent = content.trim();
-  if (cleanContent.startsWith('```')) {
-    cleanContent = cleanContent.replace(/^```\n?/, '').replace(/\n?```$/, '');
+  if (cleanContent.startsWith("```")) {
+    cleanContent = cleanContent.replace(/^```\n?/, "").replace(/\n?```$/, "");
   }
 
   // Extract content after [화이트보드 diff]
@@ -45,33 +45,33 @@ export function parseWhiteboardDiff(content: string): DiffOperation[] {
   if (!diffMatch) return operations;
 
   const diffContent = diffMatch[1].trim();
-  const lines = diffContent.split('\n');
+  const lines = diffContent.split("\n");
 
   for (const line of lines) {
     const trimmed = line.trim();
 
-    if (trimmed === 'CLEAR') {
-      operations.push({ type: 'clear' });
+    if (trimmed === "CLEAR") {
+      operations.push({ type: "clear" });
       continue;
     }
 
-    if (trimmed.startsWith('+ ')) {
-      operations.push({ type: 'add', content: trimmed.slice(2) });
+    if (trimmed.startsWith("+ ")) {
+      operations.push({ type: "add", content: trimmed.slice(2) });
       continue;
     }
 
-    if (trimmed.startsWith('- ')) {
-      operations.push({ type: 'remove', content: trimmed.slice(2) });
+    if (trimmed.startsWith("- ")) {
+      operations.push({ type: "remove", content: trimmed.slice(2) });
       continue;
     }
 
-    if (trimmed.startsWith('~ ')) {
+    if (trimmed.startsWith("~ ")) {
       // Format: ~ old content → new content
       const modifyContent = trimmed.slice(2);
-      const arrowIndex = modifyContent.indexOf(' → ');
+      const arrowIndex = modifyContent.indexOf(" → ");
       if (arrowIndex !== -1) {
         operations.push({
-          type: 'modify',
+          type: "modify",
           oldContent: modifyContent.slice(0, arrowIndex),
           newContent: modifyContent.slice(arrowIndex + 3),
         });
@@ -88,25 +88,25 @@ export function parseWhiteboardDiff(content: string): DiffOperation[] {
  */
 export function applyDiff(
   state: WhiteboardState,
-  operations: DiffOperation[]
+  operations: DiffOperation[],
 ): WhiteboardState {
   let lines = [...state.lines];
 
   for (const op of operations) {
     switch (op.type) {
-      case 'clear':
+      case "clear":
         lines = [];
         break;
 
-      case 'add':
+      case "add":
         lines.push(op.content);
         break;
 
-      case 'remove': {
+      case "remove": {
         // Find and remove the line (fuzzy match to handle whitespace differences)
         const normalizedTarget = normalizeForMatch(op.content);
         const index = lines.findIndex(
-          (line) => normalizeForMatch(line) === normalizedTarget
+          (line) => normalizeForMatch(line) === normalizedTarget,
         );
         if (index !== -1) {
           lines.splice(index, 1);
@@ -114,11 +114,11 @@ export function applyDiff(
         break;
       }
 
-      case 'modify': {
+      case "modify": {
         // Find and replace the line
         const normalizedOld = normalizeForMatch(op.oldContent);
         const index = lines.findIndex(
-          (line) => normalizeForMatch(line) === normalizedOld
+          (line) => normalizeForMatch(line) === normalizedOld,
         );
         if (index !== -1) {
           lines[index] = op.newContent;
@@ -138,7 +138,7 @@ export function applyDiff(
  * Normalize line for fuzzy matching (handles whitespace differences)
  */
 function normalizeForMatch(line: string): string {
-  return line.replace(/\s+/g, ' ').trim();
+  return line.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -146,9 +146,9 @@ function normalizeForMatch(line: string): string {
  */
 export function renderWhiteboard(state: WhiteboardState): string {
   if (state.isEmpty) {
-    return '';
+    return "";
   }
-  return `[화이트보드]\n${state.lines.join('\n')}`;
+  return `[화이트보드]\n${state.lines.join("\n")}`;
 }
 
 /**
@@ -167,7 +167,7 @@ export function createEmptyWhiteboard(): WhiteboardState {
  */
 export function processWhiteboardMessage(
   content: string,
-  currentState: WhiteboardState
+  currentState: WhiteboardState,
 ): { state: WhiteboardState; wasUpdated: boolean } {
   if (!isWhiteboardDiff(content)) {
     return { state: currentState, wasUpdated: false };

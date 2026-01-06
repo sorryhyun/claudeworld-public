@@ -6,10 +6,10 @@ function getApiUrl(): string {
     try {
       const parsed = new URL(urlString);
       // Remove credentials if present (they're handled by API key now)
-      parsed.username = '';
-      parsed.password = '';
+      parsed.username = "";
+      parsed.password = "";
       // Remove trailing slash to avoid double slashes in API calls
-      return parsed.toString().replace(/\/$/, '');
+      return parsed.toString().replace(/\/$/, "");
     } catch {
       return urlString;
     }
@@ -18,12 +18,12 @@ function getApiUrl(): string {
   // Auto-detect based on current window location
   // If accessing via network IP, use network IP for backend too
   const currentHost = window.location.hostname;
-  if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+  if (currentHost !== "localhost" && currentHost !== "127.0.0.1") {
     return `http://${currentHost}:8000`;
   }
 
   // Default to localhost
-  return 'http://localhost:8000';
+  return "http://localhost:8000";
 }
 
 export const API_BASE_URL = getApiUrl();
@@ -51,16 +51,16 @@ export function getApiKey(): string | null {
  */
 export function getFetchOptions(options: RequestInit = {}): RequestInit {
   const headers: Record<string, string> = {
-    ...options.headers as Record<string, string>,
+    ...(options.headers as Record<string, string>),
   };
 
   // Add API key header if available
   if (globalApiKey) {
-    headers['X-API-Key'] = globalApiKey;
+    headers["X-API-Key"] = globalApiKey;
   }
 
   // Add ngrok header to skip browser warning page
-  headers['ngrok-skip-browser-warning'] = 'true';
+  headers["ngrok-skip-browser-warning"] = "true";
 
   return {
     ...options,

@@ -5,10 +5,10 @@ import {
   useCallback,
   useEffect,
   ReactNode,
-} from 'react';
-import * as gameService from '../services/gameService';
-import { useAuth } from './AuthContext';
-import type { World } from './GameContext';
+} from "react";
+import * as gameService from "../services/gameService";
+import { useAuth } from "./AuthContext";
+import type { World } from "./GameContext";
 
 // =============================================================================
 // CONTEXT
@@ -57,11 +57,11 @@ export function WorldsProvider({ children }: WorldsProviderProps) {
   }, [apiKey, refreshWorlds]);
 
   const addWorld = useCallback((world: World) => {
-    setWorlds(prev => [world, ...prev]);
+    setWorlds((prev) => [world, ...prev]);
   }, []);
 
   const removeWorld = useCallback((worldId: number) => {
-    setWorlds(prev => prev.filter(w => w.id !== worldId));
+    setWorlds((prev) => prev.filter((w) => w.id !== worldId));
   }, []);
 
   const value: WorldsContextValue = {
@@ -73,9 +73,7 @@ export function WorldsProvider({ children }: WorldsProviderProps) {
   };
 
   return (
-    <WorldsContext.Provider value={value}>
-      {children}
-    </WorldsContext.Provider>
+    <WorldsContext.Provider value={value}>{children}</WorldsContext.Provider>
   );
 }
 
@@ -86,7 +84,7 @@ export function WorldsProvider({ children }: WorldsProviderProps) {
 export function useWorlds(): WorldsContextValue {
   const context = useContext(WorldsContext);
   if (!context) {
-    throw new Error('useWorlds must be used within a WorldsProvider');
+    throw new Error("useWorlds must be used within a WorldsProvider");
   }
   return context;
 }

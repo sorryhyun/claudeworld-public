@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -32,15 +33,154 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from domain.value_objects.task_identifier import TaskIdentifier
 from infrastructure.logging.perf_logger import get_perf_logger
 
+from sdk.client.transports import build_transport
+
 if TYPE_CHECKING:
     from claude_agent_sdk.types import Message
 
 logger = logging.getLogger(__name__)
 _perf = get_perf_logger()
 
+
+@dataclass
+class PoolMetrics:
+    """
+    Aggregated metrics for client pool operations.
+
+    Tracks pool-level performance to complement transport-level metrics.
+    Logged via perf_logger when PERF_LOG=true.
+    """
+
+    # Pool hit/miss tracking
+    pool_hits: int = 0
+    pool_misses: int = 0
+
+    # Lock/semaphore contention
+    task_lock_total_ms: float = 0.0
+    semaphore_total_ms: float = 0.0
+
+    # Client lifecycle
+    clients_created: int = 0
+    clients_reused: int = 0
+    instantiate_total_ms: float = 0.0
+
+    # Retries
+    retry_count: int = 0
+
+    def record_pool_hit(self, check_ms: float, task_id: "TaskIdentifier") -> None:
+        """Record a pool hit (client reused)."""
+        self.pool_hits += 1
+        self.clients_reused += 1
+        _perf.log_sync(
+            "pool_check",
+            check_ms,
+            room_id=task_id.room_id,
+            agent_id=task_id.agent_id,
+            hit=True,
+        )
+
+    def record_pool_miss(self, check_ms: float, task_id: "TaskIdentifier") -> None:
+        """Record a pool miss (new client needed)."""
+        self.pool_misses += 1
+        _perf.log_sync(
+            "pool_check",
+            check_ms,
+            room_id=task_id.room_id,
+            agent_id=task_id.agent_id,
+            hit=False,
+        )
+
+    def record_task_lock(self, wait_ms: float, task_id: "TaskIdentifier") -> None:
+        """Record task lock acquisition time."""
+        self.task_lock_total_ms += wait_ms
+        if wait_ms > 10:  # Only log if significant contention (>10ms)
+            _perf.log_sync(
+                "pool_lock_contention",
+                wait_ms,
+                room_id=task_id.room_id,
+                agent_id=task_id.agent_id,
+                lock_type="task",
+            )
+
+    def record_semaphore(self, wait_ms: float, task_id: "TaskIdentifier") -> None:
+        """Record semaphore acquisition time."""
+        self.semaphore_total_ms += wait_ms
+        if wait_ms > 10:  # Only log if significant contention (>10ms)
+            _perf.log_sync(
+                "pool_lock_contention",
+                wait_ms,
+                room_id=task_id.room_id,
+                agent_id=task_id.agent_id,
+                lock_type="semaphore",
+            )
+
+    def record_instantiate(self, duration_ms: float, task_id: "TaskIdentifier") -> None:
+        """Record client instantiation time."""
+        self.instantiate_total_ms += duration_ms
+        _perf.log_sync(
+            "pool_instantiate",
+            duration_ms,
+            room_id=task_id.room_id,
+            agent_id=task_id.agent_id,
+        )
+
+    def record_client_created(self, overall_ms: float, task_id: "TaskIdentifier", attempts: int) -> None:
+        """Record successful client creation."""
+        self.clients_created += 1
+        _perf.log_sync(
+            "pool_get_client",
+            overall_ms,
+            room_id=task_id.room_id,
+            agent_id=task_id.agent_id,
+            created=True,
+            attempts=attempts,
+        )
+
+    def record_client_reused_after_wait(self, overall_ms: float, task_id: "TaskIdentifier") -> None:
+        """Record client reuse after waiting for another coroutine to create it."""
+        self.clients_reused += 1
+        _perf.log_sync(
+            "pool_get_client",
+            overall_ms,
+            room_id=task_id.room_id,
+            agent_id=task_id.agent_id,
+            created=False,
+            waited=True,
+        )
+
+    def record_retry(self, delay_ms: float, task_id: "TaskIdentifier", attempt: int, error: str) -> None:
+        """Record a connection retry."""
+        self.retry_count += 1
+        _perf.log_sync(
+            "pool_retry",
+            delay_ms,
+            room_id=task_id.room_id,
+            agent_id=task_id.agent_id,
+            attempt=attempt,
+            error=error[:50],
+        )
+
+    @property
+    def hit_rate(self) -> float:
+        """Calculate pool hit rate (0.0 to 1.0)."""
+        total = self.pool_hits + self.pool_misses
+        return self.pool_hits / total if total > 0 else 0.0
+
+
+# Singleton pool metrics instance
+_pool_metrics = PoolMetrics()
+
+
+def get_pool_metrics() -> PoolMetrics:
+    """Get the singleton pool metrics instance."""
+    return _pool_metrics
+
+
 # Message pump configuration
 # Bounded queue prevents unbounded memory growth when subagents produce many messages
-MESSAGE_QUEUE_MAX_SIZE = 1000
+# Configurable via environment variable for tuning under load
+MESSAGE_QUEUE_MAX_SIZE = int(os.environ.get("SDK_MESSAGE_QUEUE_SIZE", "2000"))
+MESSAGE_QUEUE_WARN_THRESHOLD = 0.8  # Warn when queue reaches 80% capacity
 
 
 @dataclass
@@ -53,6 +193,19 @@ class PooledClient:
     # Message pump: continuously drains receive_messages() to keep SDK control channel healthy
     msg_queue: asyncio.Queue["Message"] = field(default_factory=lambda: asyncio.Queue(maxsize=MESSAGE_QUEUE_MAX_SIZE))
     pump_task: Optional[asyncio.Task[None]] = None  # Background task draining messages
+
+
+def _is_critical_message(msg: "Message") -> bool:
+    """Check if a message is critical and should never be dropped.
+
+    Critical messages include:
+    - ResultMessage: Final response that completes the request
+    - Messages with 'result' in type name: Completion signals
+
+    Dropping these can wedge requests until timeout.
+    """
+    msg_type = type(msg).__name__
+    return "Result" in msg_type or "result" in msg_type.lower()
 
 
 async def _pump_messages(pooled: PooledClient, task_id: TaskIdentifier) -> None:
@@ -68,23 +221,50 @@ async def _pump_messages(pooled: PooledClient, task_id: TaskIdentifier) -> None:
     3. CLI can't service control channel for tools/list and tools/call
     4. Subagent falls back to text <function_calls> (hallucinated invoke)
 
+    Queue policy:
+    - Critical messages (ResultMessage, end sentinel) are NEVER dropped
+    - Backpressure warning at 80% capacity
+    - Non-critical messages may be dropped when queue is full
+
     Args:
         pooled: The pooled client to pump messages from
         task_id: Task identifier for logging
     """
+    warn_threshold = int(MESSAGE_QUEUE_MAX_SIZE * MESSAGE_QUEUE_WARN_THRESHOLD)
+    warned_backpressure = False
+
     try:
         async for msg in pooled.client.receive_messages():
+            queue_size = pooled.msg_queue.qsize()
+
+            # Backpressure warning at 80% capacity (once per pump lifecycle)
+            if not warned_backpressure and queue_size >= warn_threshold:
+                logger.warning(
+                    f"Queue backpressure for {task_id}: {queue_size}/{MESSAGE_QUEUE_MAX_SIZE} "
+                    f"({queue_size * 100 // MESSAGE_QUEUE_MAX_SIZE}% full). "
+                    f"Consider increasing SDK_MESSAGE_QUEUE_SIZE env var."
+                )
+                warned_backpressure = True
+
             try:
                 pooled.msg_queue.put_nowait(msg)
             except asyncio.QueueFull:
-                # Drop message to avoid blocking pump - prefer availability over completeness
-                # Critical messages (ResultMessage) are typically small and arrive early
                 msg_type = type(msg).__name__
-                logger.warning(
-                    f"Queue full for {task_id}, dropping {msg_type}. "
-                    f"Queue size: {MESSAGE_QUEUE_MAX_SIZE}. "
-                    f"Consider increasing MESSAGE_QUEUE_MAX_SIZE if this persists."
-                )
+
+                # NEVER drop critical messages - block if necessary
+                if _is_critical_message(msg):
+                    logger.warning(
+                        f"Queue full for {task_id}, blocking to deliver critical {msg_type}. "
+                        f"This may indicate consumer is stuck."
+                    )
+                    await pooled.msg_queue.put(msg)  # Blocking put for critical messages
+                else:
+                    # Drop non-critical messages to avoid blocking pump
+                    logger.warning(
+                        f"Queue full for {task_id}, dropping {msg_type}. "
+                        f"Queue size: {MESSAGE_QUEUE_MAX_SIZE}. "
+                        f"Consider increasing SDK_MESSAGE_QUEUE_SIZE if this persists."
+                    )
     except asyncio.CancelledError:
         # Expected during cleanup - just exit gracefully
         logger.debug(f"Pump task cancelled for {task_id}")
@@ -92,11 +272,13 @@ async def _pump_messages(pooled: PooledClient, task_id: TaskIdentifier) -> None:
     except Exception as e:
         logger.warning(f"Pump task error for {task_id}: {e}")
     finally:
-        # Signal end of stream with sentinel value
+        # Signal end of stream with sentinel value - NEVER drop this
+        # Use blocking put to ensure completion is always observable
         try:
             pooled.msg_queue.put_nowait(None)  # type: ignore[arg-type]
         except asyncio.QueueFull:
-            logger.warning(f"Could not send end sentinel for {task_id} - queue full")
+            logger.warning(f"Queue full for {task_id}, blocking to send end sentinel")
+            await pooled.msg_queue.put(None)  # type: ignore[arg-type]
 
 
 class ClientPool:
@@ -122,7 +304,8 @@ class ClientPool:
     # Allow up to 10 concurrent connections (prevents ProcessTransport issues while allowing parallelism)
     MAX_CONCURRENT_CONNECTIONS = 10
     # Stabilization delay after each connection (seconds)
-    CONNECTION_STABILIZATION_DELAY = 0.05
+    # Reduced from 50ms to 20ms - monitor for ProcessTransport race conditions
+    CONNECTION_STABILIZATION_DELAY = 0.02
     # Timeout for disconnect operations (seconds)
     DISCONNECT_TIMEOUT = 5.0
 
@@ -212,9 +395,7 @@ class ClientPool:
                 # Fall through to create new client below
             else:
                 pool_check_ms = (time.perf_counter() - pool_check_start) * 1000
-                _perf.log_sync(
-                    "pool_check_hit", pool_check_ms, None, task_id.room_id, agent_id=task_id.agent_id, reused=True
-                )
+                _pool_metrics.record_pool_hit(pool_check_ms, task_id)
                 logger.debug(
                     f"Reusing existing client for {task_id} (config hash: {config_hash[:8] if config_hash else 'none'})"
                 )
@@ -224,14 +405,14 @@ class ClientPool:
                 return pooled, False, usage_lock
 
         pool_check_ms = (time.perf_counter() - pool_check_start) * 1000
-        _perf.log_sync("pool_check_miss", pool_check_ms, None, task_id.room_id, agent_id=task_id.agent_id, reused=False)
+        _pool_metrics.record_pool_miss(pool_check_ms, task_id)
 
         # Use per-task_id lock to prevent duplicate client creation for the same task
         task_lock = self._get_task_lock(task_id)
         lock_wait_start = time.perf_counter()
         async with task_lock:
             lock_wait_ms = (time.perf_counter() - lock_wait_start) * 1000
-            _perf.log_sync("task_lock_acquire", lock_wait_ms, None, task_id.room_id, agent_id=task_id.agent_id)
+            _pool_metrics.record_task_lock(lock_wait_ms, task_id)
 
             # Double-check after acquiring task lock (another coroutine might have created it)
             if task_id in self.pool:
@@ -258,15 +439,7 @@ class ClientPool:
                     logger.debug(f"Client for {task_id} was created while waiting for lock")
                     # NOTE: We do NOT update options here - they are baked in at connect time
                     overall_ms = (time.perf_counter() - overall_start) * 1000
-                    _perf.log_sync(
-                        "get_pooled_client",
-                        overall_ms,
-                        None,
-                        task_id.room_id,
-                        agent_id=task_id.agent_id,
-                        created=False,
-                        waited_for_other=True,
-                    )
+                    _pool_metrics.record_client_reused_after_wait(overall_ms, task_id)
                     usage_lock = self._get_usage_lock(task_id)
                     return pooled, False, usage_lock
 
@@ -274,7 +447,7 @@ class ClientPool:
             semaphore_wait_start = time.perf_counter()
             async with self._connection_semaphore:
                 semaphore_wait_ms = (time.perf_counter() - semaphore_wait_start) * 1000
-                _perf.log_sync("semaphore_acquire", semaphore_wait_ms, None, task_id.room_id, agent_id=task_id.agent_id)
+                _pool_metrics.record_semaphore(semaphore_wait_ms, task_id)
 
                 logger.debug(
                     f"Creating new client for {task_id} (config hash: {config_hash[:8] if config_hash else 'none'})"
@@ -285,24 +458,14 @@ class ClientPool:
                 for attempt in range(max_retries):
                     try:
                         client_create_start = time.perf_counter()
-                        client = ClaudeSDKClient(options=options)
+                        transport = build_transport(options, task_id)
+                        client = ClaudeSDKClient(options=options, transport=transport)
                         client_create_ms = (time.perf_counter() - client_create_start) * 1000
-                        _perf.log_sync(
-                            "client_instantiate", client_create_ms, None, task_id.room_id, agent_id=task_id.agent_id
-                        )
+                        _pool_metrics.record_instantiate(client_create_ms, task_id)
 
                         # Connect without a prompt - messages are sent via query() instead
-                        connect_start = time.perf_counter()
+                        # Note: connect timing is now handled by MetricsTransport (when PERF_LOG=true)
                         await client.connect()
-                        connect_ms = (time.perf_counter() - connect_start) * 1000
-                        _perf.log_sync(
-                            "client_connect",
-                            connect_ms,
-                            None,
-                            task_id.room_id,
-                            agent_id=task_id.agent_id,
-                            attempt=attempt + 1,
-                        )
 
                         # Store with metadata and start message pump
                         session_id = getattr(options, "resume", None)
@@ -325,15 +488,7 @@ class ClientPool:
                         await asyncio.sleep(self.CONNECTION_STABILIZATION_DELAY)
 
                         overall_ms = (time.perf_counter() - overall_start) * 1000
-                        _perf.log_sync(
-                            "get_pooled_client",
-                            overall_ms,
-                            None,
-                            task_id.room_id,
-                            agent_id=task_id.agent_id,
-                            created=True,
-                            attempts=attempt + 1,
-                        )
+                        _pool_metrics.record_client_created(overall_ms, task_id, attempt + 1)
                         usage_lock = self._get_usage_lock(task_id)
                         return pooled, True, usage_lock
                     except Exception as e:
@@ -342,15 +497,7 @@ class ClientPool:
                             logger.warning(
                                 f"Connection failed for {task_id}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
                             )
-                            _perf.log_sync(
-                                "client_connect_retry",
-                                delay * 1000,
-                                None,
-                                task_id.room_id,
-                                agent_id=task_id.agent_id,
-                                attempt=attempt + 1,
-                                error=str(e)[:50],
-                            )
+                            _pool_metrics.record_retry(delay * 1000, task_id, attempt + 1, str(e))
                             await asyncio.sleep(delay)
                         else:
                             # Re-raise on final attempt or non-transport errors

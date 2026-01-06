@@ -23,14 +23,15 @@ from typing import Any, Dict, Optional, Tuple
 from .yaml_loaders import (
     get_group_config,
     get_guidelines_config,
+    get_lore_guidelines_config,
     get_tools_config,
     merge_tool_configs,
 )
 
 logger = logging.getLogger(__name__)
 
-# Known group names in tools.yaml and gameplay_tools.yaml
-TOOL_GROUPS = ["action", "guidelines", "onboarding", "action_manager", "narrator"]
+# Known group names (loaded from Python modules)
+TOOL_GROUPS = ["action", "guidelines", "onboarding", "action_manager", "subagents"]
 
 
 def _find_tool_in_config(
@@ -109,6 +110,13 @@ def get_tool_description(
         # Substitute template variables
         description = template.format(agent_name=agent_name)
         return description
+
+    # Handle lore_guidelines specially - loads from lore_guidelines.yaml
+    if tool_name == "lore_guidelines":
+        lore_guidelines_config = get_lore_guidelines_config()
+        active_version = lore_guidelines_config.get("active_version", "v1")
+        template = lore_guidelines_config.get(active_version, {}).get("template", "")
+        return template
 
     # For other tools, load from tools.yaml (with optional group overrides)
     tools_config = _get_tools_config_for_group(group_name)

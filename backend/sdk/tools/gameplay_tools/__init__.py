@@ -8,6 +8,7 @@ Action Manager MCP server (for gameplay-phase agents and subagents):
 - Location tools: travel, list_locations, persist_location_design
 - Item tools: persist_item
 - Mechanics tools: inject_memory, narration, suggest_options, change_stat, roll_the_dice, advance_time
+- Equipment tools: equip_item, unequip_item, use_item, list_equipment, set_flag (Phase 2)
 
 Onboarding MCP server (for onboarding-phase agents):
 - draft_world: Lightweight world draft (genre, theme, lore summary) to unblock sub-agents
@@ -29,7 +30,10 @@ from claude_agent_sdk import create_sdk_mcp_server
 
 from sdk.tools.context import ToolContext
 
+from .character_design_tools import create_character_design_tools
 from .character_tools import create_character_tools
+from .equipment_tools import create_equipment_tools
+from .history_tools import create_history_tools
 from .item_tools import create_item_tools
 from .location_tools import create_location_tools
 from .mechanics_tools import create_mechanics_tools
@@ -44,6 +48,8 @@ __all__ = [
     "create_action_manager_tools",
     "create_action_manager_mcp_server",
     "create_character_tools",
+    "create_equipment_tools",
+    "create_history_tools",
     "create_item_tools",
     "create_location_tools",
     "create_mechanics_tools",
@@ -51,6 +57,9 @@ __all__ = [
     # Onboarding Manager tools
     "create_onboarding_tools",
     "create_onboarding_mcp_server",
+    # Character Design tools (detailed character creation for onboarding)
+    "create_character_design_tools",
+    "create_character_design_mcp_server",
     # Subagent tools (shared between Action Manager and Onboarding Manager)
     "create_subagents_tools",
     "create_subagents_mcp_server",
@@ -82,6 +91,12 @@ def create_action_manager_tools(ctx: ToolContext) -> list:
 
     # Add narrative tools (narration, suggest_options)
     tools.extend(create_narrative_tools(ctx))
+
+    # Add equipment tools (equip_item, unequip_item, use_item, list_equipment, set_flag) - Phase 2
+    tools.extend(create_equipment_tools(ctx))
+
+    # Add history tools (recall_history) - for recalling past events from consolidated history
+    tools.extend(create_history_tools(ctx))
 
     return tools
 
@@ -180,3 +195,21 @@ def create_onboarding_mcp_server(ctx: ToolContext):
     onboarding_tools = create_onboarding_tools(ctx)
 
     return create_sdk_mcp_server(name="onboarding", version="1.0.0", tools=onboarding_tools)
+
+
+def create_character_design_mcp_server(ctx: ToolContext):
+    """
+    Create an MCP server with character design tools (create_comprehensive_character, implant_consolidated_memory).
+
+    These tools are used during onboarding by the detailed_character_designer agent
+    to create rich, memorable characters with deep backstories and consolidated memories.
+
+    Args:
+        ctx: Unified tool context containing agent info and dependencies
+
+    Returns:
+        MCP server instance with character design tools
+    """
+    character_design_tools = create_character_design_tools(ctx)
+
+    return create_sdk_mcp_server(name="character_design", version="1.0.0", tools=character_design_tools)

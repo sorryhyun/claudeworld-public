@@ -55,14 +55,18 @@ class AgentConfigService:
         return get_settings().project_root
 
     @staticmethod
-    def append_to_recent_events(config_file: str, memory_entry: str, timestamp: Optional[datetime] = None) -> bool:
+    def append_to_recent_events(
+        config_file: str,
+        memory_entry: str,
+        game_time: Optional[dict] = None,
+    ) -> bool:
         """
         Append a memory entry to the agent's recent_events.md file.
 
         Args:
             config_file: Path to the agent's config file (relative to project root)
             memory_entry: One-liner memory to append
-            timestamp: Optional timestamp (defaults to now)
+            game_time: Optional game time dict with 'day', 'hour', 'minute' keys
 
         Returns:
             True if successful, False otherwise
@@ -70,16 +74,21 @@ class AgentConfigService:
         if not config_file:
             return False
 
-        if timestamp is None:
-            timestamp = datetime.utcnow()
+        # Format timestamp using game time (Day X, HH:MM) or fallback to real date
+        if game_time:
+            day = game_time.get("day", 1)
+            hour = game_time.get("hour", 0)
+            minute = game_time.get("minute", 0)
+            formatted_entry = f"- [Day {day}, {hour:02d}:{minute:02d}] {memory_entry}"
+        else:
+            from datetime import timezone
 
-        # Format the memory entry with bullet point and timestamp
-        formatted_entry = f"- [{timestamp.strftime('%Y-%m-%d')}] {memory_entry}"
+            timestamp = datetime.now(timezone.utc)
+            formatted_entry = f"- [{timestamp.strftime('%Y-%m-%d')}] {memory_entry}"
 
         project_root = AgentConfigService.get_project_root()
         config_path = project_root / config_file
 
-        # Check if it's a folder-based config
         if not config_path.is_dir():
             logger.warning(f"Warning: Config path {config_path} is not a directory")
             return False
@@ -87,11 +96,7 @@ class AgentConfigService:
         recent_events_file = config_path / "recent_events.md"
 
         try:
-            # Use file locking to prevent race conditions
-            # Mode 'a' for simple append - just add new line at end
             with file_lock(str(recent_events_file), "a") as f:
-                # Append with double newline for better readability
-                # file_lock ensures the file exists and handle is at end
                 f.write("\n" + formatted_entry + "\n")
 
             logger.debug(f"Appended memory entry to {recent_events_file}")
@@ -157,7 +162,6 @@ class AgentConfigService:
         image_type = match.group(1).lower()
         encoded_data = match.group(2)
 
-        # Map common MIME types to file extensions
         ext_map = {
             "png": ".png",
             "jpg": ".jpg",
@@ -171,26 +175,20 @@ class AgentConfigService:
         file_ext = ext_map.get(image_type, ".png")
 
         try:
-            # Decode base64 data
             image_data = base64.b64decode(encoded_data)
 
-            # Determine file path
             project_root = AgentConfigService.get_project_root()
             agents_dir = project_root / "agents"
             agent_folder = agents_dir / agent_name
 
-            # Create agent folder if it doesn't exist
             agent_folder.mkdir(parents=True, exist_ok=True)
 
-            # Save to profile.{ext}
             profile_path = agent_folder / f"profile{file_ext}"
 
-            # Remove any existing profile pictures with different extensions
             for old_file in agent_folder.glob("profile.*"):
                 if old_file != profile_path:
                     old_file.unlink()
 
-            # Write the new profile picture
             profile_path.write_bytes(image_data)
             logger.info(f"Saved profile picture for {agent_name} to {profile_path}")
             _invalidate_mcp_cache()

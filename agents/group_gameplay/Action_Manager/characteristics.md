@@ -138,7 +138,8 @@ It should feel dangerous but with potential allies.
 - **list_inventory** — See player's current inventory items
 - **list_world_item** — See all item templates in world (optional keyword filter)
 - **move_character** — Relocate existing NPCs between locations
-- **remove_character** — Remove NPCs (death, 실종, magic)
+- **remove_character** — Remove NPCs from current location (character still exists in the world)
+- **delete_character** — Permanently remove NPCs (death, 실종, magic) — archives the character
 - **inject_memory** — Implant memories (supernatural effects)
 - **travel** — Move player to an existing location
 
@@ -151,7 +152,9 @@ It should feel dangerous but with potential allies.
 For a typical turn:
 1) **Sub-agents first** (if needed): Use Task tool to invoke item_designer, character_designer, or location_designer.
 2) **Mechanical changes**: Use `change_stat` for stat/inventory modifications
-3) **State changes**: Use travel, move_character, remove_character as needed
+3) **State changes**: Use travel, move_character, remove_character, delete_character as needed
+   - `remove_character`: NPC leaves the location or user hid from NPC's sight (can be encountered elsewhere)
+   - `delete_character`: NPC is permanently gone (death, 실종, magic)
 4) **narration** → Describe what happened
 5) **suggest_options** → Provide two choices
 
@@ -204,8 +207,3 @@ Example: `Task: character_designer: Create a grizzled tavern keeper for this est
 
 ## World Continuity
 When the player travels, prior-location events are summarized into world history. The Action Manager treats that history as canon and keeps consequences consistent across rooms/locations.
-
----
-
-## System Note
-The Action Manager always ignores any `TodoWrite` system reminder.

@@ -2,6 +2,10 @@
 Configuration file loaders.
 
 Provides functions to load specific configuration files with caching.
+
+Tool definitions are now loaded from Python modules (*_tool_definitions.py)
+which combine input models and descriptions in one place. The YAML files
+are deprecated but group_config.yaml overrides are still supported.
 """
 
 import logging
@@ -12,6 +16,48 @@ from typing import Any, Dict
 from .cache import get_cached_config
 
 logger = logging.getLogger(__name__)
+
+
+def _load_tool_descriptions_from_python() -> Dict[str, Any]:
+    """
+    Load tool descriptions from Python modules.
+
+    Returns a dictionary in the same format as the old YAML structure:
+    {
+        "action": {"skip": {"name": ..., "description": ..., "response": ..., "enabled": ...}, ...},
+        "guidelines": {...},
+        "onboarding": {...},
+        "action_manager": {...},
+        "subagents": {...},
+    }
+    """
+    from sdk.config.action_tool_definitions import ACTION_TOOLS
+    from sdk.config.gameplay_tool_definitions import ACTION_MANAGER_TOOLS
+    from sdk.config.guideline_tool_definitions import GUIDELINE_TOOLS
+    from sdk.config.onboarding_tool_definitions import ONBOARDING_TOOLS
+    from sdk.config.subagent_tool_definitions import SUBAGENT_TOOLS
+    from sdk.config.tool_definitions import ToolDefinition
+
+    def to_dict(tool: ToolDefinition) -> Dict[str, Any]:
+        """Convert ToolDefinition to dictionary format."""
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "response": tool.response,
+            "enabled": tool.enabled,
+        }
+
+    def convert_group(tools: Dict[str, ToolDefinition]) -> Dict[str, Dict[str, Any]]:
+        """Convert a group of tools to dictionary format."""
+        return {name: to_dict(tool) for name, tool in tools.items()}
+
+    return {
+        "action": convert_group(ACTION_TOOLS),
+        "guidelines": convert_group(GUIDELINE_TOOLS),
+        "onboarding": convert_group(ONBOARDING_TOOLS),
+        "action_manager": convert_group(ACTION_MANAGER_TOOLS),
+        "subagents": convert_group(SUBAGENT_TOOLS),
+    }
 
 
 def get_guidelines_file() -> str:
@@ -63,55 +109,15 @@ def __getattr__(name: str):
 
 def get_tools_config() -> Dict[str, Any]:
     """
-    Load the tools configuration from separate YAML files.
+    Load the tools configuration from Python modules.
 
-    Loads and merges:
-    - action_tools.yaml (skip, memorize, recall)
-    - guideline_tools.yaml (read, anthropic)
-    - gameplay_tools.yaml (action_manager tools)
-    - onboarding_tools.yaml (world initialization)
+    Tool descriptions are now defined in Python files (*_tool_descriptions.py)
+    for better type safety and IDE support.
 
     Returns:
-        Dictionary containing tool definitions from all files
+        Dictionary containing tool definitions from all modules
     """
-    from core import get_settings
-
-    settings = get_settings()
-    config_dir = settings.tools_config_path.parent
-
-    base_config: Dict[str, Any] = {}
-
-    # Load action tools config
-    action_tools_path = config_dir / "action_tools.yaml"
-    if action_tools_path.exists():
-        action_config = get_cached_config(action_tools_path)
-        base_config.update(action_config)
-
-    # Load guideline tools config
-    guideline_tools_path = config_dir / "guideline_tools.yaml"
-    if guideline_tools_path.exists():
-        guideline_config = get_cached_config(guideline_tools_path)
-        base_config.update(guideline_config)
-
-    # Load gameplay tools config if it exists
-    gameplay_tools_path = config_dir / "gameplay_tools.yaml"
-    if gameplay_tools_path.exists():
-        gameplay_config = get_cached_config(gameplay_tools_path)
-        base_config.update(gameplay_config)
-
-    # Load onboarding tools config if it exists
-    onboarding_tools_path = config_dir / "onboarding_tools.yaml"
-    if onboarding_tools_path.exists():
-        onboarding_config = get_cached_config(onboarding_tools_path)
-        base_config.update(onboarding_config)
-
-    # Load subagent tools config if it exists
-    subagent_tools_path = config_dir / "subagent_tools.yaml"
-    if subagent_tools_path.exists():
-        subagent_config = get_cached_config(subagent_tools_path)
-        base_config.update(subagent_config)
-
-    return base_config
+    return _load_tool_descriptions_from_python()
 
 
 def get_guidelines_config() -> Dict[str, Any]:
@@ -181,6 +187,18 @@ def get_localization_config() -> Dict[str, Any]:
     from core import get_settings
 
     return get_cached_config(get_settings().localization_config_path)
+
+
+def get_lore_guidelines_config() -> Dict[str, Any]:
+    """
+    Load the lore guidelines configuration from lore_guidelines.yaml.
+
+    Returns:
+        Dictionary containing lore writing guideline templates
+    """
+    from core import get_settings
+
+    return get_cached_config(get_settings().lore_guidelines_config_path)
 
 
 def get_group_config(group_name: str) -> Dict[str, Any]:
@@ -324,8 +342,8 @@ def merge_tool_configs(base_config: Dict[str, Any], group_config: Dict[str, Any]
 
     merged = copy.deepcopy(base_config)
 
-    # Known tool groups in tools.yaml, gameplay_tools.yaml, and subagent_tools.yaml
-    tool_groups = ["action", "guidelines", "onboarding", "game", "action_manager", "narrator", "subagents"]
+    # Known tool groups (now loaded from Python modules)
+    tool_groups = ["action", "guidelines", "onboarding", "action_manager", "subagents"]
 
     # Check for new format (group names at top level in group_config)
     has_new_format = any(group_name in group_config for group_name in tool_groups)

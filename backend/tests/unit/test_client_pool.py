@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from domain.value_objects.task_identifier import TaskIdentifier
-from sdk.client.client_pool import ClientPool
+from sdk.client.client_pool import ClientPool, PooledClient
 
 
 @pytest.fixture
@@ -97,7 +97,10 @@ async def test_session_change_triggers_new_client(client_pool):
     options2 = Mock()
     options2.resume = "sess_123"
 
-    with patch("sdk.client.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+    with (
+        patch("sdk.client.client_pool.ClaudeSDKClient") as mock_sdk_client_class,
+        patch("sdk.client.client_pool.asyncio.sleep", new=AsyncMock()),  # Speed up background disconnect
+    ):
         mock_client1 = AsyncMock()
         mock_client1.connect = AsyncMock()
         mock_client1.disconnect = AsyncMock()
@@ -119,8 +122,9 @@ async def test_session_change_triggers_new_client(client_pool):
         assert client1 is not client2
 
         # First client should have been cleaned up (disconnect scheduled in background)
-        # Wait for background task to run (needs > 0.5s due to delay in _disconnect_client_background)
-        await asyncio.sleep(0.7)
+        # Wait for background cleanup tasks to complete
+        if client_pool._cleanup_tasks:
+            await asyncio.gather(*client_pool._cleanup_tasks, return_exceptions=True)
         mock_client1.disconnect.assert_called_once()
 
 
@@ -129,7 +133,10 @@ async def test_cleanup_client(client_pool, mock_options):
     """Test cleanup removes client and schedules disconnect."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    with patch("sdk.client.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+    with (
+        patch("sdk.client.client_pool.ClaudeSDKClient") as mock_sdk_client_class,
+        patch("sdk.client.client_pool.asyncio.sleep", new=AsyncMock()),  # Speed up background disconnect
+    ):
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
         mock_client.disconnect = AsyncMock()
@@ -145,8 +152,9 @@ async def test_cleanup_client(client_pool, mock_options):
         # Client should be removed from pool immediately
         assert task_id not in client_pool.pool
 
-        # Wait for background task to run (needs > 0.5s due to delay in _disconnect_client_background)
-        await asyncio.sleep(0.7)
+        # Wait for background cleanup tasks to complete
+        if client_pool._cleanup_tasks:
+            await asyncio.gather(*client_pool._cleanup_tasks, return_exceptions=True)
 
         # Disconnect should be called (in background task)
         mock_client.disconnect.assert_called_once()
@@ -287,8 +295,9 @@ async def test_disconnect_client_background_with_disconnect_method(client_pool):
     task_id = TaskIdentifier(room_id=1, agent_id=2)
     mock_client = AsyncMock()
     mock_client.disconnect = AsyncMock()
+    pooled = PooledClient(client=mock_client, config_hash="test", pump_task=None)
 
-    await client_pool._disconnect_client_background(mock_client, task_id)
+    await client_pool._disconnect_client_background(pooled, task_id)
 
     mock_client.disconnect.assert_called_once()
 
@@ -297,12 +306,11 @@ async def test_disconnect_client_background_with_disconnect_method(client_pool):
 async def test_disconnect_client_background_with_close_method(client_pool):
     """Test _disconnect_client_background uses close method if disconnect not available."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
-    mock_client = AsyncMock()
+    mock_client = Mock(spec=["close"])  # Only has 'close', not 'disconnect'
     mock_client.close = AsyncMock()
-    # Remove disconnect method
-    del mock_client.disconnect
+    pooled = PooledClient(client=mock_client, config_hash="test", pump_task=None)
 
-    await client_pool._disconnect_client_background(mock_client, task_id)
+    await client_pool._disconnect_client_background(pooled, task_id)
 
     mock_client.close.assert_called_once()
 
@@ -313,9 +321,10 @@ async def test_disconnect_client_background_suppresses_cancel_errors(client_pool
     task_id = TaskIdentifier(room_id=1, agent_id=2)
     mock_client = AsyncMock()
     mock_client.disconnect = AsyncMock(side_effect=Exception("cancel scope violation"))
+    pooled = PooledClient(client=mock_client, config_hash="test", pump_task=None)
 
     # Should not raise
-    await client_pool._disconnect_client_background(mock_client, task_id)
+    await client_pool._disconnect_client_background(pooled, task_id)
 
 
 @pytest.mark.asyncio
@@ -324,10 +333,11 @@ async def test_disconnect_client_background_logs_other_errors(client_pool):
     task_id = TaskIdentifier(room_id=1, agent_id=2)
     mock_client = AsyncMock()
     mock_client.disconnect = AsyncMock(side_effect=Exception("Connection failed"))
+    pooled = PooledClient(client=mock_client, config_hash="test", pump_task=None)
 
     # Should not raise, but should log
     with patch("sdk.client.client_pool.logger") as mock_logger:
-        await client_pool._disconnect_client_background(mock_client, task_id)
+        await client_pool._disconnect_client_background(pooled, task_id)
         # Warning should be logged for non-cancel errors
         mock_logger.warning.assert_called_once()
 
@@ -393,6 +403,26 @@ async def test_non_transport_error_raises_immediately(client_pool, mock_options)
 
         # Should only be called once (no retries)
         assert mock_sdk_client_class.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_passes_transport_to_sdk_client(client_pool, mock_options):
+    task_id = TaskIdentifier(room_id=1, agent_id=2)
+    mock_transport = Mock()
+
+    with (
+        patch("sdk.client.client_pool.build_transport", return_value=mock_transport) as mock_build_transport,
+        patch("sdk.client.client_pool.ClaudeSDKClient") as mock_sdk_client_class,
+    ):
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
+
+        await client_pool.get_or_create(task_id, mock_options)
+
+        mock_build_transport.assert_called_once_with(mock_options, task_id)
+        mock_sdk_client_class.assert_called_once_with(options=mock_options, transport=mock_transport)
 
 
 @pytest.mark.asyncio

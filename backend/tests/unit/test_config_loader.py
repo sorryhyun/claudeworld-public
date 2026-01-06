@@ -219,7 +219,12 @@ class TestGetDebugConfig:
 
 
 class TestGetToolDescription:
-    """Tests for get_tool_description function."""
+    """Tests for get_tool_description function.
+
+    Note: Tool descriptions are now loaded from Python modules (*_tool_descriptions.py)
+    instead of YAML files. Tests mock _load_tool_descriptions_from_python to provide
+    test data.
+    """
 
     def setup_method(self):
         """Clear cache before each test."""
@@ -233,85 +238,84 @@ class TestGetToolDescription:
     @pytest.mark.unit
     def test_get_tool_description_basic(self):
         """Test getting basic tool description."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            # Use group-based structure (action group contains test_tool)
-            tmp.write("action:\n  test_tool:\n    enabled: true\n    description: 'Test {agent_name}'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("test_tool", agent_name="Alice")
-                assert desc == "Test Alice"
-        finally:
-            tmp_path.unlink()
+        mock_config = {
+            "action": {
+                "test_tool": {
+                    "name": "mcp__action__test_tool",
+                    "description": "Test {agent_name}",
+                    "response": "",
+                    "enabled": True,
+                }
+            }
+        }
+        with patch("sdk.loaders.yaml_loaders._load_tool_descriptions_from_python", return_value=mock_config):
+            desc = get_tool_description("test_tool", agent_name="Alice")
+            assert desc == "Test Alice"
 
     @pytest.mark.unit
     def test_get_tool_description_disabled_tool(self):
         """Test getting description of disabled tool returns None."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            # Use group-based structure (action group contains test_tool)
-            tmp.write("action:\n  test_tool:\n    enabled: false\n    description: 'Test description'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("test_tool")
-                assert desc is None
-        finally:
-            tmp_path.unlink()
+        mock_config = {
+            "action": {
+                "test_tool": {
+                    "name": "mcp__action__test_tool",
+                    "description": "Test description",
+                    "response": "",
+                    "enabled": False,
+                }
+            }
+        }
+        with patch("sdk.loaders.yaml_loaders._load_tool_descriptions_from_python", return_value=mock_config):
+            desc = get_tool_description("test_tool")
+            assert desc is None
 
     @pytest.mark.unit
     def test_get_tool_description_not_found(self):
         """Test getting description of nonexistent tool returns None."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            # Use group-based structure (action group contains other_tool)
-            tmp.write("action:\n  other_tool:\n    enabled: true\n    description: 'Test'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("nonexistent_tool")
-                assert desc is None
-        finally:
-            tmp_path.unlink()
+        mock_config = {
+            "action": {
+                "other_tool": {
+                    "name": "mcp__action__other_tool",
+                    "description": "Test",
+                    "response": "",
+                    "enabled": True,
+                }
+            }
+        }
+        with patch("sdk.loaders.yaml_loaders._load_tool_descriptions_from_python", return_value=mock_config):
+            desc = get_tool_description("nonexistent_tool")
+            assert desc is None
 
     @pytest.mark.unit
     def test_get_tool_description_with_variables(self):
         """Test tool description with multiple template variables."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            # Use group-based structure (action group contains test_tool)
-            tmp.write("action:\n  test_tool:\n    enabled: true\n    description: '{agent_name} - {config_sections}'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("test_tool", agent_name="Alice", config_sections="memory, background")
-                assert desc == "Alice - memory, background"
-        finally:
-            tmp_path.unlink()
+        mock_config = {
+            "action": {
+                "test_tool": {
+                    "name": "mcp__action__test_tool",
+                    "description": "{agent_name} - {config_sections}",
+                    "response": "",
+                    "enabled": True,
+                }
+            }
+        }
+        with patch("sdk.loaders.yaml_loaders._load_tool_descriptions_from_python", return_value=mock_config):
+            desc = get_tool_description("test_tool", agent_name="Alice", config_sections="memory, background")
+            assert desc == "Alice - memory, background"
 
     @pytest.mark.unit
     def test_get_tool_description_guidelines_tool(self):
         """Test getting guidelines tool description from separate file."""
-        # Create tools config
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("tools:\n  guidelines:\n    enabled: true\n")
-            tools_path = Path(tmp.name)
-
         # Create guidelines config
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
             tmp.write("active_version: v1\nv1:\n  template: 'Guidelines for {agent_name}'\n")
             guidelines_path = Path(tmp.name)
 
         try:
-            with (
-                patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tools_path),
-                patch.object(
-                    Settings, "guidelines_config_path", new_callable=PropertyMock, return_value=guidelines_path
-                ),
+            with patch.object(
+                Settings, "guidelines_config_path", new_callable=PropertyMock, return_value=guidelines_path
             ):
                 desc = get_tool_description("guidelines", agent_name="Alice")
                 assert desc == "Guidelines for Alice"
         finally:
-            tools_path.unlink()
             guidelines_path.unlink()

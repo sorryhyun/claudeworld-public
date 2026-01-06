@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { api } from '../services';
-import { useAuth } from '../contexts/AuthContext';
-import type { Agent, AgentCreate } from '../types';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { api } from "../services";
+import { useAuth } from "../contexts/AuthContext";
+import type { Agent, AgentCreate } from "../types";
 
 const POLL_INTERVAL = 10000; // Poll every 10 seconds (agents change infrequently)
 
@@ -29,7 +29,7 @@ export const useAgents = () => {
 
         // Check if any agent has changed
         const hasChanges = data.some((newAgent) => {
-          const prevAgent = prevAgents.find(a => a.id === newAgent.id);
+          const prevAgent = prevAgents.find((a) => a.id === newAgent.id);
           if (!prevAgent) return true;
 
           // Compare relevant properties
@@ -43,8 +43,8 @@ export const useAgents = () => {
         return hasChanges ? data : prevAgents;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch agents');
-      console.error('Failed to fetch agents:', err);
+      setError(err instanceof Error ? err.message : "Failed to fetch agents");
+      console.error("Failed to fetch agents:", err);
     } finally {
       if (isInitial) {
         setLoading(false);
@@ -78,7 +78,7 @@ export const useAgents = () => {
 
           // Check if any agent has changed
           const hasChanges = data.some((newAgent) => {
-            const prevAgent = prevAgents.find(a => a.id === newAgent.id);
+            const prevAgent = prevAgents.find((a) => a.id === newAgent.id);
             if (!prevAgent) return true;
 
             // Compare relevant properties
@@ -92,8 +92,8 @@ export const useAgents = () => {
           return hasChanges ? data : prevAgents;
         });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch agents');
-        console.error('Failed to fetch agents:', err);
+        setError(err instanceof Error ? err.message : "Failed to fetch agents");
+        console.error("Failed to fetch agents:", err);
       } finally {
         if (isInitial) {
           setLoading(false);
@@ -132,7 +132,7 @@ export const useAgents = () => {
       setAgents((prev) => [...prev, newAgent]);
       return newAgent;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
       throw err;
     }
@@ -143,7 +143,7 @@ export const useAgents = () => {
       await api.deleteAgent(agentId);
       setAgents((prev) => prev.filter((agent) => agent.id !== agentId));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
       throw err;
     }

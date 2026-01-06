@@ -4,11 +4,11 @@ from typing import List
 
 import crud
 import schemas
-from auth import require_admin
-from database import get_db
-from dependencies import RequestIdentity, get_agent_manager, get_request_identity
+from core.dependencies import RequestIdentity, get_agent_manager, get_request_identity
+from infrastructure.auth import require_admin
 from domain.entities.agent_config import AgentConfigData
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database.connection import get_db
 from sdk import AgentManager
 from services import AgentFactory, build_system_prompt
 from services.agent_service import delete_agent_with_cleanup

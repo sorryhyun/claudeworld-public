@@ -8,6 +8,7 @@ Contains tools for location navigation and management:
 
 """
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -15,16 +16,17 @@ import crud
 import schemas
 from claude_agent_sdk import tool
 from domain.value_objects.enums import MessageRole
+from infrastructure.logging.perf_logger import track_perf
 from services.location_service import LocationService
 from services.persistence_manager import PersistenceManager
 from services.player_service import PlayerService
 from services.world_service import WorldService
 
-from sdk.config.gameplay_inputs import (
+from sdk.config.gameplay_tool_definitions import (
     ListLocationsInput,
     TravelInput,
 )
-from sdk.config.subagent_inputs import PersistLocationDesignInput
+from sdk.config.subagent_tool_definitions import PersistLocationDesignInput
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -66,6 +68,12 @@ def create_location_tools(ctx: ToolContext) -> list:
             travel_description,
             TravelInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_travel",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def travel_tool(args: dict[str, Any]):
             """Move the player to an existing location with narration, action suggestions, and chat summary."""
             # Validate input with Pydantic
@@ -102,7 +110,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 if from_location_name and from_location_name != "unknown":
                     from_loc = await crud.get_location_by_name(db, world_id, from_location_name)
                     if from_loc and from_loc.room_id:
-                        current_room_id = from_loc.room_id
+                        current_room_id = from_loc.room_id  # type: ignore[assignment]  # SQLAlchemy Column coerces to int at runtime
                         # Set sub-agent status to show "Traveling to..." in frontend
                         trpg_orchestrator.set_sub_agent_active(
                             current_room_id,
@@ -128,6 +136,15 @@ def create_location_tools(ctx: ToolContext) -> list:
                         logger.info(f"Saved chat summary to history: {from_display_name} (turn {turn})")
                     except Exception as e:
                         logger.warning(f"Failed to save chat summary to history: {e}")
+
+                    # Trigger memory round for NPCs at the departing location
+                    try:
+                        if from_loc and from_loc.id:
+                            npc_count = await trpg_orchestrator.trigger_npc_memory_round(from_loc.id)
+                            if npc_count > 0:
+                                logger.info(f"Memory round complete: {npc_count} NPCs processed")
+                    except Exception as e:
+                        logger.warning(f"Failed to trigger memory round: {e}")
 
                 # Get all existing locations
                 db_locations = await crud.get_locations(db, world_id)
@@ -190,6 +207,32 @@ def create_location_tools(ctx: ToolContext) -> list:
                         db_room_id=new_room.id,
                         agents=[],  # Gameplay agents added via DB
                     )
+
+                    # Pre-connect characters at destination (max 5) for faster NPC reactions
+                    if ctx.agent_manager and destination_location_id:
+
+                        async def pre_connect_destination_chars():
+                            try:
+                                dest_chars = await crud.get_characters_at_location(
+                                    db, destination_location_id, exclude_system_agents=True
+                                )
+                                # Limit to 5 characters to avoid resource exhaustion
+                                for char in dest_chars[:5]:
+                                    await ctx.agent_manager.pre_connect(
+                                        db=db,
+                                        room_id=new_room.id,
+                                        agent_id=char.id,
+                                        agent_name=char.name,
+                                        world_name=world_name,
+                                        world_id=world_id,
+                                        config_file=char.config_file,
+                                        group_name=char.group,
+                                    )
+                            except Exception as e:
+                                logger.debug(f"Pre-connect chars failed (non-critical): {e}")
+
+                        # Fire-and-forget background task
+                        asyncio.create_task(pre_connect_destination_chars())
 
                     await crud.set_current_location(db, world_id, matching_location.id)
 
@@ -302,6 +345,12 @@ def create_location_tools(ctx: ToolContext) -> list:
         )
 
         @tool("list_locations", list_locations_description, ListLocationsInput.model_json_schema())
+        @track_perf(
+            "tool_list_locations",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def list_locations_tool(_args: dict[str, Any]):
             """List all available locations in the world."""
             logger.info("list_locations invoked")
@@ -442,10 +491,8 @@ def create_location_tools(ctx: ToolContext) -> list:
 
                 else:
                     # CREATE MODE: Original behavior
-                    # Build adjacent hints from adjacent_to
-                    adjacent_hints = []
-                    if validated.adjacent_to:
-                        adjacent_hints = [validated.adjacent_to]
+                    # Build adjacent hints from adjacent_to (already a list or None)
+                    adjacent_hints = validated.adjacent_to or []
 
                     # Use PersistenceManager for coordinated FS + DB creation
                     pm = PersistenceManager(db, world_id, world_name)
@@ -466,29 +513,10 @@ def create_location_tools(ctx: ToolContext) -> list:
                                 await crud.add_adjacent_location(db, new_location_id, adj_loc.id)
                                 await crud.add_adjacent_location(db, adj_loc.id, new_location_id)
 
-                    # If this is the starting location, set player's current_location
+                    # Note: is_starting is informational only during onboarding.
+                    # The actual starting_location is set by OM's complete tool.
                     if validated.is_starting:
-                        from services.world_reset_service import WorldResetService
-
-                        # Update player state
-                        fs_state = PlayerService.load_player_state(world_name)
-                        if fs_state:
-                            fs_state.current_location = validated.name
-                            PlayerService.save_player_state(world_name, fs_state)
-                            logger.info(f"Set starting location: {validated.name}")
-
-                        # Update initial state for world reset
-                        try:
-                            initial_state = WorldResetService.load_initial_state(world_name)
-                            if initial_state:
-                                initial_state.starting_location = validated.name
-                                WorldResetService.save_initial_state(world_name, initial_state)
-                                logger.info("Updated initial state with starting location")
-                        except Exception as reset_err:
-                            logger.warning(f"Failed to update initial state: {reset_err}")
-
-                        # Set current location in DB
-                        await crud.set_current_location(db, world_id, new_location_id)
+                        logger.info(f"Location '{validated.name}' marked as starting location candidate")
 
                     logger.info(f"Created location: {validated.display_name} (id={new_location_id})")
 

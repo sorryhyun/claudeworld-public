@@ -1,15 +1,18 @@
-import { useState } from 'react';
-import type { Room } from '../../types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useState } from "react";
+import type { Room } from "../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface CreateRoomFormProps {
   onCreateRoom: (name: string) => Promise<Room>;
   onClose: () => void;
 }
 
-export const CreateRoomForm = ({ onCreateRoom, onClose }: CreateRoomFormProps) => {
-  const [newRoomName, setNewRoomName] = useState('');
+export const CreateRoomForm = ({
+  onCreateRoom,
+  onClose,
+}: CreateRoomFormProps) => {
+  const [newRoomName, setNewRoomName] = useState("");
   const [roomError, setRoomError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,10 +21,12 @@ export const CreateRoomForm = ({ onCreateRoom, onClose }: CreateRoomFormProps) =
       try {
         setRoomError(null);
         await onCreateRoom(newRoomName);
-        setNewRoomName('');
+        setNewRoomName("");
         onClose();
       } catch (err) {
-        setRoomError(err instanceof Error ? err.message : 'Failed to create room');
+        setRoomError(
+          err instanceof Error ? err.message : "Failed to create room",
+        );
       }
     }
   };

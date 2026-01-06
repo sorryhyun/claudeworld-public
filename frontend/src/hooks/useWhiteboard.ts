@@ -1,5 +1,5 @@
-import { useMemo, useRef } from 'react';
-import type { Message } from '../types';
+import { useMemo, useRef } from "react";
+import type { Message } from "../types";
 import {
   WhiteboardState,
   createEmptyWhiteboard,
@@ -7,10 +7,10 @@ import {
   parseWhiteboardDiff,
   applyDiff,
   renderWhiteboard,
-} from '../utils/whiteboardDiff';
+} from "../utils/whiteboardDiff";
 
 // Agent name for the whiteboard
-const WHITEBOARD_AGENT = '화이트보드';
+const WHITEBOARD_AGENT = "화이트보드";
 
 interface WhiteboardMessageInfo {
   // The rendered whiteboard content to display instead of the diff
@@ -26,8 +26,12 @@ interface WhiteboardMessageInfo {
  * @param messages - Array of chat messages
  * @returns Map of message IDs to their rendered whiteboard content
  */
-export function useWhiteboard(messages: Message[]): Map<number | string, WhiteboardMessageInfo> {
-  const prevMapRef = useRef<Map<number | string, WhiteboardMessageInfo>>(new Map());
+export function useWhiteboard(
+  messages: Message[],
+): Map<number | string, WhiteboardMessageInfo> {
+  const prevMapRef = useRef<Map<number | string, WhiteboardMessageInfo>>(
+    new Map(),
+  );
 
   return useMemo(() => {
     const messageInfoMap = new Map<number | string, WhiteboardMessageInfo>();
@@ -90,7 +94,9 @@ export function useWhiteboard(messages: Message[]): Map<number | string, Whitebo
 /**
  * Get the current whiteboard state from messages (final accumulated state)
  */
-export function getCurrentWhiteboardState(messages: Message[]): WhiteboardState {
+export function getCurrentWhiteboardState(
+  messages: Message[],
+): WhiteboardState {
   let state = createEmptyWhiteboard();
 
   for (const message of messages) {

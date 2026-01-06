@@ -32,6 +32,8 @@ class TurnCell:
                 For TRPG gameplay, hidden agents (Action Manager) create visible
                 messages via tools (narration tool) rather than auto-save.
         passes_output: If True, agent's output is passed to the next cell's agent
+        is_reaction: If True, this is an NPC reaction cell. Executor collects
+                    responses and passes them to the next cell (Action Manager).
     """
 
     cell_type: CellType
@@ -39,6 +41,7 @@ class TurnCell:
     triggering_agent_id: Optional[int] = None
     hidden: bool = False
     passes_output: bool = False
+    is_reaction: bool = False  # True for NPC reaction cells
 
     @property
     def is_concurrent(self) -> bool:

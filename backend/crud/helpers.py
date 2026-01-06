@@ -8,7 +8,7 @@ have been moved to services/agent_factory.py and services/agent_config_service.p
 import logging
 from typing import Optional
 
-import models
+from infrastructure.database import models
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import type { RoomSummary } from '../../types';
-import { useAuth } from '../../contexts/AuthContext';
+import { useState } from "react";
+import type { RoomSummary } from "../../types";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface RoomListPanelProps {
   rooms: RoomSummary[];
@@ -32,22 +32,32 @@ export const RoomListPanel = ({
             onClick={() => onSelectRoom(room.id)}
             className={`group relative flex items-center justify-between p-2.5 sm:p-3 rounded-lg cursor-pointer transition-all min-h-[48px] touch-manipulation ${
               selectedRoomId === room.id
-                ? 'bg-slate-100 border border-slate-300'
-                : 'hover:bg-slate-50 active:bg-slate-100'
+                ? "bg-slate-100 border border-slate-300"
+                : "hover:bg-slate-50 active:bg-slate-100"
             }`}
           >
             <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
-              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                selectedRoomId === room.id ? 'bg-slate-700' : 'bg-slate-200 group-hover:bg-slate-300'
-              }`}>
-                <span className={`text-base sm:text-lg ${selectedRoomId === room.id ? 'text-white' : 'text-slate-600'}`}>
-                  {room.name.startsWith('Direct: ') ? '@' : '#'}
+              <div
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                  selectedRoomId === room.id
+                    ? "bg-slate-700"
+                    : "bg-slate-200 group-hover:bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`text-base sm:text-lg ${selectedRoomId === room.id ? "text-white" : "text-slate-600"}`}
+                >
+                  {room.name.startsWith("Direct: ") ? "@" : "#"}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <span className={`font-medium truncate text-sm sm:text-base ${
-                  selectedRoomId === room.id ? 'text-slate-800' : 'text-slate-700'
-                }`}>
+                <span
+                  className={`font-medium truncate text-sm sm:text-base ${
+                    selectedRoomId === room.id
+                      ? "text-slate-800"
+                      : "text-slate-700"
+                  }`}
+                >
                   {room.name}
                 </span>
               </div>
@@ -61,7 +71,9 @@ export const RoomListPanel = ({
                     try {
                       await onDeleteRoom(room.id);
                     } catch (err) {
-                      alert(`Failed to delete room: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                      alert(
+                        `Failed to delete room: ${err instanceof Error ? err.message : "Unknown error"}`,
+                      );
                     } finally {
                       setDeletingRoomId(null);
                     }
@@ -72,13 +84,38 @@ export const RoomListPanel = ({
                 title="Delete room"
               >
                 {deletingRoomId === room.id ? (
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="w-4 h-4 sm:w-5 sm:h-5 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                 ) : (
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-4 h-4 sm:w-5 sm:h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 )}
               </button>

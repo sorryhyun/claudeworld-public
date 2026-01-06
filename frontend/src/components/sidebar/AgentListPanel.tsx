@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import type { Agent } from '../../types';
-import { AgentAvatar } from '../AgentAvatar';
-import { useAuth } from '../../contexts/AuthContext';
+import { useState } from "react";
+import type { Agent } from "../../types";
+import { AgentAvatar } from "../AgentAvatar";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface AgentListPanelProps {
   agents: Agent[];
@@ -19,13 +19,15 @@ export const AgentListPanel = ({
   onViewProfile,
 }: AgentListPanelProps) => {
   const { isAdmin } = useAuth();
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Group agents by their group field
   const groups = new Map<string, Agent[]>();
 
   agents.forEach((agent) => {
-    const groupName = agent.group || 'Ungrouped';
+    const groupName = agent.group || "Ungrouped";
     if (!groups.has(groupName)) {
       groups.set(groupName, []);
     }
@@ -34,9 +36,9 @@ export const AgentListPanel = ({
 
   // Sort groups: Ungrouped last, others alphabetically (Korean-aware)
   const groupedAgents = Array.from(groups.entries()).sort(([a], [b]) => {
-    if (a === 'Ungrouped') return 1;
-    if (b === 'Ungrouped') return -1;
-    return a.localeCompare(b, 'ko-KR', { sensitivity: 'base' });
+    if (a === "Ungrouped") return 1;
+    if (b === "Ungrouped") return -1;
+    return a.localeCompare(b, "ko-KR", { sensitivity: "base" });
   });
 
   const toggleGroup = (groupName: string) => {
@@ -56,8 +58,8 @@ export const AgentListPanel = ({
       key={agent.id}
       className={`group relative flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-lg cursor-pointer transition-all min-h-[52px] touch-manipulation ${
         selectedAgentId === agent.id
-          ? 'bg-slate-100 border border-slate-300'
-          : 'hover:bg-slate-50 active:bg-slate-100'
+          ? "bg-slate-100 border border-slate-300"
+          : "hover:bg-slate-50 active:bg-slate-100"
       }`}
     >
       <div
@@ -69,13 +71,13 @@ export const AgentListPanel = ({
           size="md"
           className={`w-10 h-10 sm:w-11 sm:h-11 ${
             selectedAgentId === agent.id
-              ? 'ring-2 ring-slate-400'
-              : 'group-hover:ring-2 group-hover:ring-slate-300'
+              ? "ring-2 ring-slate-400"
+              : "group-hover:ring-2 group-hover:ring-slate-300"
           }`}
         />
         <span
           className={`font-medium truncate text-sm sm:text-base ${
-            selectedAgentId === agent.id ? 'text-slate-800' : 'text-slate-700'
+            selectedAgentId === agent.id ? "text-slate-800" : "text-slate-700"
           }`}
         >
           {agent.name}
@@ -90,7 +92,12 @@ export const AgentListPanel = ({
           className="p-2 hover:bg-slate-200 active:bg-slate-300 rounded text-slate-500 hover:text-slate-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
           title="View profile"
         >
-          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            className="w-4 h-4 sm:w-5 sm:h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -110,7 +117,12 @@ export const AgentListPanel = ({
             className="p-2 hover:bg-red-100 active:bg-red-200 rounded text-red-500 hover:text-red-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
             title="Delete agent"
           >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className="w-4 h-4 sm:w-5 sm:h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -144,13 +156,18 @@ export const AgentListPanel = ({
                 <div className="flex items-center gap-2">
                   <svg
                     className={`w-4 h-4 text-slate-600 transition-transform ${
-                      isCollapsed ? '-rotate-90' : ''
+                      isCollapsed ? "-rotate-90" : ""
                     }`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
                   </svg>
                   <span className="font-semibold text-sm text-slate-700">
                     {groupName}

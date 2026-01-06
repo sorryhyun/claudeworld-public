@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useFocusTrap } from './hooks/useFocusTrap';
-import { useAuth } from './contexts/AuthContext';
-import { RoomProvider, useRoomContext } from './contexts/RoomContext';
-import { GameProvider, useGame } from './contexts/GameContext';
-import { MainSidebar } from './components/sidebar/MainSidebar';
-import { ChatRoom } from './components/chat-room/ChatRoom';
-import { LandingPage } from './components/LandingPage';
-import { OnboardingPage } from './components/onboarding';
-import { GameRoom } from './components/game/GameRoom';
-import { GameStatePanel } from './components/game/GameStatePanel';
-import { Login } from './components/Login';
-import { BREAKPOINTS } from './config/breakpoints';
+import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { useFocusTrap } from "./hooks/useFocusTrap";
+import { useAuth } from "./contexts/AuthContext";
+import { RoomProvider, useRoomContext } from "./contexts/RoomContext";
+import { GameProvider, useGame } from "./contexts/GameContext";
+import { MainSidebar } from "./components/sidebar/MainSidebar";
+import { ChatRoom } from "./components/chat-room/ChatRoom";
+import { LandingPage } from "./components/LandingPage";
+import { OnboardingPage } from "./components/onboarding";
+import { GameRoom } from "./components/game/GameRoom";
+import { GameStatePanel } from "./components/game/GameStatePanel";
+import { Login } from "./components/Login";
+import { BREAKPOINTS } from "./config/breakpoints";
 
 function AuthenticatedApp() {
   const { t } = useTranslation();
@@ -21,8 +21,8 @@ function AuthenticatedApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   // Desktop sidebar collapse state with localStorage persistence
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    return saved === 'true';
+    const saved = localStorage.getItem("sidebarCollapsed");
+    return saved === "true";
   });
   const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.lg);
 
@@ -32,7 +32,7 @@ function AuthenticatedApp() {
 
     const handleResize = () => {
       // Update app height CSS variable
-      doc.style.setProperty('--app-height', `${window.innerHeight}px`);
+      doc.style.setProperty("--app-height", `${window.innerHeight}px`);
       // Update mobile state
       setIsMobile(window.innerWidth < BREAKPOINTS.lg);
     };
@@ -46,15 +46,15 @@ function AuthenticatedApp() {
 
     // Set immediately on mount
     handleResize();
-    window.addEventListener('resize', debouncedHandleResize);
+    window.addEventListener("resize", debouncedHandleResize);
 
     // Keep orientationchange immediate for better mobile UX
-    window.addEventListener('orientationchange', handleResize);
+    window.addEventListener("orientationchange", handleResize);
 
     return () => {
       clearTimeout(timeoutId);
-      window.removeEventListener('resize', debouncedHandleResize);
-      window.removeEventListener('orientationchange', handleResize);
+      window.removeEventListener("resize", debouncedHandleResize);
+      window.removeEventListener("orientationchange", handleResize);
     };
   }, []);
 
@@ -71,23 +71,23 @@ function AuthenticatedApp() {
   // Handle Escape key to close sidebar
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isSidebarOpen) {
+      if (e.key === "Escape" && isSidebarOpen) {
         setIsSidebarOpen(false);
       }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [isSidebarOpen]);
 
   // Persist desktop sidebar collapse state and set CSS variable for header padding
   useEffect(() => {
-    localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
+    localStorage.setItem("sidebarCollapsed", String(isSidebarCollapsed));
     // Set CSS variable for components to use when sidebar is collapsed on desktop
     const root = document.documentElement;
     if (!isMobile && isSidebarCollapsed) {
-      root.style.setProperty('--header-left-padding', '3.5rem'); // 56px to clear hamburger
+      root.style.setProperty("--header-left-padding", "3.5rem"); // 56px to clear hamburger
     } else {
-      root.style.setProperty('--header-left-padding', '1rem'); // 16px default
+      root.style.setProperty("--header-left-padding", "1rem"); // 16px default
     }
   }, [isSidebarCollapsed, isMobile]);
 
@@ -118,7 +118,7 @@ function AuthenticatedApp() {
     <div className="h-full flex bg-white relative overflow-hidden">
       {/* Skip Link for keyboard navigation */}
       <a href="#main-content" className="skip-link">
-        {t('accessibility.skipToMain', 'Skip to main content')}
+        {t("accessibility.skipToMain", "Skip to main content")}
       </a>
 
       {/* Hamburger Menu Button - Always visible, fixed position */}
@@ -129,24 +129,62 @@ function AuthenticatedApp() {
       >
         {isMobile ? (
           isSidebarOpen ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
             </svg>
           )
+        ) : isSidebarCollapsed ? (
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 6h16M4 12h16M4 18h16"
+            />
+          </svg>
         ) : (
-          isSidebarCollapsed ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-            </svg>
-          )
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+            />
+          </svg>
         )}
       </button>
 
@@ -159,7 +197,7 @@ function AuthenticatedApp() {
           className="lg:hidden fixed inset-0 bg-black/40 z-30 transition-opacity duration-300 ease-in-out"
           onClick={() => setIsSidebarOpen(false)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
+            if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               setIsSidebarOpen(false);
             }
@@ -173,29 +211,27 @@ function AuthenticatedApp() {
         className={`
           fixed lg:static inset-y-0 left-0 z-40
           transform transition-all duration-300 ease-in-out
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          ${isSidebarCollapsed ? 'lg:-translate-x-full lg:w-0 lg:overflow-hidden' : 'lg:translate-x-0'}
+          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          ${isSidebarCollapsed ? "lg:-translate-x-full lg:w-0 lg:overflow-hidden" : "lg:translate-x-0"}
         `}
       >
-        <MainSidebar
-          onSelectWorld={handleSelectWorld}
-        />
+        <MainSidebar onSelectWorld={handleSelectWorld} />
       </div>
 
       {/* Main Content Area - Mode-based routing */}
       <main id="main-content" className="flex-1 flex min-w-0">
-        {mode === 'chat' && !roomContext.selectedRoomId && <LandingPage />}
-        {mode === 'chat' && roomContext.selectedRoomId && (
+        {mode === "chat" && !roomContext.selectedRoomId && <LandingPage />}
+        {mode === "chat" && roomContext.selectedRoomId && (
           <ChatRoom
             roomId={roomContext.selectedRoomId}
             onRenameRoom={roomContext.renameRoom}
           />
         )}
-        {mode === 'onboarding' && <OnboardingPage />}
-        {mode === 'game' && (
+        {mode === "onboarding" && <OnboardingPage />}
+        {mode === "game" && (
           <>
             <GameRoom />
-            {phase === 'active' && <GameStatePanel />}
+            {phase === "active" && <GameStatePanel />}
           </>
         )}
       </main>

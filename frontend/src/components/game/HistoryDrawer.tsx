@@ -1,8 +1,8 @@
-import { memo, useEffect, useRef, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
-import { useFocusTrap } from '../../hooks/useFocusTrap';
-import { GameMessage } from '../../contexts/GameContext';
+import { memo, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { GameMessage } from "../../contexts/GameContext";
 
 interface HistoryDrawerProps {
   isOpen: boolean;
@@ -28,30 +28,30 @@ export const HistoryDrawer = memo(function HistoryDrawer({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
   // Prevent body scroll when drawer is open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 
   const itemContent = useCallback(
     (index: number) => renderMessage(messages[index], index),
-    [messages, renderMessage]
+    [messages, renderMessage],
   );
 
   if (!isOpen) return null;
@@ -92,10 +92,12 @@ export const HistoryDrawer = memo(function HistoryDrawer({
               id="history-drawer-title"
               className="text-lg font-semibold text-slate-800"
             >
-              {t('gameRoom.conversationHistory', 'Conversation History')}
+              {t("gameRoom.conversationHistory", "Conversation History")}
             </h2>
             <p className="text-sm text-slate-500">
-              {t('gameRoom.messagesTotal', '{{count}} messages total', { count: totalCount })}
+              {t("gameRoom.messagesTotal", "{{count}} messages total", {
+                count: totalCount,
+              })}
             </p>
           </div>
 
@@ -103,7 +105,7 @@ export const HistoryDrawer = memo(function HistoryDrawer({
           <button
             onClick={onClose}
             className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-            aria-label={t('common.close', 'Close')}
+            aria-label={t("common.close", "Close")}
           >
             <svg
               className="w-5 h-5"
@@ -140,7 +142,7 @@ export const HistoryDrawer = memo(function HistoryDrawer({
             onClick={onClose}
             className="w-full px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors min-h-[44px]"
           >
-            {t('gameRoom.close', 'Close')}
+            {t("gameRoom.close", "Close")}
           </button>
         </div>
 
@@ -167,7 +169,7 @@ export const HistoryButton = memo(function HistoryButton({
     <button
       onClick={onClick}
       className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors min-h-[44px]"
-      aria-label={t('gameRoom.history', 'History')}
+      aria-label={t("gameRoom.history", "History")}
     >
       <svg
         className="w-4 h-4"
@@ -183,7 +185,7 @@ export const HistoryButton = memo(function HistoryButton({
           d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
         />
       </svg>
-      <span>{t('gameRoom.history', 'History')}</span>
+      <span>{t("gameRoom.history", "History")}</span>
       <span
         className="px-1.5 py-0.5 bg-slate-200 text-slate-600 text-xs font-medium rounded-full"
         aria-label={`${count} messages`}

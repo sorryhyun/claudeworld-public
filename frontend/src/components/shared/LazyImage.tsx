@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, memo } from 'react';
-import { cn } from '@/lib/utils';
+import { useState, useRef, useEffect, memo } from "react";
+import { cn } from "@/lib/utils";
 
 interface LazyImageProps {
   src: string;
@@ -22,9 +22,9 @@ export const LazyImage = memo(function LazyImage({
   src,
   alt,
   className,
-  placeholderColor = 'bg-slate-200',
+  placeholderColor = "bg-slate-200",
   fallback,
-  rootMargin = '50px',
+  rootMargin = "50px",
   imgProps,
 }: LazyImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -38,7 +38,7 @@ export const LazyImage = memo(function LazyImage({
     if (!container) return;
 
     // Check if IntersectionObserver is supported
-    if (!('IntersectionObserver' in window)) {
+    if (!("IntersectionObserver" in window)) {
       // Fallback: load immediately
       setIsInView(true);
       return;
@@ -56,7 +56,7 @@ export const LazyImage = memo(function LazyImage({
       {
         rootMargin,
         threshold: 0,
-      }
+      },
     );
 
     observer.observe(container);
@@ -85,15 +85,13 @@ export const LazyImage = memo(function LazyImage({
     <div
       ref={containerRef}
       className={cn(
-        'relative overflow-hidden',
+        "relative overflow-hidden",
         !isLoaded && placeholderColor,
-        className
+        className,
       )}
     >
       {/* Placeholder shimmer effect while loading */}
-      {!isLoaded && (
-        <div className="absolute inset-0 animate-shimmer" />
-      )}
+      {!isLoaded && <div className="absolute inset-0 animate-shimmer" />}
 
       {/* Actual image - only render src when in view */}
       {isInView && (
@@ -104,8 +102,8 @@ export const LazyImage = memo(function LazyImage({
           onLoad={handleLoad}
           onError={handleError}
           className={cn(
-            'w-full h-full object-cover transition-opacity duration-300',
-            isLoaded ? 'opacity-100' : 'opacity-0'
+            "w-full h-full object-cover transition-opacity duration-300",
+            isLoaded ? "opacity-100" : "opacity-0",
           )}
           {...imgProps}
         />

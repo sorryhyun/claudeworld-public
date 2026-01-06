@@ -9,8 +9,7 @@ import logging
 
 import crud
 import schemas
-from database import get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     get_agent_manager,
     get_request_identity,
@@ -19,9 +18,11 @@ from domain.services.access_control import AccessControl
 from domain.value_objects.enums import MessageRole, WorldPhase
 from domain.value_objects.slash_commands import SlashCommandType, parse_slash_command
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database.connection import get_db
 from orchestration.trpg_orchestrator import get_trpg_orchestrator
 from sdk import AgentManager
 from services.location_service import LocationService
+from services.player_service import PlayerService
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.images import compress_image_base64
 
@@ -112,8 +113,16 @@ async def submit_action(
                 "message": "Cannot process chat mode message without a current location.",
             }
         return await handle_chat_mode_action(
-            db, world_id, player_state, target_room_id, action.text, agent_manager, world, current_location_id,
-            image_data=action.image_data, image_media_type=action.image_media_type
+            db,
+            world_id,
+            player_state,
+            target_room_id,
+            action.text,
+            agent_manager,
+            world,
+            current_location_id,
+            image_data=action.image_data,
+            image_media_type=action.image_media_type,
         )
 
     # Regular TRPG flow below
@@ -148,6 +157,13 @@ async def submit_action(
         except Exception as e:
             logger.warning(f"Image compression failed, using original: {e}")
 
+    # Get game time snapshot for active phase (None for onboarding)
+    game_time_snapshot = None
+    if world.phase == WorldPhase.ACTIVE:
+        fs_player_state = PlayerService.load_player_state(world.name)
+        if fs_player_state and fs_player_state.game_time:
+            game_time_snapshot = fs_player_state.game_time
+
     # Save user message to the appropriate room
     message = schemas.MessageCreate(
         content=action.text,
@@ -155,13 +171,14 @@ async def submit_action(
         participant_type="user",
         image_data=image_data,
         image_media_type=image_media_type,
+        game_time_snapshot=game_time_snapshot,
     )
     saved_message = await crud.create_message(db, target_room_id, message, update_room_activity=True)
 
     # Trigger TRPG agent responses in background
     async def trigger_trpg_responses():
         """Background task to trigger TRPG agent responses with its own DB session."""
-        from database import get_db as get_db_generator
+        from infrastructure.database.connection import get_db as get_db_generator
 
         async for task_db in get_db_generator():
             try:

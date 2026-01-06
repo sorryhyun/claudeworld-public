@@ -92,6 +92,7 @@ class WorldResetService:
         starting_location: str,
         initial_stats: dict[str, Any],
         initial_inventory: list[dict[str, Any]],
+        initial_game_time: dict[str, int] | None = None,
     ) -> dict[str, Any]:
         """
         Create an initial state snapshot dict.
@@ -100,13 +101,17 @@ class WorldResetService:
             starting_location: Name of the starting location
             initial_stats: Initial stat values
             initial_inventory: Initial inventory items
+            initial_game_time: Initial game time (hour, minute, day)
 
         Returns:
             Initial state dict ready to be saved
         """
-        return {
+        snapshot = {
             "starting_location": starting_location,
             "initial_stats": initial_stats,
             "initial_inventory": initial_inventory,
             "captured_at": datetime.utcnow().isoformat() + "Z",
         }
+        if initial_game_time:
+            snapshot["initial_game_time"] = initial_game_time
+        return snapshot

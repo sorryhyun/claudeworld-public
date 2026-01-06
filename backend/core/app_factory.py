@@ -9,11 +9,11 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from background_scheduler import BackgroundScheduler
-from database import get_db, init_db
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
+from infrastructure.database.connection import get_db, init_db
 from infrastructure.database.write_queue import start_writer, stop_writer
+from infrastructure.scheduler import BackgroundScheduler
 from orchestration import ChatOrchestrator
 from sdk import AgentManager
 from services import AgentFactory
@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    from auth import AuthMiddleware
+    from infrastructure.auth import AuthMiddleware
     from fastapi.middleware.cors import CORSMiddleware
     from routers import agent_management, agents, auth, debug, game, mcp_tools, messages, readme, room_agents, rooms
     from slowapi import Limiter, _rate_limit_exceeded_handler

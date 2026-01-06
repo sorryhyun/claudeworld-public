@@ -6,10 +6,10 @@ import json
 from datetime import datetime, timezone
 from typing import List
 
-import models
 import schemas
-from database import retry_on_db_lock, serialized_write
 from domain.value_objects.enums import MessageRole, ParticipantType
+from infrastructure.database import models
+from infrastructure.database.connection import retry_on_db_lock, serialized_write
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -37,6 +37,16 @@ async def create_message(
     if message.anthropic_calls:
         anthropic_calls_json = json.dumps(message.anthropic_calls)
 
+    # Serialize game_time_snapshot to JSON if present
+    game_time_snapshot_json = None
+    if message.game_time_snapshot:
+        game_time_snapshot_json = json.dumps(message.game_time_snapshot)
+
+    # Convert images list to JSON string for storage
+    images_json = None
+    if message.images:
+        images_json = json.dumps([{"data": img.data, "media_type": img.media_type} for img in message.images])
+
     db_message = models.Message(
         room_id=room_id,
         agent_id=message.agent_id,
@@ -46,9 +56,12 @@ async def create_message(
         participant_name=message.participant_name,
         thinking=message.thinking,
         anthropic_calls=anthropic_calls_json,
+        images=images_json,  # Store as JSON string
+        # Keep deprecated fields for backward compatibility during transition
         image_data=message.image_data,
         image_media_type=message.image_media_type,
         chat_session_id=message.chat_session_id,
+        game_time_snapshot=game_time_snapshot_json,
     )
     db.add(db_message)
 

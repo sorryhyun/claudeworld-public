@@ -3,7 +3,8 @@ Character management tools for TRPG gameplay.
 
 Contains tools for character management:
 - persist_character_design: Create character (used by sub-agents via Task tool)
-- remove_character: Remove character from the game (archive agent)
+- remove_character: Remove character from current location (character still exists)
+- delete_character: Permanently delete character from the game (archive agent)
 - move_character: Move existing character to a different location
 - list_characters: List all characters in the world
 
@@ -15,15 +16,17 @@ from typing import Any
 import crud
 from claude_agent_sdk import tool
 from domain.entities.gameplay_models import CharacterRemoval, RemovalReason
+from infrastructure.logging.perf_logger import track_perf
 from services.agent_filesystem_service import AgentFilesystemService
 from services.location_service import LocationService
 
-from sdk.config.gameplay_inputs import (
+from sdk.config.gameplay_tool_definitions import (
+    DeleteCharacterInput,
     ListCharactersInput,
     MoveCharacterInput,
     RemoveCharacterInput,
 )
-from sdk.config.subagent_inputs import PersistCharacterDesignInput
+from sdk.config.subagent_tool_definitions import PersistCharacterDesignInput
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -51,14 +54,14 @@ def create_character_tools(ctx: ToolContext) -> list:
     room_id = ctx.require_room_id()
 
     # ==========================================================================
-    # remove_character tool - Archive character and remove from location
+    # remove_character tool - Remove character from current location
     # ==========================================================================
     if is_tool_enabled("remove_character", default=True):
         remove_character_description = get_tool_description(
             "remove_character",
             agent_name="Action Manager",
             group_name=ctx.group_name,
-            default="Remove a character from the game (death, departure, or manual removal). Archives the agent.",
+            default="Remove a character from the current location (character still exists in the world).",
         )
 
         @tool(
@@ -66,15 +69,129 @@ def create_character_tools(ctx: ToolContext) -> list:
             remove_character_description,
             RemoveCharacterInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_remove_character",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def remove_character_tool(args: dict[str, Any]):
-            """Remove a character from the game (archive agent and remove from rooms)."""
+            """Remove a character from the current location (character still exists)."""
             # Validate input with Pydantic
             validated = RemoveCharacterInput(**args)
+            character_name = validated.character_name
+
+            logger.info(f"remove_character invoked: {character_name} (from current location)")
+
+            try:
+                # Find the character in filesystem
+                all_characters = AgentFilesystemService.list_world_agents(world_name)
+
+                # Find matching character (case-insensitive, handle underscore/space)
+                character_folder = None
+                character_display_name = character_name
+                name_variants = [
+                    character_name,
+                    character_name.replace(" ", "_"),
+                    character_name.replace("_", " "),
+                ]
+
+                for char_folder in all_characters:
+                    if char_folder.lower() in [v.lower() for v in name_variants]:
+                        character_folder = char_folder
+                        character_display_name = char_folder.replace("_", " ")
+                        break
+
+                if not character_folder:
+                    available = ", ".join(all_characters) if all_characters else "none"
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Character '{character_name}' not found.\n\nAvailable characters: {available}",
+                            }
+                        ],
+                        "is_error": True,
+                    }
+
+                # Get current location from context
+                from .common import build_action_context
+
+                context = build_action_context(world_name, "character removal")
+                current_location = context.current_location
+                current_room_key = LocationService.location_to_room_key(current_location)
+
+                # Remove character from current location in filesystem state
+                state = LocationService.load_state(world_name)
+                mapping = state.rooms.get(current_room_key)
+
+                if mapping and character_folder in mapping.agents:
+                    LocationService.remove_agent_from_room(world_name, current_room_key, character_folder)
+                    logger.info(f"Removed {character_folder} from {current_room_key}")
+
+                    # DB sync: remove from current location
+                    try:
+                        agent = await crud.get_agent_by_name(db, character_folder, world_name=world_name)
+                        current_loc = await crud.get_location_by_name(db, world_id, current_location)
+                        if agent and current_loc:
+                            await crud.remove_character_from_location(db, agent.id, current_loc.id)
+                            logger.info(f"DB sync: removed {character_folder} from location {current_loc.id}")
+                    except Exception as db_err:
+                        logger.warning(f"DB sync failed (non-critical): {db_err}")
+
+                    response_text = (
+                        f"**Character Removed from Location:**\n"
+                        f"- Name: {character_display_name}\n"
+                        f"- Location: {current_location}\n"
+                        f"- Note: Character still exists in the world"
+                    )
+                else:
+                    response_text = (
+                        f"Character '{character_display_name}' was not at the current location ({current_location})."
+                    )
+
+                return {"content": [{"type": "text", "text": response_text}]}
+
+            except Exception as e:
+                logger.error(f"remove_character error: {e}", exc_info=True)
+                return {
+                    "content": [{"type": "text", "text": f"Error removing character from location: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(remove_character_tool)
+
+    # ==========================================================================
+    # delete_character tool - Permanently delete character (archive)
+    # ==========================================================================
+    if is_tool_enabled("delete_character", default=True):
+        delete_character_description = get_tool_description(
+            "delete_character",
+            agent_name="Action Manager",
+            group_name=ctx.group_name,
+            default="Permanently delete a character from the game (death, disappearance, or magic). Archives the agent.",
+        )
+
+        @tool(
+            "delete_character",
+            delete_character_description,
+            DeleteCharacterInput.model_json_schema(),
+        )
+        @track_perf(
+            "tool_delete_character",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
+        async def delete_character_tool(args: dict[str, Any]):
+            """Permanently delete a character from the game (archive agent)."""
+            # Validate input with Pydantic
+            validated = DeleteCharacterInput(**args)
             character_name = validated.character_name
             reason_str = validated.reason
             narrative = validated.narrative
 
-            logger.info(f"remove_character invoked: {character_name} ({reason_str})")
+            logger.info(f"delete_character invoked: {character_name} ({reason_str})")
 
             try:
                 # Parse reason
@@ -97,23 +214,23 @@ def create_character_tools(ctx: ToolContext) -> list:
 
                 if success:
                     response_text = (
-                        f"**Character Removed:**\n- Name: {removal.character_name}\n- Reason: {removal.reason.value}"
+                        f"**Character Deleted:**\n- Name: {removal.character_name}\n- Reason: {removal.reason.value}"
                     )
                     if narrative:
                         response_text += f"\n- Narrative: {narrative}"
                 else:
-                    response_text = f"Character '{character_name}' not found or already removed."
+                    response_text = f"Character '{character_name}' not found or already deleted."
 
                 return {"content": [{"type": "text", "text": response_text}]}
 
             except Exception as e:
-                logger.error(f"remove_character error: {e}", exc_info=True)
+                logger.error(f"delete_character error: {e}", exc_info=True)
                 return {
-                    "content": [{"type": "text", "text": f"Error removing character: {e}"}],
+                    "content": [{"type": "text", "text": f"Error deleting character: {e}"}],
                     "is_error": True,
                 }
 
-        tools.append(remove_character_tool)
+        tools.append(delete_character_tool)
 
     # ==========================================================================
     # move_character tool - Move existing character to a different location
@@ -130,6 +247,12 @@ def create_character_tools(ctx: ToolContext) -> list:
             "move_character",
             move_character_description,
             MoveCharacterInput.model_json_schema(),
+        )
+        @track_perf(
+            "tool_move_character",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
         )
         async def move_character_tool(args: dict[str, Any]):
             """Move an existing character to a different location (filesystem-primary)."""
@@ -289,6 +412,12 @@ def create_character_tools(ctx: ToolContext) -> list:
             list_characters_description,
             ListCharactersInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_list_characters",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def list_characters_tool(args: dict[str, Any]):
             """List all characters in the world or at a specific location (filesystem-first)."""
             # Validate input with Pydantic
@@ -433,6 +562,12 @@ def create_character_tools(ctx: ToolContext) -> list:
             persist_character_description,
             PersistCharacterDesignInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_persist_character",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def persist_character_design_tool(args: dict[str, Any]):
             """Persist a designed character to filesystem and database.
 
@@ -506,10 +641,23 @@ def create_character_tools(ctx: ToolContext) -> list:
                 )
 
                 # Add to room/location in DB
+                # Note: During onboarding, "current" means the onboarding room, not a location room.
+                # Characters should NOT be added to the onboarding room - they'll be placed at
+                # the initial location by _add_world_agents_to_initial_location() when complete is called.
                 if which_location.lower() == "current":
-                    from crud.room_agents import add_agent_to_room
+                    # Check if this is the onboarding room (not a location room)
+                    world = await crud.get_world(db, world_id)
+                    is_onboarding_room = world and world.onboarding_room_id == room_id
 
-                    await add_agent_to_room(db, room_id, new_agent.id)
+                    if not is_onboarding_room:
+                        # Only add to room if it's a location room (active gameplay)
+                        from crud.room_agents import add_agent_to_room
+
+                        await add_agent_to_room(db, room_id, new_agent.id)
+                    else:
+                        logger.info(
+                            f"Skipping room addition during onboarding - {agent_name} will be placed at initial location"
+                        )
                 else:
                     target_loc = await crud.get_location_by_name(db, world_id, which_location)
                     if target_loc:

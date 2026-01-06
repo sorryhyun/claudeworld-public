@@ -66,8 +66,8 @@ class AgentConfigData:
         if self.characteristics:
             sections.append(f"## {agent_name}'s characteristics\n\n{self.characteristics}")
 
-        # NOTE: recent_events is now injected in user prompt (orchestration/context.py)
-        # for fresh context on each turn. See build_conversation_context().
+        if self.recent_events:
+            sections.append(f"## {agent_name}'s recent events\n\n{self.recent_events}")
 
         if self.long_term_memory_subtitles:
             sections.append(f"## {agent_name}이 가진 기억 index\n\n{self.long_term_memory_subtitles}")

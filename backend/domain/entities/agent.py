@@ -58,7 +58,6 @@ class Agent:
         )
 
 
-# Agent type detection utilities
 def is_action_manager(agent_name: str) -> bool:
     """Check if agent is Action Manager (for gameplay context)."""
     agent_name_lower = agent_name.lower().replace(" ", "_")
@@ -97,7 +96,6 @@ def get_present_characters(room) -> list[str]:
     return [a.name for a in room.agents if not is_system_agent(a)]
 
 
-# TRPG-specific agent detection
 def is_onboarding_manager(agent_name: str) -> bool:
     """Check if agent is Onboarding Manager (for TRPG onboarding)."""
     agent_name_lower = agent_name.lower().replace(" ", "_")

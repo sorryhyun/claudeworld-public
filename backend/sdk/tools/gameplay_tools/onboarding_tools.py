@@ -6,13 +6,6 @@ This module defines MCP tools that Onboarding_Manager uses during the onboarding
 - persist_world: Comprehensive persistence (full lore + stats + player state)
 - complete: Transition world from 'onboarding' to 'active' phase
 
-The onboarding flow:
-1. Onboarding_Manager interviews player and gathers preferences
-2. Onboarding_Manager calls draft_world with genre, theme, lore summary
-3. Sub-agents run in background with draft context (location_designer, character_designer, item_designer)
-4. Onboarding_Manager calls persist_world with full lore + stat system (overwrites draft)
-5. Onboarding_Manager calls complete to finalize phase transition
-
 Sub-agent tool mappings (persist tools by MCP server):
 - Onboarding MCP server:
   - draft_world: Used by Onboarding_Manager directly
@@ -36,7 +29,12 @@ from claude_agent_sdk import tool
 from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sdk.config.onboarding_inputs import CompleteOnboardingInput, DraftWorldInput, PersistWorldInput
+from sdk.config.onboarding_tool_definitions import (
+    CompleteOnboardingInput,
+    DraftWorldInput,
+    PersistWorldInput,
+    ReadLoreGuidelinesInput,
+)
 from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -128,7 +126,7 @@ def generate_default_world_name() -> str:
 
 def create_onboarding_tools(ctx: ToolContext) -> list:
     """
-    Create onboarding tools (draft_world, persist_world, complete) with filesystem persistence.
+    Create onboarding tools (read_lore_guidelines, draft_world, persist_world, complete).
 
     Args:
         ctx: Unified tool context containing agent info and dependencies
@@ -137,6 +135,12 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
         List of onboarding tool functions configured with agent name
     """
     tools = []
+
+    # ==========================================================================
+    # read_lore_guidelines tool - Read-only reference for lore writing
+    # ==========================================================================
+    if is_tool_enabled("read_lore_guidelines"):
+        tools.append(_create_read_lore_guidelines_tool(ctx))
 
     # ==========================================================================
     # draft_world tool - Lightweight world draft to unblock sub-agents
@@ -172,14 +176,19 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
             - Sub-agents (location_designer, character_designer, item_designer)
             - persist_world (full lore, stats)
             """
+            from services.location_service import LocationService
             from services.player_service import PlayerService
             from services.world_reset_service import WorldResetService
 
             validated = CompleteOnboardingInput(**args)
             player_name = validated.player_name
+            starting_location = validated.starting_location
+            starting_hour = validated.starting_hour
 
             logger.info(f"World completion requested by {ctx.agent_name}")
-            logger.info(f"Player: {player_name}")
+            logger.info(
+                f"Player: {player_name}, Starting location: {starting_location}, Starting hour: {starting_hour}"
+            )
 
             effective_world_name = ctx.world_name
             if not effective_world_name:
@@ -187,6 +196,22 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
                 logger.info(f"Generated default world name: {effective_world_name}")
 
             try:
+                # Validate that starting_location exists in filesystem
+                fs_locations = LocationService.load_all_locations(effective_world_name)
+                if starting_location not in fs_locations:
+                    available = ", ".join(fs_locations.keys()) if fs_locations else "none"
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Starting location '{starting_location}' not found. "
+                                f"Available locations: {available}. "
+                                "Make sure location_designer created this location first.",
+                            }
+                        ],
+                        "is_error": True,
+                    }
+
                 # Ensure world directory exists
                 config = WorldService.ensure_world_exists(effective_world_name)
 
@@ -197,32 +222,36 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
 
                 logger.info(f"✅ World '{effective_world_name}' pending phase set to 'active'")
 
-                # Get player state for initial state capture and location
+                # Get player state and set the starting location
                 player_state = PlayerService.load_player_state(effective_world_name)
-                initial_location_name = player_state.current_location if player_state else None
+                if player_state:
+                    player_state.current_location = starting_location
+                    player_state.game_time = {"hour": starting_hour, "minute": 0, "day": 1}
+                    PlayerService.save_player_state(effective_world_name, player_state)
+                    logger.info(f"Set starting location to {starting_location}, game time to {starting_hour}:00")
 
                 # Capture initial state for reset functionality
                 # This includes inventory created by item_designer during onboarding
                 if player_state:
                     initial_state = WorldResetService.create_initial_state_snapshot(
-                        starting_location=player_state.current_location or "",
+                        starting_location=starting_location,
                         initial_stats=player_state.stats,
                         initial_inventory=player_state.inventory,
+                        initial_game_time=player_state.game_time,
                     )
                     WorldResetService.save_initial_state(effective_world_name, initial_state)
                     logger.info(
-                        f"Captured initial state: {len(player_state.stats)} stats, "
-                        f"{len(player_state.inventory)} items"
+                        f"Captured initial state: location={starting_location}, {len(player_state.stats)} stats, {len(player_state.inventory)} items"
                     )
 
                 # Add any world agents (NPCs created during onboarding) to the initial location
-                if ctx.db is not None and ctx.world_id is not None and initial_location_name:
+                if ctx.db is not None and ctx.world_id is not None:
                     try:
                         await _add_world_agents_to_initial_location(
                             db=ctx.db,
                             world_id=ctx.world_id,
                             world_name=effective_world_name,
-                            initial_location_name=initial_location_name,
+                            initial_location_name=starting_location,
                         )
                     except Exception as agent_err:
                         logger.warning(f"Failed to add agents to initial location: {agent_err}")
@@ -239,19 +268,50 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
                 "complete",
                 group_name=ctx.group_name,
                 player_name=player_name,
+                starting_location=starting_location,
+                starting_hour=starting_hour,
             )
 
             return {"content": [{"type": "text", "text": response_text}]}
 
         tools.append(complete_tool)
 
-    # ==========================================================================
-    # NOTE: add_character tool has been removed from onboarding.
-    # Character creation during onboarding should use Task tool to invoke
-    # character_designer sub-agent, which calls persist_character_design directly.
-    # ==========================================================================
-
     return tools
+
+
+# =============================================================================
+# Read Lore Guidelines Tool (Read-only reference)
+# =============================================================================
+
+
+def _create_read_lore_guidelines_tool(ctx: ToolContext):
+    """
+    Create the read_lore_guidelines tool for Onboarding_Manager.
+
+    This tool returns the lore writing guidelines as a reference
+    for creating world lore during onboarding.
+
+    Args:
+        ctx: Tool context with agent info
+
+    Returns:
+        Tool function for reading lore guidelines
+    """
+    description = get_tool_description("read_lore_guidelines", agent_name=ctx.agent_name, group_name=ctx.group_name)
+    # Load lore guidelines content from YAML (via special handler in get_tool_description)
+    lore_guidelines_content = get_tool_description("lore_guidelines") or ""
+
+    @tool(
+        "read_lore_guidelines",
+        description,
+        ReadLoreGuidelinesInput.model_json_schema(),
+    )
+    async def read_lore_guidelines(_args: dict[str, Any]):
+        """Return the lore writing guidelines for world creation."""
+        ReadLoreGuidelinesInput()  # Validate input (no-op)
+        return {"content": [{"type": "text", "text": lore_guidelines_content}]}
+
+    return read_lore_guidelines
 
 
 # =============================================================================

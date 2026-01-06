@@ -81,6 +81,9 @@ class PlayerService:
                 effects=data.get("effects", []),
                 recent_actions=data.get("recent_actions", []),
                 game_time=data.get("game_time", {"hour": 8, "minute": 0, "day": 1}),
+                # Phase 2: Equipment and flags
+                equipment=data.get("equipment", {}),
+                flags=data.get("flags", {}),
             )
 
         # Update cache
@@ -109,6 +112,9 @@ class PlayerService:
             "effects": state.effects,
             "recent_actions": state.recent_actions[-10:],  # Keep last 10
             "game_time": state.game_time,
+            # Phase 2: Equipment and flags
+            "equipment": state.equipment,
+            "flags": state.flags,
         }
 
         with open(world_path / "player.yaml", "w", encoding="utf-8") as f:

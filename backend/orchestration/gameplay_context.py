@@ -10,7 +10,7 @@ The gameplay context is appended to it.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config
@@ -200,16 +200,22 @@ class GameplayContextBuilder:
 
         return "\n".join(parts)
 
-    def build_action_manager_user_message(self, player_action: str, agent_name: Optional[str] = None) -> str:
+    def build_action_manager_user_message(
+        self,
+        player_action: str,
+        agent_name: Optional[str] = None,
+        npc_reactions: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         """
-        Build user message for Action Manager.
+        Build user message for Action Manager with optional NPC reactions.
 
         Args:
             player_action: The player's action text
             agent_name: Optional agent name for response instruction formatting
+            npc_reactions: List of NPC reactions [{agent_name, content}, ...]
 
         Returns:
-            User message with response instruction prefix, current location, and player action
+            User message with NPC reactions, response instruction prefix, current location, and player action
         """
         self._ensure_loaded()
 
@@ -223,6 +229,28 @@ class GameplayContextBuilder:
         # Build the base message
         parts = []
 
+        # Add user reaction (player's action) first
+        parts.append("<user_reaction>")
+        parts.append(player_action)
+        parts.append("</user_reaction>")
+        parts.append("")
+
+        # Add NPC reactions section if present
+        if npc_reactions:
+            parts.append("<npc_reactions>")
+            parts.append("The following NPCs at this location have reacted to the player's action:")
+            parts.append("")
+            for reaction in npc_reactions:
+                parts.append(f"### {reaction['agent_name']}")
+                parts.append(reaction["content"])
+                parts.append("")
+            parts.append("</npc_reactions>")
+            parts.append("")
+            parts.append(
+                "Use these NPC reactions to inform your narration. Incorporate their responses naturally into the story."
+            )
+            parts.append("")
+
         # Add arrival context if present (for continuity after travel)
         if arrival_context:
             parts.append("[Arrival Context - for continuity from previous location]")
@@ -235,8 +263,6 @@ class GameplayContextBuilder:
             parts.append("")
 
         parts.append(f"[Current location: {location_name}]")
-        parts.append("")
-        parts.append(player_action)
 
         base_message = "\n".join(parts)
 

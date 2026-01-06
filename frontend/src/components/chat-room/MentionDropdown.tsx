@@ -3,10 +3,10 @@
  * Shows a list of agents that can be mentioned
  */
 
-import { useEffect, useRef } from 'react';
-import type { Agent } from '../../types';
-import { AgentAvatar } from '../AgentAvatar';
-import { cn } from '@/lib/utils';
+import { useEffect, useRef } from "react";
+import type { Agent } from "../../types";
+import { AgentAvatar } from "../AgentAvatar";
+import { cn } from "@/lib/utils";
 
 interface MentionDropdownProps {
   agents: Agent[];
@@ -28,8 +28,8 @@ export function MentionDropdown({
   useEffect(() => {
     if (selectedRef.current && listRef.current) {
       selectedRef.current.scrollIntoView({
-        block: 'nearest',
-        behavior: 'smooth',
+        block: "nearest",
+        behavior: "smooth",
       });
     }
   }, [selectedIndex]);
@@ -42,8 +42,8 @@ export function MentionDropdown({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
   if (agents.length === 0) {
@@ -69,17 +69,19 @@ export function MentionDropdown({
             ref={index === selectedIndex ? selectedRef : undefined}
             onClick={() => onSelect(agent)}
             className={cn(
-              'w-full flex items-center gap-3 px-3 py-2 text-left transition-colors',
+              "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
               index === selectedIndex
-                ? 'bg-blue-50 text-blue-700'
-                : 'hover:bg-slate-50'
+                ? "bg-blue-50 text-blue-700"
+                : "hover:bg-slate-50",
             )}
           >
             <AgentAvatar agent={agent} size="sm" />
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">{agent.name}</div>
               {agent.group && (
-                <div className="text-xs text-slate-400 truncate">{agent.group}</div>
+                <div className="text-xs text-slate-400 truncate">
+                  {agent.group}
+                </div>
               )}
             </div>
           </button>

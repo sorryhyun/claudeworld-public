@@ -1,29 +1,51 @@
-import { useState, KeyboardEvent, useRef, useEffect, useMemo, ClipboardEvent, DragEvent, ChangeEvent } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useGame } from '../../contexts/GameContext';
-import { Button } from '../ui/button';
-import { LoadingDots } from '../shared/LoadingDots';
-import { cn } from '@/lib/utils';
+import {
+  useState,
+  KeyboardEvent,
+  useRef,
+  useEffect,
+  useMemo,
+  ClipboardEvent,
+  DragEvent,
+  ChangeEvent,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { useGame } from "../../contexts/GameContext";
+import { Button } from "../ui/button";
+import { LoadingDots } from "../shared/LoadingDots";
+import { cn } from "@/lib/utils";
 
 interface ImageData {
-  data: string;  // Base64 encoded (without data URL prefix)
-  mediaType: string;  // MIME type
-  preview: string;  // Full data URL for preview
+  data: string; // Base64 encoded (without data URL prefix)
+  mediaType: string; // MIME type
+  preview: string; // Full data URL for preview
 }
 
 // Allowed image types
-const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const ALLOWED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
 
 interface SlashCommand {
   command: string;
   description: string;
-  availableIn: 'chat' | 'gameplay' | 'both';
+  availableIn: "chat" | "gameplay" | "both";
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { command: '/chat', description: 'Enter free-form NPC conversation mode', availableIn: 'gameplay' },
-  { command: '/end', description: 'Exit chat mode and return to gameplay', availableIn: 'chat' },
+  {
+    command: "/chat",
+    description: "Enter free-form NPC conversation mode",
+    availableIn: "gameplay",
+  },
+  {
+    command: "/end",
+    description: "Exit chat mode and return to gameplay",
+    availableIn: "chat",
+  },
 ];
 
 interface ActionInputProps {
@@ -37,7 +59,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
 
   // Combined disabled state: explicit prop OR agents are processing
   const isDisabled = disabled || isClauding;
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [attachedImage, setAttachedImage] = useState<ImageData | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -51,7 +73,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        const base64Data = result.split(',')[1];
+        const base64Data = result.split(",")[1];
         resolve({
           data: base64Data,
           mediaType: file.type,
@@ -66,19 +88,19 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   // Handle file selection
   const handleFileSelect = async (file: File) => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      alert('Please select a valid image file (PNG, JPEG, GIF, or WebP)');
+      alert("Please select a valid image file (PNG, JPEG, GIF, or WebP)");
       return;
     }
     if (file.size > MAX_IMAGE_SIZE) {
-      alert('Image size must be less than 10MB');
+      alert("Image size must be less than 10MB");
       return;
     }
     try {
       const imageData = await fileToBase64(file);
       setAttachedImage(imageData);
     } catch (error) {
-      console.error('Error converting image:', error);
-      alert('Failed to process image');
+      console.error("Error converting image:", error);
+      alert("Failed to process image");
     }
   };
 
@@ -88,7 +110,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
     if (file) {
       handleFileSelect(file);
     }
-    e.target.value = '';
+    e.target.value = "";
   };
 
   // Handle drag events
@@ -115,7 +137,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
     setIsDragging(false);
 
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file && file.type.startsWith("image/")) {
       handleFileSelect(file);
     }
   };
@@ -126,7 +148,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
     if (!items) return;
 
     for (const item of items) {
-      if (item.type.startsWith('image/')) {
+      if (item.type.startsWith("image/")) {
         e.preventDefault();
         const file = item.getAsFile();
         if (file) {
@@ -146,34 +168,43 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   const { isProcessing, isChatModeProcessing } = useMemo(() => {
     // Check if Action_Manager or sub-agents are currently thinking (only in normal mode)
     // Sub-agents (Summarizer, World Seed Generator) have negative agent_ids (-1, -2)
-    const chattingAgents = messages.filter(m => m.is_chatting);
-    const processing = phase === 'active' && !isChatMode && chattingAgents.some(
-      m => m.agent_name === 'Action_Manager' || (m.agent_id !== undefined && m.agent_id !== null && m.agent_id < 0)
-    );
+    const chattingAgents = messages.filter((m) => m.is_chatting);
+    const processing =
+      phase === "active" &&
+      !isChatMode &&
+      chattingAgents.some(
+        (m) =>
+          m.agent_name === "Action_Manager" ||
+          (m.agent_id !== undefined && m.agent_id !== null && m.agent_id < 0),
+      );
     // Check if NPCs are responding in chat mode
-    const chatModeProcessing = phase === 'active' && isChatMode && chattingAgents.length > 0;
+    const chatModeProcessing =
+      phase === "active" && isChatMode && chattingAgents.length > 0;
 
-    return { isProcessing: processing, isChatModeProcessing: chatModeProcessing };
+    return {
+      isProcessing: processing,
+      isChatModeProcessing: chatModeProcessing,
+    };
   }, [messages, phase, isChatMode]);
 
   // Filter available commands based on current mode and input
   const availableCommands = useMemo(() => {
-    const modeFilter = isChatMode ? 'chat' : 'gameplay';
-    return SLASH_COMMANDS.filter(cmd =>
-      cmd.availableIn === modeFilter || cmd.availableIn === 'both'
+    const modeFilter = isChatMode ? "chat" : "gameplay";
+    return SLASH_COMMANDS.filter(
+      (cmd) => cmd.availableIn === modeFilter || cmd.availableIn === "both",
     );
   }, [isChatMode]);
 
   // Filter commands based on input (show all if just "/", or filter by prefix)
   const filteredCommands = useMemo(() => {
-    if (!input.startsWith('/')) return [];
+    if (!input.startsWith("/")) return [];
     const searchTerm = input.toLowerCase();
-    return availableCommands.filter(cmd =>
-      cmd.command.toLowerCase().startsWith(searchTerm)
+    return availableCommands.filter((cmd) =>
+      cmd.command.toLowerCase().startsWith(searchTerm),
     );
   }, [input, availableCommands]);
 
-  const showCommandList = input.startsWith('/') && filteredCommands.length > 0;
+  const showCommandList = input.startsWith("/") && filteredCommands.length > 0;
 
   // Reset selected index when filtered commands change
   useEffect(() => {
@@ -183,7 +214,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
   }, [input]);
@@ -195,22 +226,26 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
     const imageData = attachedImage?.data;
     const imageMediaType = attachedImage?.mediaType;
 
-    setInput('');
+    setInput("");
     setAttachedImage(null);
 
     // Reset textarea height
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
     }
 
     try {
       await submitAction(action, imageData, imageMediaType);
     } catch (error) {
-      console.error('Failed to submit action:', error);
+      console.error("Failed to submit action:", error);
       // Restore input on error
       setInput(action);
       if (imageData && imageMediaType) {
-        setAttachedImage({ data: imageData, mediaType: imageMediaType, preview: `data:${imageMediaType};base64,${imageData}` });
+        setAttachedImage({
+          data: imageData,
+          mediaType: imageMediaType,
+          preview: `data:${imageMediaType};base64,${imageData}`,
+        });
       }
     }
   };
@@ -223,22 +258,22 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle command list navigation
     if (showCommandList) {
-      if (e.key === 'ArrowDown') {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedCommandIndex(prev =>
-          prev < filteredCommands.length - 1 ? prev + 1 : 0
+        setSelectedCommandIndex((prev) =>
+          prev < filteredCommands.length - 1 ? prev + 1 : 0,
         );
         return;
       }
-      if (e.key === 'ArrowUp') {
+      if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedCommandIndex(prev =>
-          prev > 0 ? prev - 1 : filteredCommands.length - 1
+        setSelectedCommandIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredCommands.length - 1,
         );
         return;
       }
       // Tab or Enter to autocomplete
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.ctrlKey && !e.metaKey)) {
+      if (e.key === "Tab" || (e.key === "Enter" && !e.ctrlKey && !e.metaKey)) {
         e.preventDefault();
         const selectedCommand = filteredCommands[selectedCommandIndex];
         if (selectedCommand) {
@@ -247,20 +282,20 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
         return;
       }
       // Ctrl+Enter to submit (even if exact match)
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleSubmit();
         return;
       }
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         e.preventDefault();
-        setInput('');
+        setInput("");
         return;
       }
     }
 
     // Submit on Ctrl+Enter (or Cmd+Enter on Mac)
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSubmit();
     }
@@ -268,7 +303,10 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
 
   return (
     <div
-      className={cn("space-y-2 relative", isDragging && "bg-blue-50 rounded-lg")}
+      className={cn(
+        "space-y-2 relative",
+        isDragging && "bg-blue-50 rounded-lg",
+      )}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -278,10 +316,20 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
       {isDragging && (
         <div className="absolute inset-0 bg-blue-100/80 backdrop-blur-sm flex items-center justify-center z-30 pointer-events-none rounded-lg">
           <div className="text-blue-600 font-medium flex items-center gap-2">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
-            {t('game.dropImageHere')}
+            {t("game.dropImageHere")}
           </div>
         </div>
       )}
@@ -303,11 +351,9 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
           aria-live="polite"
         >
           <span className="text-sm font-medium text-white">
-            {t('game.chatModeIndicator')}
+            {t("game.chatModeIndicator")}
           </span>
-          {isChatModeProcessing && (
-            <LoadingDots size="sm" color="white" />
-          )}
+          {isChatModeProcessing && <LoadingDots size="sm" color="white" />}
         </div>
       )}
 
@@ -319,7 +365,9 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
           aria-live="polite"
         >
           <LoadingDots size="sm" color="white" />
-          <span className="text-sm font-medium text-white">{t('game.clauding')}</span>
+          <span className="text-sm font-medium text-white">
+            {t("game.clauding")}
+          </span>
         </div>
       )}
 
@@ -337,8 +385,18 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
             className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
             title="Remove image"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -360,8 +418,8 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
                 onMouseEnter={() => setSelectedCommandIndex(index)}
                 className={`w-full px-4 py-2.5 text-left flex items-center gap-3 transition-colors ${
                   index === selectedCommandIndex
-                    ? 'bg-slate-100'
-                    : 'hover:bg-slate-50'
+                    ? "bg-slate-100"
+                    : "hover:bg-slate-50"
                 }`}
               >
                 <span className="font-mono text-sm font-semibold text-slate-700">
@@ -373,7 +431,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
               </button>
             ))}
             <div className="px-4 py-1.5 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
-              {t('game.commandHelp')}
+              {t("game.commandHelp")}
             </div>
           </div>
         )}
@@ -387,8 +445,18 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
             className="flex-shrink-0 w-[44px] h-[44px] rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-all disabled:bg-slate-50 disabled:text-slate-300 disabled:cursor-not-allowed"
             title="Attach image (or paste with Ctrl+V)"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
           </button>
           <textarea
@@ -397,7 +465,11 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={isChatMode ? t('game.placeholder.chat') : (placeholder || t('game.placeholder.action'))}
+            placeholder={
+              isChatMode
+                ? t("game.placeholder.chat")
+                : placeholder || t("game.placeholder.action")
+            }
             disabled={isDisabled}
             rows={1}
             className="flex-1 resize-none rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 disabled:bg-slate-100 disabled:cursor-not-allowed text-sm sm:text-base min-h-[44px] transition-all"
@@ -406,10 +478,21 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
             onClick={handleSubmit}
             disabled={isDisabled || (!input.trim() && !attachedImage)}
             className="px-4 h-[44px] bg-slate-700 hover:bg-slate-600 disabled:bg-slate-300"
-            aria-label={t('accessibility.sendAction')}
+            aria-label={t("accessibility.sendAction")}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
             </svg>
           </Button>
         </div>

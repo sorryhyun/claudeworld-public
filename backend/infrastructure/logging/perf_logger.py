@@ -391,3 +391,316 @@ def get_perf_logger() -> PerfLogger:
 def is_perf_logging_enabled() -> bool:
     """Check if performance logging is enabled."""
     return PERF_LOG_ENABLED
+
+
+# =============================================================================
+# Reusable Decorators
+# =============================================================================
+
+
+def _extract_context_from_args(
+    args: tuple,
+    kwargs: dict,
+    room_id_param: str | None,
+    agent_name_param: str | None,
+    func: Callable,
+) -> tuple[int | None, str | None]:
+    """
+    Extract room_id and agent_name from function arguments.
+
+    Supports:
+    - Direct parameters: room_id=0, agent_name="ctx"
+    - Nested access: room_id="ctx.room_id", agent_name="ctx.agent_name"
+    - ToolContext objects: auto-detects ctx parameter
+    """
+    import inspect
+
+    sig = inspect.signature(func)
+    bound = sig.bind_partial(*args, **kwargs)
+    bound.apply_defaults()
+    all_args = bound.arguments
+
+    def get_value(param_spec: str | None) -> Any:
+        if not param_spec:
+            return None
+        # Handle nested access like "ctx.room_id"
+        parts = param_spec.split(".")
+        value = all_args.get(parts[0])
+        for part in parts[1:]:
+            if value is None:
+                return None
+            value = getattr(value, part, None)
+        return value
+
+    room_id = get_value(room_id_param)
+    agent_name = get_value(agent_name_param)
+
+    # Auto-detect from common context objects if not explicitly specified
+    if room_id is None or agent_name is None:
+        for arg_name, arg_value in all_args.items():
+            if arg_value is None:
+                continue
+            # Check for ToolContext or similar context objects
+            if hasattr(arg_value, "room_id") and room_id is None:
+                room_id = getattr(arg_value, "room_id", None)
+            if hasattr(arg_value, "agent_name") and agent_name is None:
+                agent_name = getattr(arg_value, "agent_name", None)
+            # Check for 'ctx' dict with room_id/agent_name keys
+            if isinstance(arg_value, dict):
+                if room_id is None:
+                    room_id = arg_value.get("room_id")
+                if agent_name is None:
+                    agent_name = arg_value.get("agent_name")
+
+    return room_id, agent_name
+
+
+def track_perf(
+    phase: str | None = None,
+    *,
+    room_id: str | int | Callable[[], int | None] | None = None,
+    agent_name: str | Callable[[], str | None] | None = None,
+    include_result: bool = False,
+    extra_from_result: Callable[[Any], dict] | None = None,
+) -> Callable:
+    """
+    Decorator for tracking async function timing with automatic context extraction.
+
+    Args:
+        phase: Phase name for logging. Defaults to function name.
+        room_id: One of:
+            - Parameter path to extract room_id (e.g., "ctx.room_id")
+            - Static int value
+            - Callable that returns room_id (for closures)
+        agent_name: One of:
+            - Parameter path to extract agent_name (e.g., "ctx.agent_name")
+            - Static string value
+            - Callable that returns agent_name (for closures)
+        include_result: If True, includes result info in log (success/error)
+        extra_from_result: Callback to extract extra fields from result
+
+    Example:
+        # Path-based extraction
+        @track_perf("tool_call", room_id="ctx.room_id", agent_name="ctx.agent_name")
+        async def my_tool(ctx: ToolContext, args: dict):
+            ...
+
+        # Auto-detect from context objects
+        @track_perf()
+        async def move_character_tool(ctx: ToolContext, args: dict):
+            ...
+
+        # Closure-based (for inner functions)
+        @track_perf("narration", room_id=lambda: ctx.room_id, agent_name=lambda: ctx.agent_name)
+        async def narration_tool(args: dict):
+            ...
+    """
+
+    def decorator(func: Callable) -> Callable:
+        phase_name = phase or func.__name__
+
+        def _resolve_context() -> tuple[int | None, str | None]:
+            """Resolve room_id and agent_name, handling callables."""
+            resolved_room_id: int | None = None
+            resolved_agent_name: str | None = None
+
+            # Handle room_id
+            if callable(room_id):
+                resolved_room_id = room_id()
+            elif isinstance(room_id, int):
+                resolved_room_id = room_id
+            # Note: string path handled separately via _extract_context_from_args
+
+            # Handle agent_name
+            if callable(agent_name):
+                resolved_agent_name = agent_name()
+            elif isinstance(agent_name, str) and "." not in agent_name:
+                # Static string, not a path
+                resolved_agent_name = agent_name
+
+            return resolved_room_id, resolved_agent_name
+
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            perf = get_perf_logger()
+            if not perf.enabled:
+                return await func(*args, **kwargs)
+
+            # First try callable/static values
+            extracted_room_id, extracted_agent_name = _resolve_context()
+
+            # Then try path-based extraction if needed
+            if extracted_room_id is None or extracted_agent_name is None:
+                # Only pass string paths to _extract_context_from_args
+                room_path = room_id if isinstance(room_id, str) and "." in room_id else None
+                agent_path = agent_name if isinstance(agent_name, str) and "." in agent_name else None
+                path_room_id, path_agent_name = _extract_context_from_args(args, kwargs, room_path, agent_path, func)
+                if extracted_room_id is None:
+                    extracted_room_id = path_room_id
+                if extracted_agent_name is None:
+                    extracted_agent_name = path_agent_name
+
+            start_time = datetime.now()
+            start_perf = time.perf_counter()
+            result = None
+            error = None
+
+            try:
+                result = await func(*args, **kwargs)
+                return result
+            except Exception as e:
+                error = e
+                raise
+            finally:
+                end_perf = time.perf_counter()
+                duration_ms = (end_perf - start_perf) * 1000
+
+                extra: dict[str, Any] = {}
+                if include_result:
+                    extra["success"] = error is None
+                    if error:
+                        extra["error"] = str(error)[:50]
+                if extra_from_result and result is not None:
+                    try:
+                        extra.update(extra_from_result(result))
+                    except Exception:
+                        pass
+
+                entry = TimingEntry(
+                    phase=phase_name,
+                    agent_name=extracted_agent_name,
+                    duration_ms=duration_ms,
+                    start_time=start_time,
+                    end_time=datetime.now(),
+                    room_id=extracted_room_id,
+                    extra=extra,
+                )
+
+                perf._entries.append(entry)
+                await perf._write_entry(entry)
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            perf = get_perf_logger()
+            if not perf.enabled:
+                return func(*args, **kwargs)
+
+            # First try callable/static values
+            extracted_room_id, extracted_agent_name = _resolve_context()
+
+            # Then try path-based extraction if needed
+            if extracted_room_id is None or extracted_agent_name is None:
+                room_path = room_id if isinstance(room_id, str) and "." in room_id else None
+                agent_path = agent_name if isinstance(agent_name, str) and "." in agent_name else None
+                path_room_id, path_agent_name = _extract_context_from_args(args, kwargs, room_path, agent_path, func)
+                if extracted_room_id is None:
+                    extracted_room_id = path_room_id
+                if extracted_agent_name is None:
+                    extracted_agent_name = path_agent_name
+
+            start_time = datetime.now()
+            start_perf = time.perf_counter()
+            result = None
+            error = None
+
+            try:
+                result = func(*args, **kwargs)
+                return result
+            except Exception as e:
+                error = e
+                raise
+            finally:
+                end_perf = time.perf_counter()
+                duration_ms = (end_perf - start_perf) * 1000
+
+                extra: dict[str, Any] = {}
+                if include_result:
+                    extra["success"] = error is None
+                    if error:
+                        extra["error"] = str(error)[:50]
+                if extra_from_result and result is not None:
+                    try:
+                        extra.update(extra_from_result(result))
+                    except Exception:
+                        pass
+
+                entry = TimingEntry(
+                    phase=phase_name,
+                    agent_name=extracted_agent_name,
+                    duration_ms=duration_ms,
+                    start_time=start_time,
+                    end_time=datetime.now(),
+                    room_id=extracted_room_id,
+                    extra=extra,
+                )
+
+                perf._entries.append(entry)
+                with open(_get_log_file_path(), "a") as f:
+                    f.write(entry.to_log_line() + "\n")
+                logger.info(f"⏱️  {entry.to_log_line()}")
+
+        # Return appropriate wrapper based on function type
+        import asyncio
+
+        if asyncio.iscoroutinefunction(func):
+            return async_wrapper
+        return sync_wrapper
+
+    return decorator
+
+
+def track_interaction(
+    room_id_param: str = "room_id",
+    action_param: str = "action_text",
+) -> Callable:
+    """
+    Decorator for tracking full interaction (user action → all responses).
+
+    Logs interaction start and end with total duration.
+
+    Args:
+        room_id_param: Parameter name for room_id
+        action_param: Parameter name for action/message text
+
+    Example:
+        @track_interaction()
+        async def handle_player_action(self, db, room_id: int, action_text: str, ...):
+            ...
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            perf = get_perf_logger()
+
+            # Extract room_id and action_text
+            import inspect
+
+            sig = inspect.signature(func)
+            bound = sig.bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            all_args = bound.arguments
+
+            room_id = all_args.get(room_id_param)
+            action_text = all_args.get(action_param, "")
+
+            if perf.enabled and room_id is not None:
+                await perf.log_interaction_start(room_id, action_text or "")
+
+            start_perf = time.perf_counter()
+            result = None
+            try:
+                result = await func(*args, **kwargs)
+                return result
+            finally:
+                if perf.enabled and room_id is not None:
+                    duration_ms = (time.perf_counter() - start_perf) * 1000
+                    # Count agents from result if it has that info
+                    agent_count = 1
+                    if hasattr(result, "total_responses"):
+                        agent_count = result.total_responses
+                    await perf.log_interaction_end(room_id, duration_ms, agent_count)
+
+        return wrapper
+
+    return decorator

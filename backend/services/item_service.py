@@ -77,6 +77,14 @@ class ItemService:
         name: str,
         description: Optional[str] = None,
         properties: Optional[Dict[str, Any]] = None,
+        # NEW optional fields for world-agnostic item system
+        category: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        rarity: Optional[str] = None,
+        icon: Optional[str] = None,
+        stacking: Optional[Dict[str, Any]] = None,
+        equippable: Optional[Dict[str, Any]] = None,
+        usable: Optional[Dict[str, Any]] = None,
         overwrite: bool = False,
     ) -> bool:
         """
@@ -88,6 +96,13 @@ class ItemService:
             name: Display name of the item
             description: Item description
             properties: Item properties (stored as default_properties)
+            category: Item category (gift, credential, clue, tool, etc.)
+            tags: Tags for filtering/behavior
+            rarity: Rarity tier (common, uncommon, rare, epic, legendary)
+            icon: UI hint for icon display
+            stacking: Stacking behavior config
+            equippable: Equipment config (slot, passive_effects)
+            usable: Usable actions config (affordances)
             overwrite: If True, overwrite existing template
 
         Returns:
@@ -108,12 +123,33 @@ class ItemService:
             logger.debug(f"Item template '{item_id}' already exists, skipping")
             return False
 
-        template = {
+        # Build template with only non-None fields
+        template: Dict[str, Any] = {
             "id": item_id,
             "name": name,
             "description": description or "",
-            "default_properties": properties or {},
         }
+
+        # Add optional classification fields
+        if category:
+            template["category"] = category
+        if tags:
+            template["tags"] = tags
+        if rarity:
+            template["rarity"] = rarity
+        if icon:
+            template["icon"] = icon
+
+        # Add optional component fields
+        if stacking:
+            template["stacking"] = stacking
+        if equippable:
+            template["equippable"] = equippable
+        if usable:
+            template["usable"] = usable
+
+        # Add legacy properties (always include for compatibility)
+        template["default_properties"] = properties or {}
 
         with open(item_file, "w", encoding="utf-8") as f:
             yaml.dump(template, f, Dumper=_LiteralDumper, allow_unicode=True, default_flow_style=False)

@@ -5,8 +5,8 @@ CRUD operations for Room-Agent relationships and sessions.
 from datetime import datetime, timezone
 from typing import List, Optional
 
-import models
-from database import retry_on_db_lock, serialized_write
+from infrastructure.database import models
+from infrastructure.database.connection import retry_on_db_lock, serialized_write
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select

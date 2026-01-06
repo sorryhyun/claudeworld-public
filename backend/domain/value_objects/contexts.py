@@ -5,14 +5,15 @@ Contains all context dataclasses for operations throughout the application.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from domain.entities.agent_config import AgentConfigData
+from domain.value_objects.enums import ConversationMode
 
 from .task_identifier import TaskIdentifier
 
 if TYPE_CHECKING:
-    import models
+    from infrastructure.database import models
     from sdk import AgentManager
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,28 +31,14 @@ class MessageContext:
         room_id: Room ID
         agent: Agent object
         chat_session_id: Optional chat session ID for chat mode messages
+        game_time_snapshot: Optional game time for display on messages (only during active gameplay)
     """
 
     db: "AsyncSession"
     room_id: int
     agent: "models.Agent"
     chat_session_id: Optional[int] = None
-
-
-@dataclass
-class AgentMessageData:
-    """
-    Data for agent message to broadcast.
-
-    Attributes:
-        content: The message content
-        thinking: Optional thinking text from the agent
-        anthropic_calls: Optional list of anthropic tool call situations
-    """
-
-    content: str
-    thinking: Optional[str] = None
-    anthropic_calls: Optional[list[str]] = None
+    game_time_snapshot: Optional[Dict[str, int]] = None
 
 
 @dataclass
@@ -77,6 +64,41 @@ class OrchestrationContext:
     world_id: Optional[int] = None
     world_name: Optional[str] = None
     chat_session_id: Optional[int] = None
+
+
+@dataclass
+class ConversationContextParams:
+    """
+    Parameters for building conversation context.
+
+    Groups all parameters needed by build_conversation_context(), reducing
+    the parameter count from 16 to 1.
+
+    Attributes:
+        messages: List of recent messages from the room
+        agent: Agent object (provides id, name, group)
+        agent_count: Number of agents in the room
+        mode: Conversation mode (normal, onboarding, game, chat)
+        world_user_name: Player's display name in the world
+        world_language: World language setting ('en', 'ko', or 'jp')
+        limit: Maximum number of recent messages to include
+        include_response_instruction: If True, append response instruction
+        skip_latest_image: If True, skip embedding image from the latest message
+        keep_only_latest_action_manager: If True, only keep most recent AM message
+        keep_only_latest_user: If True, only keep most recent user message
+    """
+
+    messages: List
+    agent: Optional["models.Agent"] = None
+    agent_count: Optional[int] = None
+    mode: ConversationMode = ConversationMode.NORMAL
+    world_user_name: Optional[str] = None
+    world_language: Optional[str] = None
+    limit: int = 25
+    include_response_instruction: bool = True
+    skip_latest_image: bool = False
+    keep_only_latest_action_manager: bool = False
+    keep_only_latest_user: bool = False
 
 
 @dataclass
@@ -110,7 +132,6 @@ class AgentResponseContext:
         agent_id: Agent ID generating the response
         group_name: Optional group name for applying group-specific tool config overrides
         session_id: Optional session ID to resume a previous conversation
-        conversation_history: Optional recent conversation context for multi-agent rooms
         task_id: Optional unique identifier for tracking this task (for interruption)
         conversation_started: Optional timestamp when the conversation started
         image: Optional image attachment for multimodal messages
@@ -118,6 +139,7 @@ class AgentResponseContext:
         world_name: Optional world name for TRPG mode (used by WorldSeedManager)
         db: Optional database session for TRPG game tools
         world_id: Optional world ID for TRPG game tools
+        npc_reactions: Optional list of NPC reactions from the reaction cell
     """
 
     system_prompt: str
@@ -128,7 +150,6 @@ class AgentResponseContext:
     agent_id: int
     group_name: Optional[str] = None
     session_id: Optional[str] = None
-    conversation_history: Optional[str] = None
     task_id: Optional[TaskIdentifier] = None
     conversation_started: Optional[str] = None
     image: Optional[ImageAttachment] = None
@@ -136,3 +157,4 @@ class AgentResponseContext:
     world_name: Optional[str] = None
     db: Optional["AsyncSession"] = None
     world_id: Optional[int] = None
+    npc_reactions: Optional[List[Dict[str, Any]]] = None

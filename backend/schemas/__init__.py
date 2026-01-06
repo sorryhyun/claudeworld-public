@@ -34,7 +34,7 @@ from schemas.game import (
     WorldSummary,
     WorldUpdate,
 )
-from schemas.messages import Message, MessageBase, MessageCreate, PollResponse
+from schemas.messages import ImageItem, Message, MessageBase, MessageCreate, PollResponse
 from schemas.rooms import Room, RoomBase, RoomCreate, RoomSummary, RoomUpdate
 
 __all__ = [
@@ -46,6 +46,7 @@ __all__ = [
     "AgentUpdate",
     "Agent",
     # Messages
+    "ImageItem",
     "MessageBase",
     "MessageCreate",
     "Message",

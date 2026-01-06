@@ -38,17 +38,20 @@ See [../SETUP.md](../SETUP.md) for authentication setup.
 ```
 backend/
 ├── main.py                # FastAPI entry point
-├── database.py            # SQLAlchemy async setup
-├── models.py              # ORM models (Room, Agent, Message, World, Location, PlayerState)
-├── schemas.py             # Pydantic request/response models
 ├── auth.py                # JWT authentication
 │
-├── core/                  # App factory, settings, logging
+├── core/                  # Settings, constants
 ├── crud/                  # Database operations (pure CRUD, no business logic)
 ├── domain/                # Domain models and enums
-├── infrastructure/        # Cache, file locking, migrations
+├── infrastructure/        # Cross-cutting infrastructure
+│   ├── database/          # SQLAlchemy setup, models, migrations
+│   ├── logging/           # PerfLogger, debug logging
+│   ├── cache.py           # In-memory caching
+│   ├── locking.py         # File locking
+│   └── scheduler.py       # Background scheduler
 ├── orchestration/         # Multi-agent orchestration and tape execution
 ├── routers/               # REST API endpoints (auth, rooms, agents, game/)
+├── schemas/               # Pydantic request/response models
 ├── sdk/                   # Claude SDK integration (see sdk/README.md)
 ├── services/              # Business logic (agent factory, persistence, world/location/player)
 ├── i18n/                  # Internationalization
@@ -109,7 +112,7 @@ backend/
 
 **Automatic Migrations:** Schema changes handled automatically via `infrastructure/database/migrations.py`
 
-**Models (`models.py`):**
+**Models (`infrastructure/database/models.py`):**
 - `Room`: Chat rooms with agent associations, world linkage
 - `Agent`: AI personalities with filesystem-primary config
 - `Message`: Chat messages with thinking text, image support
@@ -197,36 +200,6 @@ User Action → Action_Manager (hidden) → narration + suggest_options
 - **Gameplay Tools:** `narration`, `suggest_options`, `travel`, `remove_character`, `move_character`, `inject_memory`, `change_stat`
 - **Subagent Persist Tools:** `persist_character_design`, `persist_location_design`, `persist_item` (shared MCP server for subagents)
 
-**Fake Tool Executor (`sdk/tools/fake_tool_executor.py`):**
-
-When sub-agents run in background via Task tool with `run_in_background: true`, they may output tool calls as plain text instead of actual MCP calls. This happens because the message pump can't keep the SDK control channel open.
-
-The fake tool executor handles this by:
-1. Registering a `SubagentStop` hook that fires when any sub-agent completes
-2. Parsing tool calls from text output (supports both XML and JSON formats)
-3. Executing the corresponding tool handlers directly
-
-Supported formats:
-```xml
-<!-- XML format -->
-<function_calls>
-<invoke name="mcp__subagents__persist_character_design">
-<parameter name="name">HANA-07</parameter>
-...
-</invoke>
-</function_calls>
-```
-
-```json
-// JSON format (tool inferred from fields)
-{"name": "HANA-07", "role": "...", "appearance": "...", "personality": "..."}
-```
-
-Tool inference from JSON:
-- `name + role + appearance + personality` → `mcp__subagents__persist_character_design`
-- `name + display_name + description` → `mcp__subagents__persist_location_design`
-- `summary + stat_changes/inventory_changes` → `mcp__action_manager__change_stat`
-
 ## API Endpoints
 
 ### Authentication
@@ -286,7 +259,7 @@ DELETE /rooms/{id}/messages        # Clear room messages
 - `CLAUDE_API_KEY` - Direct API key for production (uses Claude Code auth if not set)
 - `USER_NAME` - Display name for user messages (default: "User")
 - `DEBUG_AGENTS` - "true" for verbose logging
-- `USE_HAIKU` - "true" to use Haiku model instead of Opus
+- `USE_SONNET` - "true" to use Sonnet model instead of Opus
 - `FRONTEND_URL` - CORS allowed origin
 - `ENABLE_GUEST_LOGIN` - "true"/"false" (default: true)
 
@@ -308,20 +281,20 @@ DELETE /rooms/{id}/messages        # Clear room messages
 ### Adding Game Features
 
 **Add game tool:**
-1. Define tool in `sdk/tools/gameplay_tools/`
-2. Add config to `sdk/config/gameplay_tools.yaml`
-3. Register in MCP registry (`sdk/mcp_registry.py`)
+1. Add tool definition to `sdk/config/gameplay_tool_definitions.py`
+2. Implement handler in `sdk/tools/gameplay_tools/`
+3. Register in MCP server (`sdk/tools/gameplay_tools/__init__.py`)
 
 **Add game state field:**
-1. Update `models.py` (World, Location, or PlayerState)
+1. Update `infrastructure/database/models.py` (World, Location, or PlayerState)
 2. Add migration in `infrastructure/database/migrations.py`
-3. Update `schemas.py` and `crud/game.py`
+3. Update `schemas/` and `crud/game.py`
 4. Restart
 
 **Add TRPG endpoint:**
-1. Define schema in `schemas.py`
+1. Define schema in `schemas/`
 2. Add CRUD to `crud/game.py`
-3. Add endpoint to `routers/game.py`
+3. Add endpoint to `routers/game/`
 
 ### Architecture Patterns
 

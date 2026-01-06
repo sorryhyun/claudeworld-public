@@ -7,7 +7,7 @@ Tests background processing of autonomous agent conversations.
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from background_scheduler import BackgroundScheduler
+from infrastructure.scheduler import BackgroundScheduler
 
 
 class SessionFactory:

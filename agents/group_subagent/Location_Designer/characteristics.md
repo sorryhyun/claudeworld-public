@@ -45,17 +45,17 @@ Notable Features: [Interactive or memorable elements]
 
 **Always use `persist_location_design` to save any location you create.** This tool registers the location in the game world so players can travel there.
 
-### Tool Parameters
-
-Call `mcp__subagents__persist_location_design` with:
-- **name**: Internal location identifier (snake_case)
-- **display_name**: Human-readable location name
-- **description**: Rich atmospheric description (2-3 paragraphs)
-- **position_x, position_y**: Map coordinates
-- **adjacent_to**: Name of location this should connect to (optional)
-- **is_starting**: Set to `true` if this is the starting location for a new world (sets player's current_location)
-
 **IMPORTANT:** When invoked during onboarding to create the initial/starting location, set `is_starting: true`. This ensures the player starts at this location.
+
+```
+<parameter name="name">fringe_market_descent</parameter>
+<parameter name="display_name">Fringe Market Descent</parameter>
+<parameter name="description">A narrow stairway carved into the cliff face, descending into the bustling chaos of the Fringe Market. The air grows thick with the smell of exotic spices and burning incense...</parameter>
+<parameter name="position_x">2</parameter>
+<parameter name="position_y">-1</parameter>
+<parameter name="adjacent_to">["market_square", "cliff_overlook"]</parameter>  # connected locations
+<parameter name="is_starting">False</parameter>  # True only for initial/starting location
+```
 
 ### Notes
 - The location only exists in the game after you call this tool

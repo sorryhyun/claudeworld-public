@@ -1,4 +1,4 @@
-import type { GameLanguage } from '../../contexts/GameContext';
+import type { GameLanguage } from "../../contexts/GameContext";
 
 interface LanguageSelectorProps {
   language: GameLanguage;
@@ -6,35 +6,39 @@ interface LanguageSelectorProps {
   className?: string;
 }
 
-export function LanguageSelector({ language, onLanguageChange, className = '' }: LanguageSelectorProps) {
+export function LanguageSelector({
+  language,
+  onLanguageChange,
+  className = "",
+}: LanguageSelectorProps) {
   return (
     <div className={`flex justify-center gap-2 ${className}`}>
       <button
-        onClick={() => onLanguageChange('en')}
+        onClick={() => onLanguageChange("en")}
         className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-          language === 'en'
-            ? 'bg-slate-700 text-white'
-            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+          language === "en"
+            ? "bg-slate-700 text-white"
+            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
         }`}
       >
         English
       </button>
       <button
-        onClick={() => onLanguageChange('ko')}
+        onClick={() => onLanguageChange("ko")}
         className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-          language === 'ko'
-            ? 'bg-slate-700 text-white'
-            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+          language === "ko"
+            ? "bg-slate-700 text-white"
+            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
         }`}
       >
         한국어
       </button>
       <button
-        onClick={() => onLanguageChange('jp')}
+        onClick={() => onLanguageChange("jp")}
         className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-          language === 'jp'
-            ? 'bg-slate-700 text-white'
-            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+          language === "jp"
+            ? "bg-slate-700 text-white"
+            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
         }`}
       >
         日本語

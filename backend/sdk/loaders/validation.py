@@ -34,15 +34,15 @@ def validate_config_schema() -> list[str]:
     """
     errors = []
 
-    # Validate tools config (loaded from action_tools.yaml, guideline_tools.yaml, gameplay_tools.yaml)
+    # Validate tools config (loaded from *_tool_descriptions.py modules)
     tools_config = get_tools_config()
     if not tools_config:
-        errors.append("Tool config files are empty or missing (action_tools.yaml, guideline_tools.yaml)")
+        errors.append("Tool config is empty or missing (check *_tool_descriptions.py modules)")
     else:
         # Check for required tool groups and their source files
         required_groups = {
-            "action": "action_tools.yaml",
-            "guidelines": "guideline_tools.yaml",
+            "action": "action_tool_descriptions.py",
+            "guidelines": "guideline_tool_descriptions.py",
         }
         for group, source_file in required_groups.items():
             if group not in tools_config:

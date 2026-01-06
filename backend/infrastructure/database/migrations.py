@@ -338,6 +338,8 @@ async def _migrate_messages_table(conn):
         ("image_media_type", "VARCHAR", None),
         ("anthropic_calls", "TEXT", None),
         ("chat_session_id", "INTEGER", None),  # Chat session ID for separating chat mode context
+        ("game_time_snapshot", "TEXT", None),  # JSON: {"hour": int, "minute": int, "day": int}
+        ("images", "TEXT", None),  # JSON array for multiple images
     ]
 
     for col_name, col_type, default in columns:
@@ -347,8 +349,42 @@ async def _migrate_messages_table(conn):
             await conn.execute(text(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}{default_clause}"))
             logger.info(f"  ✓ Added {col_name} column")
 
+    # Migrate existing single-image data to new images JSON array format
+    await _migrate_single_images_to_array(conn)
+
     # Backfill NULL timestamps and add constraints
     await _fix_message_timestamps(conn)
+
+
+async def _migrate_single_images_to_array(conn):
+    """Migrate existing image_data/image_media_type to images JSON array."""
+    import json
+
+    # Find messages with old image format but no new format
+    result = await conn.execute(
+        text("""
+            SELECT id, image_data, image_media_type
+            FROM messages
+            WHERE image_data IS NOT NULL
+              AND image_media_type IS NOT NULL
+              AND images IS NULL
+        """)
+    )
+    rows = result.fetchall()
+
+    if not rows:
+        return
+
+    logger.info(f"  Migrating {len(rows)} messages from single-image to images array format...")
+
+    for row in rows:
+        images_json = json.dumps([{"data": row.image_data, "media_type": row.image_media_type}])
+        await conn.execute(
+            text("UPDATE messages SET images = :images WHERE id = :id"),
+            {"images": images_json, "id": row.id},
+        )
+
+    logger.info(f"  ✓ Migrated {len(rows)} messages to images array format")
 
 
 async def _fix_message_timestamps(conn):

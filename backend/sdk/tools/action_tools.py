@@ -18,7 +18,7 @@ from domain.value_objects.action_models import (
     SkipOutput,
 )
 
-from sdk.config.action_inputs import MemorizeInput, RecallInput, SkipInput
+from sdk.config.action_tool_definitions import MemorizeInput, RecallInput, SkipInput
 from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -61,18 +61,23 @@ def create_action_tools(ctx: ToolContext) -> list:
         @tool("memorize", memorize_description, MemorizeInput.model_json_schema())
         async def memorize_tool(args: dict[str, Any]):
             """Tool that agents can call to record memories. Writes directly to recent_events.md file."""
-            from datetime import datetime
-
             from services import AgentConfigService
+            from services.player_service import PlayerService
 
             # Validate input with Pydantic
             validated_input = MemorizeInput(**args)
 
             # Write directly to file if config_file is available
             if ctx.config_file:
-                timestamp = datetime.utcnow()
+                # Load game time from player state if world_name is available
+                game_time = None
+                if ctx.world_name:
+                    player_state = PlayerService.load_player_state(ctx.world_name)
+                    if player_state:
+                        game_time = player_state.game_time
+
                 success = AgentConfigService.append_to_recent_events(
-                    config_file=str(ctx.config_file), memory_entry=validated_input.memory_entry, timestamp=timestamp
+                    config_file=str(ctx.config_file), memory_entry=validated_input.memory_entry, game_time=game_time
                 )
 
                 if success:

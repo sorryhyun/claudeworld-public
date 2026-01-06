@@ -1,4 +1,4 @@
-import { useState, useId, KeyboardEvent } from 'react';
+import { useState, useId, KeyboardEvent } from "react";
 
 /**
  * Custom hook for accessible collapsible/expandable sections.
@@ -15,12 +15,12 @@ export function useCollapsible(defaultExpanded = false) {
 
   const handleKeyDown = (e: KeyboardEvent) => {
     switch (e.key) {
-      case 'Enter':
-      case ' ':
+      case "Enter":
+      case " ":
         e.preventDefault();
         setExpanded(!expanded);
         break;
-      case 'Escape':
+      case "Escape":
         if (expanded) {
           e.preventDefault();
           setExpanded(false);
@@ -35,16 +35,16 @@ export function useCollapsible(defaultExpanded = false) {
     toggle: () => setExpanded(!expanded),
     triggerProps: {
       id: triggerId,
-      'aria-expanded': expanded,
-      'aria-controls': contentId,
+      "aria-expanded": expanded,
+      "aria-controls": contentId,
       onKeyDown: handleKeyDown,
       tabIndex: 0,
-      role: 'button' as const,
+      role: "button" as const,
     },
     contentProps: {
       id: contentId,
-      'aria-labelledby': triggerId,
-      role: 'region' as const,
+      "aria-labelledby": triggerId,
+      role: "region" as const,
       hidden: !expanded,
     },
   };

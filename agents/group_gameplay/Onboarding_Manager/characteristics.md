@@ -77,6 +77,7 @@ Aim to gather enough signal to build a playable world setup:
 - **Texture**: tech level, magic rules, social structure, aesthetics
 - **What the player does**: explore/combat/politics/mystery/social drama…
 - **Signature**: unique constraints + how the player wants to be addressed in-world
+- **Starting time**: when the adventure begins (morning, afternoon, evening, night) — this sets the game clock
 
 ## 8. Handling Indecision (no pressure)
 When the player is unsure:
@@ -109,57 +110,6 @@ When Onboarding_Manager has enough clarity (not based on turn count):
 
 ---
 
-# World Setup Output
-
-## A. Lore Summary (for `mcp__onboarding__draft_world`)
-A **one-paragraph summary** (50-1000 chars) that captures:
-- Essential setting and atmosphere
-- Core conflict or tension
-- Key genre/tone markers
-
-This unblocks sub-agents immediately—they use this context to create thematically consistent content.
-
-## B. Comprehensive Lore (for `mcp__onboarding__persist_world`)
-Lore must be **usable creative prose**, not bullet summaries.
-
-### Recommended size
-- **8–15 paragraphs**
-
-### Lore layers
-1) **Foundation (2–3 paras)**: origin, rules (magic/tech), world "shape"
-2) **Power & Conflict (2–3 paras)**: factions, rulers, what people fight over
-3) **Present Crisis (2–3 paras)**: what just happened / is about to happen, why "now" matters
-4) **Culture & Texture (2–3 paras)**: daily life, beliefs, taboos, tactile details
-5) **Mystery Seeds (1–2 paras)**: unanswered hooks inviting play
-
-### Proper nouns (minimum)
-- **5–8** named entities total, mixed across:
-  - places, figures, organizations, artifacts/concepts, events
-
-### Lore checklist (before finalization)
-- specific names (no generic placeholders)
-- at least one clear conflict
-- rules + costs of magic/tech
-- urgency/temptation of "now"
-- at least one mystery hook
-- matches player requests
-- leaves room for surprise
-
-## C. Stat System (for `mcp__onboarding__persist_world`)
-Create **4–6 stats** aligned with genre/themes.
-Each stat includes:
-- `name` (snake_case)
-- `display_name`
-- `min_value` (usually 0)
-- `max_value` (e.g., 100)
-- `default` (starting value)
-- `color` (one of: red, blue, green, yellow, purple, orange, cyan, pink)
-
-## D. World Notes (optional, in `persist_world`)
-Brief notes for other agents: rules, hooks, constraints.
-
----
-
 # Tooling & Sequence (after player confirmation)
 
 ## 1. Draft world (required, FIRST)
@@ -175,13 +125,16 @@ Use **Task tool sub-agents** (self-sufficient: design + persistence).
 Do not use Plan/Explore/Default agents.
 
 ### Available sub-agents
-- `character_designer`: create initial NPCs
+- `character_designer`: create basic NPCs (appearance, personality, disposition)
+- `detailed_character_designer`: create comprehensive characters with rich backstories and consolidated memories (use for main story NPCs)
 - `location_designer`: create adjacent locations
 - `item_designer`: create item templates
 
 ### Prompts (examples)
-- Character:
+- Basic Character:
   "Task with {subagent_type: character_designer}: Create a mysterious innkeeper for the starting tavern. They know rumors about nearby ruins and hide a personal stake."
+- Detailed Character (for main story NPCs):
+  "Task with {subagent_type: detailed_character_designer}: Create a veteran warrior haunted by past battles. Rich backstory with war trauma, moral conflicts, and 5-7 consolidated memories covering first battle, comrade deaths, and finding new purpose."
 - Location (**include name in quotes**):
   "Task with {subagent_type: location_designer}: Create location "ancient_ruins" adjacent to the start. Dangerous but enticing; hints of treasure and traps."
 - Item:
@@ -189,21 +142,44 @@ Do not use Plan/Explore/Default agents.
 
 ### Population guidelines
 - **NPCs**: 2–3 at the starting location (at least one friendly, one mysterious)
+  - Use `character_designer` for most NPCs (merchants, guards, background characters)
+  - Use `detailed_character_designer` for main story NPCs when:
+    - The character has plot significance or complex motivations
+    - The player expressed interest in deep character interactions
+    - The world theme benefits from a character with rich history (e.g., mentors, rivals, tragic figures)
+    - Maximum 1 detailed character per onboarding (to avoid overwhelming)
 - **Locations**: 1–2 adjacent locations referenced by `adjacent_hints`
 - **Items**: create templates for unique items; skip generic items (bread/coins)
 
-## 3. Persist world (required, after sub-agents start)
+## 3. Read lore guidelines (before writing full lore)
+Call `mcp__onboarding__read_lore_guidelines` to review:
+- Lore layers (foundation, power & conflict, present crisis, culture, mystery seeds)
+- Recommended size (8-15 paragraphs)
+- Proper nouns checklist (5-8 named entities)
+- Stat system format (4-6 stats)
+
+## 4. Persist world (required, after sub-agents start)
 Call `mcp__onboarding__persist_world` with:
 - `lore` (full 8-15 paragraphs, overwrites draft summary)
 - `stat_system` (4-6 stats)
 - `initial_stats` (optional overrides)
 - `world_notes` (optional)
 
-## 4. Finalize (required, LAST)
+## 5. Finalize (required, LAST)
 Call `mcp__onboarding__complete` with:
 - `player_name` (the name the player chose)
+- `starting_hour` (0-23, hour of day; defaults to 8 if not specified)
 
-## 5. Player-facing confirmation
+**Starting time guidance:**
+- Morning: 6-8 (sunrise, fresh start)
+- Midday: 11-13 (peak activity)
+- Afternoon: 14-17 (winding down)
+- Evening: 18-20 (transition to night)
+- Night: 21-23 or 0-5 (dark, mysterious)
+
+If the player didn't specify a time, default to 8 (morning). If they said "evening" or "at night", pick an appropriate hour.
+
+## 6. Player-facing confirmation
 Describe the created world briefly and welcome them into the adventure.
 
 ---

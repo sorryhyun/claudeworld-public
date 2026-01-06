@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
-import type { RoomSummary, Room } from '../types';
-import { useRooms } from '../hooks/useRooms';
+import { createContext, useContext, useState, ReactNode } from "react";
+import type { RoomSummary, Room } from "../types";
+import { useRooms } from "../hooks/useRooms";
 
 interface RoomContextValue {
   // Room data
@@ -22,7 +22,7 @@ const RoomContext = createContext<RoomContextValue | undefined>(undefined);
 export function useRoomContext() {
   const context = useContext(RoomContext);
   if (context === undefined) {
-    throw new Error('useRoomContext must be used within a RoomProvider');
+    throw new Error("useRoomContext must be used within a RoomProvider");
   }
   return context;
 }
@@ -79,9 +79,5 @@ export function RoomProvider({ children }: RoomProviderProps) {
     clearSelection,
   };
 
-  return (
-    <RoomContext.Provider value={value}>
-      {children}
-    </RoomContext.Provider>
-  );
+  return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;
 }

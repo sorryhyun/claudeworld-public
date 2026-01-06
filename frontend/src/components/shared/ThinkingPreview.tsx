@@ -1,5 +1,5 @@
-import { useState, memo, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useState, memo, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ThinkingPreviewProps {
   thinking: string;
@@ -25,14 +25,18 @@ export const ThinkingPreview = memo(function ThinkingPreview({
   const handleToggle = onToggle ?? (() => setInternalExpanded((prev) => !prev));
 
   // Generate preview text
-  const previewText = thinking.length > maxPreviewLength
-    ? thinking.slice(0, maxPreviewLength).trim() + '...'
-    : thinking;
+  const previewText =
+    thinking.length > maxPreviewLength
+      ? thinking.slice(0, maxPreviewLength).trim() + "..."
+      : thinking;
 
   // Scroll to make expanded content visible
   useEffect(() => {
     if (isExpanded && contentRef.current) {
-      contentRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      contentRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
     }
   }, [isExpanded]);
 
@@ -43,20 +47,26 @@ export const ThinkingPreview = memo(function ThinkingPreview({
         onClick={handleToggle}
         className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-800 transition-colors group"
         aria-expanded={isExpanded}
-        aria-label={isExpanded
-          ? t('thinking.hideThinking', 'Hide thinking')
-          : t('thinking.showThinking', 'Show thinking')
+        aria-label={
+          isExpanded
+            ? t("thinking.hideThinking", "Hide thinking")
+            : t("thinking.showThinking", "Show thinking")
         }
       >
         {/* Chevron icon */}
         <svg
-          className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+          className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
           aria-hidden="true"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
         </svg>
 
         {/* Brain icon */}
@@ -75,9 +85,7 @@ export const ThinkingPreview = memo(function ThinkingPreview({
           />
         </svg>
 
-        <span className="font-medium">
-          {t('thinking.label', 'Thinking')}
-        </span>
+        <span className="font-medium">{t("thinking.label", "Thinking")}</span>
 
         {/* Preview text (shown when collapsed and showPreviewByDefault is true) */}
         {!isExpanded && showPreviewByDefault && (
@@ -100,13 +108,14 @@ export const ThinkingPreview = memo(function ThinkingPreview({
           {/* Character count */}
           <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between">
             <span className="text-[10px] text-slate-400">
-              {thinking.length.toLocaleString()} {t('thinking.characters', 'characters')}
+              {thinking.length.toLocaleString()}{" "}
+              {t("thinking.characters", "characters")}
             </span>
             <button
               onClick={handleToggle}
               className="text-[10px] text-slate-500 hover:text-slate-700 transition-colors"
             >
-              {t('thinking.collapse', 'Collapse')}
+              {t("thinking.collapse", "Collapse")}
             </button>
           </div>
         </div>
@@ -127,9 +136,10 @@ export const ThinkingStream = memo(function ThinkingStream({
   const previewLength = 80;
 
   // Get last few characters for streaming effect
-  const displayText = thinking.length > previewLength
-    ? '...' + thinking.slice(-previewLength)
-    : thinking;
+  const displayText =
+    thinking.length > previewLength
+      ? "..." + thinking.slice(-previewLength)
+      : thinking;
 
   return (
     <div className="px-3 py-2 bg-slate-50/80 rounded-lg border border-slate-200">
@@ -153,7 +163,8 @@ export const ThinkingStream = memo(function ThinkingStream({
         </div>
 
         <span className="text-xs font-medium text-indigo-600">
-          {agentName || t('thinking.narrator', 'Narrator')} {t('thinking.isThinking', 'is thinking...')}
+          {agentName || t("thinking.narrator", "Narrator")}{" "}
+          {t("thinking.isThinking", "is thinking...")}
         </span>
       </div>
 

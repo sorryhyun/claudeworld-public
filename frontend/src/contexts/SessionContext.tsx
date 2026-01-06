@@ -7,16 +7,16 @@ import {
   useRef,
   useMemo,
   ReactNode,
-} from 'react';
-import * as gameService from '../services/gameService';
-import { api } from '../services';
+} from "react";
+import * as gameService from "../services/gameService";
+import { api } from "../services";
 import type {
   World,
   Location,
   PlayerState,
   GameMessage,
   GamePhase,
-} from './GameContext';
+} from "./GameContext";
 
 // =============================================================================
 // CONTEXT
@@ -33,7 +33,7 @@ interface SessionContextValue {
   phase: GamePhase;
   loading: boolean;
   actionInProgress: boolean;
-  isClauding: boolean;  // True when agents are actively processing (Action_Manager, sub-agents, or chat mode NPCs)
+  isClauding: boolean; // True when agents are actively processing (Action_Manager, sub-agents, or chat mode NPCs)
   isChatMode: boolean;
 
   // Session management
@@ -41,7 +41,11 @@ interface SessionContextValue {
   clearWorld: () => void;
 
   // Player actions
-  submitAction: (actionText: string, imageData?: string, imageMediaType?: string) => Promise<void>;
+  submitAction: (
+    actionText: string,
+    imageData?: string,
+    imageMediaType?: string,
+  ) => Promise<void>;
   sendOnboardingMessage: (message: string) => Promise<void>;
   selectSuggestion: (index: number) => Promise<void>;
 
@@ -63,10 +67,13 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 
 interface SessionProviderProps {
   children: ReactNode;
-  mode: 'chat' | 'onboarding' | 'game';
+  mode: "chat" | "onboarding" | "game";
 }
 
-export function SessionProvider({ children, mode: _mode }: SessionProviderProps) {
+export function SessionProvider({
+  children,
+  mode: _mode,
+}: SessionProviderProps) {
   // Session state
   const [world, setWorld] = useState<World | null>(null);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
@@ -79,7 +86,9 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
   const [loading, setLoading] = useState(false);
   const [actionInProgress, setActionInProgress] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
-  const [chattingPollInterval, setChattingPollInterval] = useState<number | null>(null);
+  const [chattingPollInterval, setChattingPollInterval] = useState<
+    number | null
+  >(null);
   const [lastMessageId, setLastMessageId] = useState<number | null>(null);
   const [isChatMode, setIsChatMode] = useState(false);
 
@@ -90,29 +99,39 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
 
   // Derived phase
   const phase: GamePhase = loading
-    ? 'loading'
+    ? "loading"
     : !world
-    ? 'no_world'
-    : world.phase === 'onboarding'
-    ? 'onboarding'
-    : 'active';
+      ? "no_world"
+      : world.phase === "onboarding"
+        ? "onboarding"
+        : "active";
 
   // Derived isClauding - true when agents are actively generating responses
   // Blocks user input/suggestions while Claude is working
   const isClauding = useMemo(() => {
     if (actionInProgress) return true;
-    if (phase !== 'active') return false;
+    if (phase !== "active") return false;
 
-    const chattingAgents = messages.filter(m => m.is_chatting);
+    const chattingAgents = messages.filter((m) => m.is_chatting);
     if (chattingAgents.length === 0) return false;
 
     // In chat mode, any chatting agent blocks input
     if (isChatMode) return true;
 
+    // Chat_Summarizer should block input while summarizing the conversation
+    const chatSummarizer = chattingAgents.find(
+      (m) => m.agent_name === "Chat_Summarizer",
+    );
+    if (chatSummarizer) {
+      return true;
+    }
+
     // In normal gameplay, only block if Action_Manager is chatting AND hasn't produced narration yet
     // Once narration tool is used, has_narrated will be true (sent from backend)
     // Sub-agents (negative IDs) should NOT block - they run after narration
-    const actionManager = chattingAgents.find(m => m.agent_name === 'Action_Manager');
+    const actionManager = chattingAgents.find(
+      (m) => m.agent_name === "Action_Manager",
+    );
     if (actionManager) {
       // Block only if Action_Manager hasn't produced narration yet
       return !actionManager.has_narrated;
@@ -136,7 +155,7 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
     setLocations(locs);
 
     // Find current location
-    const current = locs.find(l => l.is_current) || null;
+    const current = locs.find((l) => l.is_current) || null;
     setCurrentLocation(current);
 
     // Load messages via poll endpoint
@@ -159,17 +178,20 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
     setSuggestions(suggs);
   }, []);
 
-  const loadWorld = useCallback(async (worldId: number): Promise<World> => {
-    setLoading(true);
-    try {
-      const worldData = await gameService.getWorld(worldId);
-      setWorld(worldData);
-      await loadWorldData(worldId);
-      return worldData;
-    } finally {
-      setLoading(false);
-    }
-  }, [loadWorldData]);
+  const loadWorld = useCallback(
+    async (worldId: number): Promise<World> => {
+      setLoading(true);
+      try {
+        const worldData = await gameService.getWorld(worldId);
+        setWorld(worldData);
+        await loadWorldData(worldId);
+        return worldData;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadWorldData],
+  );
 
   const clearWorld = useCallback(() => {
     setWorld(null);
@@ -186,123 +208,148 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
   // PLAYER ACTIONS
   // ==========================================================================
 
-  const submitAction = useCallback(async (actionText: string, imageData?: string, imageMediaType?: string): Promise<void> => {
-    if (!world || actionInProgress) return;
+  const submitAction = useCallback(
+    async (
+      actionText: string,
+      imageData?: string,
+      imageMediaType?: string,
+    ): Promise<void> => {
+      if (!world || actionInProgress) return;
 
-    setActionInProgress(true);
-    // Store current suggestions to suppress - polling won't restore these same suggestions
-    suppressedSuggestionsRef.current = [...suggestions];
-    setSuggestions([]); // Clear suggestions for new turn
+      setActionInProgress(true);
+      // Store current suggestions to suppress - polling won't restore these same suggestions
+      suppressedSuggestionsRef.current = [...suggestions];
+      setSuggestions([]); // Clear suggestions for new turn
 
-    // Optimistically add user message
-    const tempMessage: GameMessage = {
-      id: -Date.now(),
-      content: actionText,
-      role: 'user',
-      agent_id: null,
-      agent_name: null,
-      thinking: null,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, tempMessage]);
+      // Optimistically add user message
+      const tempMessage: GameMessage = {
+        id: -Date.now(),
+        content: actionText,
+        role: "user",
+        agent_id: null,
+        agent_name: null,
+        thinking: null,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, tempMessage]);
 
-    try {
-      await gameService.submitAction(world.id, actionText, imageData, imageMediaType);
-    } catch (error) {
-      setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
-      throw error;
-    } finally {
-      setActionInProgress(false);
-    }
-  }, [world, actionInProgress, suggestions]);
+      try {
+        await gameService.submitAction(
+          world.id,
+          actionText,
+          imageData,
+          imageMediaType,
+        );
+      } catch (error) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
+        throw error;
+      } finally {
+        setActionInProgress(false);
+      }
+    },
+    [world, actionInProgress, suggestions],
+  );
 
-  const sendOnboardingMessage = useCallback(async (message: string): Promise<void> => {
-    if (!world || !world.onboarding_room_id || actionInProgress) return;
+  const sendOnboardingMessage = useCallback(
+    async (message: string): Promise<void> => {
+      if (!world || !world.onboarding_room_id || actionInProgress) return;
 
-    setActionInProgress(true);
+      setActionInProgress(true);
 
-    const tempMessage: GameMessage = {
-      id: -Date.now(),
-      content: message,
-      role: 'user',
-      agent_id: null,
-      agent_name: null,
-      thinking: null,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, tempMessage]);
-
-    try {
-      await api.sendMessage(world.onboarding_room_id, {
+      const tempMessage: GameMessage = {
+        id: -Date.now(),
         content: message,
-        role: 'user',
-        participant_type: 'user',
-        participant_name: world.user_name || 'Player',
-      });
-    } catch (error) {
-      setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
-      throw error;
-    } finally {
-      setActionInProgress(false);
-    }
-  }, [world, actionInProgress]);
+        role: "user",
+        agent_id: null,
+        agent_name: null,
+        thinking: null,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, tempMessage]);
 
-  const selectSuggestion = useCallback(async (index: number): Promise<void> => {
-    if (index >= 0 && index < suggestions.length) {
-      await submitAction(suggestions[index]);
-    }
-  }, [suggestions, submitAction]);
+      try {
+        await api.sendMessage(world.onboarding_room_id, {
+          content: message,
+          role: "user",
+          participant_type: "user",
+          participant_name: world.user_name || "Player",
+        });
+      } catch (error) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
+        throw error;
+      } finally {
+        setActionInProgress(false);
+      }
+    },
+    [world, actionInProgress],
+  );
+
+  const selectSuggestion = useCallback(
+    async (index: number): Promise<void> => {
+      if (index >= 0 && index < suggestions.length) {
+        await submitAction(suggestions[index]);
+      }
+    },
+    [suggestions, submitAction],
+  );
 
   // ==========================================================================
   // LOCATION MANAGEMENT
   // ==========================================================================
 
-  const travelTo = useCallback(async (locationId: number): Promise<void> => {
-    if (!world) return;
+  const travelTo = useCallback(
+    async (locationId: number): Promise<void> => {
+      if (!world) return;
 
-    setActionInProgress(true);
-    try {
-      await gameService.travelToLocation(world.id, locationId);
+      setActionInProgress(true);
+      try {
+        await gameService.travelToLocation(world.id, locationId);
 
-      const updatedLocs = await gameService.getLocations(world.id);
-      setLocations(updatedLocs);
+        const updatedLocs = await gameService.getLocations(world.id);
+        setLocations(updatedLocs);
 
-      const newCurrent = updatedLocs.find(l => l.id === locationId) || null;
-      setCurrentLocation(newCurrent);
+        const newCurrent = updatedLocs.find((l) => l.id === locationId) || null;
+        setCurrentLocation(newCurrent);
 
-      if (newCurrent) {
-        const msgs = await gameService.getLocationMessages(world.id, newCurrent.id);
-        setMessages(msgs);
-        setLastMessageId(msgs.length > 0 ? msgs[msgs.length - 1].id : null);
+        if (newCurrent) {
+          const msgs = await gameService.getLocationMessages(
+            world.id,
+            newCurrent.id,
+          );
+          setMessages(msgs);
+          setLastMessageId(msgs.length > 0 ? msgs[msgs.length - 1].id : null);
+        }
+      } finally {
+        setActionInProgress(false);
       }
-    } finally {
-      setActionInProgress(false);
-    }
-  }, [world]);
+    },
+    [world],
+  );
 
-  const updateLocationLabel = useCallback(async (
-    locationId: number,
-    label: string
-  ): Promise<void> => {
-    if (!world) return;
+  const updateLocationLabel = useCallback(
+    async (locationId: number, label: string): Promise<void> => {
+      if (!world) return;
 
-    await gameService.updateLocationLabel(world.id, locationId, label);
+      await gameService.updateLocationLabel(world.id, locationId, label);
 
-    setLocations(prev =>
-      prev.map(loc => loc.id === locationId ? { ...loc, label } : loc)
-    );
+      setLocations((prev) =>
+        prev.map((loc) => (loc.id === locationId ? { ...loc, label } : loc)),
+      );
 
-    if (currentLocation?.id === locationId) {
-      setCurrentLocation(prev => prev ? { ...prev, label } : null);
-    }
-  }, [world, currentLocation]);
+      if (currentLocation?.id === locationId) {
+        setCurrentLocation((prev) => (prev ? { ...prev, label } : null));
+      }
+    },
+    [world, currentLocation],
+  );
 
-  const viewLocationHistory = useCallback(async (
-    locationId: number
-  ): Promise<GameMessage[]> => {
-    if (!world) return [];
-    return gameService.getLocationMessages(world.id, locationId);
-  }, [world]);
+  const viewLocationHistory = useCallback(
+    async (locationId: number): Promise<GameMessage[]> => {
+      if (!world) return [];
+      return gameService.getLocationMessages(world.id, locationId);
+    },
+    [world],
+  );
 
   // ==========================================================================
   // POLLING
@@ -314,14 +361,23 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
     try {
       // Use world.phase directly instead of mode prop to ensure polling
       // immediately switches to the correct room when phase transitions
-      const pollOnboarding = world.phase === 'onboarding';
-      const updates = await gameService.pollUpdates(world.id, lastMessageId, pollOnboarding);
+      const pollOnboarding = world.phase === "onboarding";
+      const updates = await gameService.pollUpdates(
+        world.id,
+        lastMessageId,
+        pollOnboarding,
+      );
 
       if (updates.messages.length > 0) {
-        setMessages(prev => {
-          const filtered = prev.filter(m => m.id > 0 || !updates.messages.some(
-            (nm: GameMessage) => nm.content === m.content && nm.role === m.role
-          ));
+        setMessages((prev) => {
+          const filtered = prev.filter(
+            (m) =>
+              m.id > 0 ||
+              !updates.messages.some(
+                (nm: GameMessage) =>
+                  nm.content === m.content && nm.role === m.role,
+              ),
+          );
           return [...filtered, ...updates.messages];
         });
         setLastMessageId(updates.messages[updates.messages.length - 1].id);
@@ -338,17 +394,21 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
             const inventoryData = await gameService.getInventory(world.id);
             newInventory = inventoryData.items;
           } catch (error) {
-            console.error('Failed to fetch inventory:', error);
+            console.error("Failed to fetch inventory:", error);
           }
         }
 
-        setPlayerState(prev => prev ? {
-          ...prev,
-          stats: stateUpdate.stats,
-          turn_count: stateUpdate.turn_count,
-          inventory: newInventory,
-          game_time: stateUpdate.game_time ?? prev.game_time,
-        } : null);
+        setPlayerState((prev) =>
+          prev
+            ? {
+                ...prev,
+                stats: stateUpdate.stats,
+                turn_count: stateUpdate.turn_count,
+                inventory: newInventory,
+                game_time: stateUpdate.game_time ?? prev.game_time,
+              }
+            : null,
+        );
 
         // Update chat mode state - detect transition from chat mode to game mode
         const wasChatMode = isChatMode;
@@ -365,13 +425,25 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
           // Suggestions will be fetched in the next poll cycle
         }
 
-        if (stateUpdate.phase !== world.phase) {
-          setWorld(prev => prev ? { ...prev, phase: stateUpdate.phase } : null);
+        // Update phase and pending_phase
+        if (
+          stateUpdate.phase !== world.phase ||
+          stateUpdate.pending_phase !== world.pending_phase
+        ) {
+          setWorld((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  phase: stateUpdate.phase,
+                  pending_phase: stateUpdate.pending_phase ?? null,
+                }
+              : null,
+          );
 
-          if (stateUpdate.phase === 'active' && world.phase === 'onboarding') {
+          if (stateUpdate.phase === "active" && world.phase === "onboarding") {
             const locs = await gameService.getLocations(world.id);
             setLocations(locs);
-            const current = locs.find(l => l.is_current) || null;
+            const current = locs.find((l) => l.is_current) || null;
             setCurrentLocation(current);
           }
         }
@@ -380,11 +452,16 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
       // Sync current location from backend polling response
       // This ensures UI stays in sync even if travelTo had timing issues
       const polledLocation = updates.location;
-      if (polledLocation && polledLocation.id && currentLocation?.id !== polledLocation.id) {
+      if (
+        polledLocation &&
+        polledLocation.id &&
+        currentLocation?.id !== polledLocation.id
+      ) {
         // Location changed - fetch fresh locations to get full location object
         const freshLocs = await gameService.getLocations(world.id);
         setLocations(freshLocs);
-        const newCurrent = freshLocs.find(l => l.id === polledLocation.id) || null;
+        const newCurrent =
+          freshLocs.find((l) => l.id === polledLocation.id) || null;
         setCurrentLocation(newCurrent);
       }
 
@@ -393,7 +470,8 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
       // old suggestions after user submitted an action
       if (updates.suggestions) {
         const suppressed = suppressedSuggestionsRef.current;
-        const areSameSuggestions = suppressed !== null &&
+        const areSameSuggestions =
+          suppressed !== null &&
           suppressed.length === updates.suggestions.length &&
           suppressed.every((s, i) => s === updates.suggestions[i]);
 
@@ -405,7 +483,7 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
         // If same as suppressed, don't restore them
       }
     } catch (error) {
-      console.error('Polling error:', error);
+      console.error("Polling error:", error);
     }
   }, [world, lastMessageId, playerState, isChatMode, currentLocation]);
 
@@ -415,43 +493,48 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
     try {
       // Use world.phase directly instead of mode prop to ensure polling
       // immediately switches to the correct room when phase transitions
-      const pollOnboarding = world.phase === 'onboarding';
-      const chattingAgents = await gameService.getChattingAgents(world.id, pollOnboarding);
+      const pollOnboarding = world.phase === "onboarding";
+      const chattingAgents = await gameService.getChattingAgents(
+        world.id,
+        pollOnboarding,
+      );
 
-      setMessages(prev => {
-        const prevChatting = prev.filter(m => m.is_chatting);
+      setMessages((prev) => {
+        const prevChatting = prev.filter((m) => m.is_chatting);
 
         if (chattingAgents.length === 0 && prevChatting.length === 0) {
           return prev;
         }
 
-        const withoutChatting = prev.filter(m => !m.is_chatting);
+        const withoutChatting = prev.filter((m) => !m.is_chatting);
 
-        const chattingMessages: GameMessage[] = chattingAgents.map(agent => {
+        const chattingMessages: GameMessage[] = chattingAgents.map((agent) => {
           // For Action_Manager, don't show raw response_text - it contains tool discussions
           // The actual narration is created via the narration tool as a separate message
-          const isActionManager = agent.name === 'Action_Manager';
+          const isActionManager = agent.name === "Action_Manager";
           return {
             id: -agent.id,
-            content: isActionManager ? '' : (agent.response_text || ''),
-            role: 'assistant' as const,
+            content: isActionManager ? "" : agent.response_text || "",
+            role: "assistant" as const,
             agent_id: agent.id,
             agent_name: agent.name,
             thinking: agent.thinking_text || null,
             timestamp: new Date().toISOString(),
             is_chatting: true,
-            has_narrated: agent.has_narrated,  // Track if Action_Manager has produced narration
+            has_narrated: agent.has_narrated, // Track if Action_Manager has produced narration
           };
         });
 
-        const hasSameState = chattingMessages.length === prevChatting.length &&
-          chattingMessages.every(msg =>
-            prevChatting.some(prev =>
-              prev.agent_id === msg.agent_id &&
-              prev.thinking === msg.thinking &&
-              prev.content === msg.content &&
-              prev.has_narrated === msg.has_narrated
-            )
+        const hasSameState =
+          chattingMessages.length === prevChatting.length &&
+          chattingMessages.every((msg) =>
+            prevChatting.some(
+              (prev) =>
+                prev.agent_id === msg.agent_id &&
+                prev.thinking === msg.thinking &&
+                prev.content === msg.content &&
+                prev.has_narrated === msg.has_narrated,
+            ),
           );
 
         if (hasSameState) {
@@ -461,7 +544,7 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
         return [...withoutChatting, ...chattingMessages];
       });
     } catch (error) {
-      console.error('Chatting poll error:', error);
+      console.error("Chatting poll error:", error);
     }
   }, [world]);
 
@@ -474,7 +557,12 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
       const interval = window.setInterval(pollChattingAgents, 1500);
       setChattingPollInterval(interval);
     }
-  }, [pollForUpdates, pollChattingAgents, pollingInterval, chattingPollInterval]);
+  }, [
+    pollForUpdates,
+    pollChattingAgents,
+    pollingInterval,
+    chattingPollInterval,
+  ]);
 
   const stopPolling = useCallback(() => {
     if (pollingInterval) {
@@ -528,9 +616,7 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
   };
 
   return (
-    <SessionContext.Provider value={value}>
-      {children}
-    </SessionContext.Provider>
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
 }
 
@@ -541,7 +627,7 @@ export function SessionProvider({ children, mode: _mode }: SessionProviderProps)
 export function useSession(): SessionContextValue {
   const context = useContext(SessionContext);
   if (!context) {
-    throw new Error('useSession must be used within a SessionProvider');
+    throw new Error("useSession must be used within a SessionProvider");
   }
   return context;
 }

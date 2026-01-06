@@ -11,15 +11,17 @@ This document explains the TRPG system architecture, game flow, and agent collab
 ClaudeWorld is a **turn-based text adventure (TRPG)** where AI agents collaborate to create and run interactive worlds:
 
 1. **Onboarding Phase**: Interview → World generation → Character creation
-2. **Gameplay Phase**: User action → Interpretation → Resolution → Narration
+2. **Gameplay Phase**: User action → NPC reactions → Interpretation → Resolution → Narration
 
-The system uses a **1-agent tape architecture** where the Action Manager (hidden) coordinates sub-agents via the SDK Task tool and generates visible output via `narration` and `suggest_options` tools.
+The system uses a **2-cell tape architecture**:
+- **Cell 1**: NPCs at the player's location react concurrently (hidden)
+- **Cell 2**: Action Manager receives reactions, coordinates sub-agents via SDK Task tool, and generates visible output via `narration` and `suggest_options` tools
 
 ---
 
 ## TRPG System Agents
 
-Six specialized agents work together, organized into two groups:
+Seven specialized agents work together, organized into two groups:
 
 ### System Agents (`agents/group_gameplay/`)
 
@@ -28,6 +30,7 @@ Six specialized agents work together, organized into two groups:
 | **Onboarding_Manager** | Interviews player, generates world seed (stats, location, inventory) | Triggered by system message |
 | **Action_Manager** | Interprets player actions, coordinates sub-agents, generates narration | In tape (hidden from frontend) |
 | **Chat_Summarizer** | Summarizes chat mode conversations when exiting | Direct invocation on `/end` |
+| **History_Summarizer** | Compresses turn history into consolidated summaries for long-term recall | Invoked periodically during gameplay |
 
 ### Sub-Agents (`agents/group_subagent/`)
 
@@ -41,23 +44,39 @@ Six specialized agents work together, organized into two groups:
 
 ## Game Flow
 
-### The 1-Agent Tape System
+### The 2-Cell Tape System
 
-ClaudeWorld uses a **1-agent tape with Task-based sub-agent invocation**:
+ClaudeWorld uses a **2-cell tape** where NPCs react to player actions before the Action Manager processes them:
 
 ```
-User Action → Action_Manager (hidden)
-                    │
-                    ├── change_stat()             → Direct stat/inventory changes
-                    ├── Task(item_designer)       → Item_Designer → persist_item
-                    ├── Task(character_designer)  → Character_Designer → persist_character_design
-                    ├── Task(location_designer)   → Location_Designer → persist_location_design
-                    ├── narration()               → Creates visible narrative message
-                    └── suggest_options()         → Creates clickable action buttons
+User Action
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Cell 1: NPC Reactions (concurrent, hidden)                 │
+│  ─────────────────────────────────────────                  │
+│  All NPCs at current location react in parallel.            │
+│  Reactions are collected (not saved to DB) and passed       │
+│  to the next cell.                                          │
+└─────────────────────────────────────────────────────────────┘
+     │ collected reactions
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Cell 2: Action_Manager (hidden)                            │
+│  ────────────────────────────────                           │
+│  Receives NPC reactions in context, then:                   │
+│    ├── change_stat()             → Direct stat changes      │
+│    ├── Task(item_designer)       → Create items             │
+│    ├── Task(character_designer)  → Create NPCs              │
+│    ├── Task(location_designer)   → Create locations         │
+│    ├── narration()               → Visible narrative        │
+│    └── suggest_options()         → Clickable actions        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **Key Architecture:**
-- **Tape agents**: Only Action_Manager is in the tape (hidden from frontend)
+- **Cell 1**: NPC reaction cell—runs all NPCs at the player's location concurrently, collects their hidden responses
+- **Cell 2**: Action_Manager—receives NPC reactions in context, interprets actions, and generates visible output
 - **Sub-agents**: Invoked via SDK Task tool with AgentDefinitions
 - **Persist tools**: Sub-agents use persist tools to save results directly (filesystem-first)
 - **Visible output**: Action_Manager creates visible messages via `narration` and `suggest_options` tools
@@ -68,8 +87,8 @@ User Action → Action_Manager (hidden)
 2. **Action saved to database** and turn counter incremented
 3. **TRPG Orchestrator** triggers agent responses in background
 4. **Tape Executor** runs:
-   - Action_Manager interprets action, invokes sub-agents as needed
-   - Action_Manager creates narration and suggests next actions via tools
+   - **Cell 1**: NPCs at current location react concurrently (hidden), reactions collected
+   - **Cell 2**: Action_Manager receives reactions, interprets action, invokes sub-agents, creates narration
 5. **Polling endpoint** delivers responses to frontend
 
 ---
@@ -130,7 +149,7 @@ When a player creates a world, the **Onboarding_Manager** conducts an interview:
 | `Task(location_designer)` | Invoke Location_Designer to create new areas |
 | `narration` | Create visible narrative message to the player |
 | `suggest_options` | Provide 2 clickable action buttons |
-| `travel` | Move player to location (combines narration + suggestions + optional location summary) |
+| `travel` | Move player to location (triggers NPC memory round, saves chat summary, creates narration) |
 | `remove_character` | Archive NPCs (death/departure) |
 | `move_character` | Relocate NPC to different location |
 | `inject_memory` | Add memory to specific NPC's recent_events.md |
@@ -145,6 +164,43 @@ During gameplay, players can enter **Chat Mode** to have free-form conversations
 - End via `/end` command:
   1. Chat_Summarizer generates a 2-4 sentence summary of the conversation
   2. Summary passed to Action Manager for narration and gameplay continuation
+
+### NPC Memory System
+
+NPCs maintain their own memories via the `memorize` and `recall` tools. When the player travels to a new location, a **memory round** is triggered:
+
+```
+Player action: "Go to the forest"
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Cell 1: NPC Reactions (as usual)                           │
+└─────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Cell 2: Action Manager                                     │
+│    └── travel() tool called                                 │
+│          ├── 1. Save chat summary to history.md             │
+│          ├── 2. Trigger Memory Round (parallel)             │
+│          │     └── Each NPC at departing location:          │
+│          │         "Use memorize tool for significant       │
+│          │          events before player leaves"            │
+│          ├── 3. Move player to destination                  │
+│          └── 4. Create arrival narration                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key points:**
+- NPCs only remember events they personally witnessed (stored in `consolidated_memory.md`)
+- Memory round runs in parallel for all NPCs at the departing location
+- NPCs use `memorize` tool to save significant events to their long-term memory
+- On future encounters, NPCs use `recall` tool to retrieve relevant memories
+
+This design ensures:
+- **Realistic knowledge**: NPCs don't know about events at other locations
+- **Persistent relationships**: NPC memories survive across game sessions
+- **Efficient context**: Only relevant memories are loaded on demand via `recall`
 
 ---
 
@@ -162,36 +218,6 @@ Sub-agents are invoked via the SDK Task tool with AgentDefinitions:
 # 4. Persist tool writes to filesystem + syncs to database
 # 5. Task result returned to Action Manager
 ```
-
-### Background Sub-Agent Handling (Fake Tool Executor)
-
-When Action Manager runs sub-agents with `run_in_background: true`, sub-agents may output tool calls as **plain text** instead of actual MCP calls. This happens because the message pump can't keep the SDK control channel open.
-
-The system handles this automatically via a `SubagentStop` hook:
-
-```
-Sub-agent completes → SubagentStop hook fires
-                            ↓
-                    Check output for tool calls
-                            ↓
-            ┌───────────────┴───────────────┐
-            ▼                               ▼
-    XML format detected             JSON format detected
-    <function_calls>...             {"name": "...", ...}
-            ↓                               ↓
-    Parse tool name + params        Infer tool from fields
-            ↓                               ↓
-            └───────────────┬───────────────┘
-                            ▼
-                Execute tool handler directly
-                (persist_character_design, etc.)
-```
-
-**Supported formats:**
-- **XML**: `<function_calls><invoke name="tool_name">...</invoke></function_calls>`
-- **JSON**: Raw parameter objects (tool inferred from field signatures)
-
-See `backend/sdk/tools/fake_tool_executor.py` for implementation details.
 
 ### Item Designer
 
@@ -272,18 +298,25 @@ worlds/
   {world_name}/
     ├── world.yaml              # Config (genre, theme, phase, owner_id)
     ├── stats.yaml              # Stat system definitions
-    ├── lore.md                 # World background
+    ├── lore.md                 # World background (8-15 paragraphs)
     ├── player.yaml             # Player state (stats, inventory, location)
+    ├── history.md              # Compressed turn history summaries
+    ├── _state.json             # Current runtime state (stats, inventory, effects)
+    ├── _initial.json           # Initial state snapshot (for world reset)
     ├── locations/
-    │   ├── _index.yaml         # Location registry
+    │   ├── _index.yaml         # Location registry with positions
     │   └── {location_name}/
-    │       ├── description.md
+    │       ├── description.md  # Rich 2-3 paragraph description
     │       └── events.md       # Location-specific events
     ├── agents/                 # NPCs created during gameplay
     │   └── {npc_name}/
     │       ├── in_a_nutshell.md
-    │       └── characteristics.md
-    └── items/                  # Item definitions
+    │       ├── characteristics.md
+    │       ├── recent_events.md       # Short-term context (auto-updated)
+    │       └── consolidated_memory.md # Long-term memories (via memorize tool)
+    ├── items/                  # Item definitions (YAML files)
+    │   └── {item_id}.yaml      # Item template with properties
+    └── maps/                   # Optional map assets
 ```
 
 ### Database Models
@@ -319,18 +352,23 @@ The system prompt (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders to
    ↓
 2. POST /api/worlds/123/action {"text": "I attack the goblin..."}
    ↓
-3. TRPG Orchestrator creates tape: [Action Manager (hidden)]
+3. TRPG Orchestrator creates tape:
+   - Cell 1: [Goblin, Guard] (concurrent, hidden, reaction)
+   - Cell 2: [Action Manager] (hidden)
    ↓
-4. Action Manager:
+4. Cell 1 - NPC Reactions:
+   - Goblin reacts: "Snarls and raises its club defensively"
+   - Guard reacts: "Watches cautiously, hand on sword"
+   - Reactions collected (not saved to DB)
+   ↓
+5. Cell 2 - Action Manager (receives NPC reactions):
    - Interprets: Combat action against goblin
-   - Calls change_stat directly
-     - -15 HP for goblin, -2 stamina for player persisted
-   - Calls narration("Your sword flashes...")
-     - Creates visible narrative message
+   - Uses goblin's reaction to inform combat resolution
+   - Calls change_stat: -15 HP for goblin, -2 stamina for player
+   - Calls narration("Your sword flashes... The goblin snarls...")
    - Calls suggest_options(["Loot the goblin", "Continue exploring"])
-     - Creates clickable action buttons
    ↓
-5. Frontend polls /api/worlds/123/poll
+6. Frontend polls /api/worlds/123/poll
    - Receives narration message (visible)
    - Displays updated stats
    - Shows suggested actions as buttons

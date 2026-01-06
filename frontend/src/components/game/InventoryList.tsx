@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { InventoryItem, PropertyValue } from '../../contexts/GameContext';
+import { useState } from "react";
+import { InventoryItem, PropertyValue } from "../../contexts/GameContext";
 
 interface InventoryListProps {
   items: InventoryItem[];
@@ -8,15 +8,18 @@ interface InventoryListProps {
 // Type guard to check if a property value is normalized (has value/higher_is_better)
 function isNormalizedProperty(prop: unknown): prop is PropertyValue {
   return (
-    typeof prop === 'object' &&
+    typeof prop === "object" &&
     prop !== null &&
-    'value' in prop &&
-    'higher_is_better' in prop
+    "value" in prop &&
+    "higher_is_better" in prop
   );
 }
 
 // Extract display value and higher_is_better from a property
-function extractPropertyInfo(prop: unknown): { value: unknown; higherIsBetter: boolean } {
+function extractPropertyInfo(prop: unknown): {
+  value: unknown;
+  higherIsBetter: boolean;
+} {
   if (isNormalizedProperty(prop)) {
     return { value: prop.value, higherIsBetter: prop.higher_is_better };
   }
@@ -30,11 +33,23 @@ export function InventoryList({ items }: InventoryListProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-6">
-        <svg className="w-10 h-10 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        <svg
+          className="w-10 h-10 mx-auto mb-2 text-slate-300"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+          />
         </svg>
         <p className="text-sm text-slate-500">Inventory is empty</p>
-        <p className="text-xs text-slate-400 mt-1">Items you collect will appear here</p>
+        <p className="text-xs text-slate-400 mt-1">
+          Items you collect will appear here
+        </p>
       </div>
     );
   }
@@ -47,7 +62,9 @@ export function InventoryList({ items }: InventoryListProps) {
           className="bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-all overflow-hidden"
         >
           <button
-            onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+            onClick={() =>
+              setExpandedId(expandedId === item.id ? null : item.id)
+            }
             className="w-full p-3 text-left"
           >
             <div className="flex items-start justify-between gap-2">
@@ -62,7 +79,7 @@ export function InventoryList({ items }: InventoryListProps) {
                     </span>
                   )}
                 </div>
-                {item.description && !expandedId && (
+                {item.description && expandedId !== item.id && (
                   <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                     {item.description}
                   </p>
@@ -70,13 +87,18 @@ export function InventoryList({ items }: InventoryListProps) {
               </div>
               <svg
                 className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${
-                  expandedId === item.id ? 'rotate-180' : ''
+                  expandedId === item.id ? "rotate-180" : ""
                 }`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </div>
           </button>
@@ -91,19 +113,33 @@ export function InventoryList({ items }: InventoryListProps) {
               )}
               {item.properties && Object.keys(item.properties).length > 0 && (
                 <div className="mt-2 space-y-1">
-                  <p className="text-xs font-medium text-slate-500">Properties:</p>
+                  <p className="text-xs font-medium text-slate-500">
+                    Properties:
+                  </p>
                   {Object.entries(item.properties).map(([key, rawValue]) => {
-                    const { value, higherIsBetter } = extractPropertyInfo(rawValue);
+                    const { value, higherIsBetter } =
+                      extractPropertyInfo(rawValue);
+                    const isNumeric = typeof value === "number";
                     return (
                       <div key={key} className="flex justify-between text-xs">
-                        <span className="text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
-                        <span className={`font-medium flex items-center gap-0.5 ${
-                          higherIsBetter ? 'text-emerald-600' : 'text-amber-600'
-                        }`}>
+                        <span className="text-slate-500 capitalize">
+                          {key.replace(/_/g, " ")}
+                        </span>
+                        <span
+                          className={`font-medium flex items-center gap-0.5 ${
+                            isNumeric
+                              ? higherIsBetter
+                                ? "text-emerald-600"
+                                : "text-amber-600"
+                              : "text-slate-700"
+                          }`}
+                        >
                           {String(value)}
-                          <span className="text-[10px] opacity-70">
-                            {higherIsBetter ? '↑' : '↓'}
-                          </span>
+                          {isNumeric && (
+                            <span className="text-[10px] opacity-70">
+                              {higherIsBetter ? "↑" : "↓"}
+                            </span>
+                          )}
                         </span>
                       </div>
                     );
@@ -118,7 +154,8 @@ export function InventoryList({ items }: InventoryListProps) {
       {/* Item count */}
       <div className="text-center pt-2">
         <p className="text-xs text-slate-400">
-          {items.length} item{items.length !== 1 ? 's' : ''} ({items.reduce((sum, i) => sum + i.quantity, 0)} total)
+          {items.length} item{items.length !== 1 ? "s" : ""} (
+          {items.reduce((sum, i) => sum + i.quantity, 0)} total)
         </p>
       </div>
     </div>

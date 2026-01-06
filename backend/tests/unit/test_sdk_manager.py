@@ -15,6 +15,7 @@ from domain.entities.agent_config import AgentConfigData
 from domain.value_objects.contexts import AgentResponseContext
 from domain.value_objects.task_identifier import TaskIdentifier
 from sdk import AgentManager, ClientPool
+from sdk.agent.options_builder import build_agent_options
 
 
 @dataclass
@@ -141,15 +142,13 @@ class TestInterruptRoom:
 
 
 class TestBuildAgentOptions:
-    """Tests for _build_agent_options method."""
+    """Tests for build_agent_options function."""
 
     def test_build_agent_options_basic(self):
         """Test building basic agent options."""
-        manager = AgentManager()
-
         config = AgentConfigData(in_a_nutshell="Test agent", characteristics="Friendly", recent_events="Recent event")
 
-        context = Mock(agent_name="TestAgent", config=config, session_id=None)
+        context = Mock(agent_name="TestAgent", config=config, session_id=None, output_format=None)
 
         # Mock the MCP registry
         mock_registry = Mock()
@@ -159,24 +158,24 @@ class TestBuildAgentOptions:
         mock_mcp_config.config_hash = "test_hash"
         mock_registry.build_mcp_config.return_value = mock_mcp_config
 
-        with patch("sdk.agent.agent_manager.get_mcp_registry", return_value=mock_registry):
-            options, config_hash = manager._build_agent_options(context, "System prompt")
+        with patch("sdk.agent.options_builder.get_mcp_registry", return_value=mock_registry):
+            with patch("sdk.agent.options_builder.build_subagent_definitions_for_agent", return_value=None):
+                options, config_hash = build_agent_options(context, "System prompt")
 
-            # Verify options were created correctly
-            assert options.system_prompt == "System prompt"
-            # Model is hardcoded to opus in options_builder.py (or sonnet if USE_SONNET)
-            assert "claude" in options.model
-            assert options.max_thinking_tokens == 32768
-            assert "guidelines" in options.mcp_servers
-            assert "action" in options.mcp_servers
-            assert config_hash == "test_hash"
+                # Verify options were created correctly
+                assert options.system_prompt == "System prompt"
+                # Model is hardcoded to opus in options_builder.py (or sonnet if USE_SONNET)
+                assert options.model is not None and "claude" in options.model
+                assert options.max_thinking_tokens == 32768
+                assert isinstance(options.mcp_servers, dict)
+                assert "guidelines" in options.mcp_servers
+                assert "action" in options.mcp_servers
+                assert config_hash == "test_hash"
 
     def test_build_agent_options_with_session(self):
         """Test building options with session ID."""
-        manager = AgentManager()
-
         config = AgentConfigData(in_a_nutshell="Test")
-        context = Mock(agent_name="TestAgent", config=config, session_id="test_session_123")
+        context = Mock(agent_name="TestAgent", config=config, session_id="test_session_123", output_format=None)
 
         # Mock the MCP registry
         mock_registry = Mock()
@@ -186,11 +185,12 @@ class TestBuildAgentOptions:
         mock_mcp_config.config_hash = "test_hash"
         mock_registry.build_mcp_config.return_value = mock_mcp_config
 
-        with patch("sdk.agent.agent_manager.get_mcp_registry", return_value=mock_registry):
-            options, config_hash = manager._build_agent_options(context, "System prompt")
+        with patch("sdk.agent.options_builder.get_mcp_registry", return_value=mock_registry):
+            with patch("sdk.agent.options_builder.build_subagent_definitions_for_agent", return_value=None):
+                options, config_hash = build_agent_options(context, "System prompt")
 
-            # Should include resume session
-            assert options.resume == "test_session_123"
+                # Should include resume session
+                assert options.resume == "test_session_123"
 
 
 class TestGenerateSDKResponse:

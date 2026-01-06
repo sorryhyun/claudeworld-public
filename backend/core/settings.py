@@ -33,28 +33,6 @@ DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."
 # Skip message text (displayed when agent chooses not to respond)
 SKIP_MESSAGE_TEXT = "(무시함)"
 
-# Claude Agent SDK Tool Configuration
-# These are the built-in tools provided by Claude Agent SDK that we want to disallow
-# to ensure agents stay in character and use only their character-specific tools
-# BUILTIN_TOOLS = [
-#     "Task",
-#     "Bash",
-#     "Glob",
-#     "Grep",
-#     "ExitPlanMode",
-#     "Read",
-#     "Edit",
-#     "Write",
-#     "NotebookEdit",
-#     "WebFetch",
-#     "TodoWrite",
-#     "WebSearch",
-#     "BashOutput",
-#     "KillShell",
-#     "Skill",
-#     "SlashCommand",
-#     "ListMcpResources",
-# ]
 
 # Character-specific MCP tool names organized by group
 # These are the tools available to each agent for character-based interactions
@@ -116,6 +94,10 @@ class Settings(BaseSettings):
     # Background scheduler configuration
     max_concurrent_rooms: int = 5
 
+    # CLI tracing configuration (for patched CLI with observability patches)
+    enable_cli_tracing: bool = False
+    cli_trace_output: Optional[str] = None  # Path to trace output file
+
     @field_validator("enable_guest_login", mode="before")
     @classmethod
     def validate_enable_guest_login(cls, v: Optional[str]) -> bool:
@@ -140,6 +122,16 @@ class Settings(BaseSettings):
     @classmethod
     def validate_debug_agents(cls, v: Optional[str]) -> bool:
         """Parse debug_agents from string to bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return False
+
+    @field_validator("enable_cli_tracing", mode="before")
+    @classmethod
+    def validate_enable_cli_tracing(cls, v: Optional[str]) -> bool:
+        """Parse enable_cli_tracing from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -274,6 +266,16 @@ class Settings(BaseSettings):
             Path to localization.yaml
         """
         return self.config_dir / "localization.yaml"
+
+    @property
+    def lore_guidelines_config_path(self) -> Path:
+        """
+        Get the path to lore_guidelines.yaml configuration file.
+
+        Returns:
+            Path to lore_guidelines.yaml
+        """
+        return self.config_dir / "lore_guidelines.yaml"
 
     def get_cors_origins(self) -> List[str]:
         """

@@ -13,10 +13,8 @@ Uses WorldFacade for FS↔DB sync operations.
 import logging
 
 import crud
-import models
 import schemas
-from database import async_session_maker, get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     get_agent_manager,
     get_request_identity,
@@ -24,6 +22,8 @@ from dependencies import (
 from domain.services.localization import Localization
 from domain.value_objects.enums import Language, MessageRole, WorldPhase
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from infrastructure.database import models
+from infrastructure.database.connection import async_session_maker, get_db
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
 from services.facades import WorldFacade
@@ -191,8 +191,10 @@ async def import_world(
 @router.get("/{world_id}", response_model=schemas.World)
 async def get_world(
     world_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     identity: RequestIdentity = Depends(get_request_identity),
+    agent_manager: AgentManager = Depends(get_agent_manager),
 ):
     """Get world details including phase, lore, and stat definitions."""
     world = await crud.get_world(db, world_id)
@@ -207,6 +209,50 @@ async def get_world(
     if sync_result.synced:
         # Refresh world object after sync
         world = await crud.get_world(db, world_id)
+
+    # Pre-connect agents for active worlds (reduces first-action latency)
+    if world.phase == WorldPhase.ACTIVE:
+        # Get current location's room_id for pre-connect
+        player_state = await crud.get_player_state(db, world_id)
+        if player_state and player_state.current_location_id:
+            location = await crud.get_location(db, player_state.current_location_id)
+            if location and location.room_id:
+                target_room_id = location.room_id
+                current_location_id = player_state.current_location_id
+
+                async def pre_connect_agents():
+                    async with async_session_maker() as session:
+                        # Pre-connect Action Manager
+                        am_agent = await crud.get_agent_by_name(session, "Action_Manager")
+                        if am_agent:
+                            await agent_manager.pre_connect(
+                                db=session,
+                                room_id=target_room_id,
+                                agent_id=am_agent.id,
+                                agent_name="Action_Manager",
+                                world_name=world.name,
+                                world_id=world.id,
+                                config_file=am_agent.config_file,
+                                group_name=am_agent.group,
+                            )
+
+                        # Pre-connect NPCs at current location (max 5)
+                        npcs = await crud.get_characters_at_location(
+                            session, current_location_id, exclude_system_agents=True
+                        )
+                        for npc in npcs[:5]:
+                            await agent_manager.pre_connect(
+                                db=session,
+                                room_id=target_room_id,
+                                agent_id=npc.id,
+                                agent_name=npc.name,
+                                world_name=world.name,
+                                world_id=world.id,
+                                config_file=npc.config_file,
+                                group_name=npc.group,
+                            )
+
+                background_tasks.add_task(pre_connect_agents)
 
     # Build full response with lore and stat definitions from FS
     return facade.build_world_response(world)
@@ -273,6 +319,254 @@ async def get_world_history(
     return {"history": history}
 
 
+@router.post("/{world_id}/history/compress")
+async def compress_world_history(
+    world_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+    agent_manager: AgentManager = Depends(get_agent_manager),
+):
+    """
+    Compress history.md into consolidated_history.md.
+
+    Groups turns into batches of 3 and uses History_Summarizer agent
+    to create consolidated sections with meaningful subtitles.
+    Clears history.md after compression.
+
+    Returns:
+        - success: bool
+        - turns_compressed: number of turns processed
+        - sections_created: number of consolidated sections created
+        - message: status message
+    """
+    from services.history_compression_service import HistoryCompressionService
+
+    world = await crud.get_world(db, world_id)
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+    if world.owner_id != identity.user_id and identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Not your world")
+
+    try:
+        result = await HistoryCompressionService.compress_history(
+            db=db,
+            world_name=world.name,
+            agent_manager=agent_manager,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to compress history for world '{world.name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to compress history: {str(e)}")
+
+
+async def _perform_world_reset(
+    db: AsyncSession,
+    world: models.World,
+    agent_manager: AgentManager,
+) -> tuple[models.Location, str]:
+    """
+    Perform world reset logic (shared by enter_world and reset_world).
+
+    Returns:
+        Tuple of (starting_location, arrival_content)
+    """
+    import json
+
+    from domain.entities.world_models import PlayerState as FSPlayerState
+
+    # Load initial state from _initial.json
+    initial_state = WorldResetService.load_initial_state(world.name)
+    if not initial_state:
+        raise ValueError("No initial state found for this world")
+
+    starting_location_name = initial_state["starting_location"]
+    initial_stats = initial_state["initial_stats"]
+    initial_inventory = initial_state["initial_inventory"]
+    initial_game_time = initial_state.get("initial_game_time", {"hour": 8, "minute": 0, "day": 1})
+
+    logger.info(f"Resetting world '{world.name}' to initial state")
+
+    # Clean up stale entries from _index.yaml (entries without directories)
+    stale_entries = LocationService.cleanup_stale_entries(world.name)
+    if stale_entries:
+        logger.info(f"Cleaned up {len(stale_entries)} stale entries from _index.yaml: {stale_entries}")
+
+    # Sync database locations with filesystem (delete orphaned locations)
+    from crud.locations import sync_locations_with_filesystem
+
+    deleted_count = await sync_locations_with_filesystem(db, world.id, world.name)
+    if deleted_count > 0:
+        logger.info(f"Cleaned up {deleted_count} orphaned locations during reset")
+
+    # Sync database agents with filesystem (delete stale agents whose config files were removed)
+    stale_agents_count = await crud.sync_agents_with_filesystem(db, world.name)
+    if stale_agents_count > 0:
+        logger.info(f"Cleaned up {stale_agents_count} stale agents during reset")
+
+    # Get all room mappings for this world
+    room_mappings = LocationService.get_all_room_mappings(world.name)
+
+    # Create fresh rooms for each location (clears conversation context completely)
+    for room_key, mapping in room_mappings.items():
+        if room_key.startswith("location:"):
+            old_room_id = mapping.db_room_id
+            location_name = room_key.replace("location:", "")
+
+            if old_room_id:
+                # Cleanup client pool connections for the old room
+                await agent_manager.client_pool.cleanup_room(old_room_id)
+
+            # Get the location from database
+            location = await crud.get_location_by_name(db, world.id, location_name)
+            if location:
+                # Create a fresh room for this location (new conversation context)
+                from crud.locations import create_new_room_for_location
+
+                new_room = await create_new_room_for_location(db, location)
+                new_room_id = new_room.id
+
+                # Update room mapping in _state.json with new room_id
+                # Only keep system agent names (no characters)
+                LocationService.set_room_mapping(
+                    world_name=world.name,
+                    room_key=room_key,
+                    db_room_id=new_room_id,
+                    agents=[],  # Start fresh with no characters (gameplay agents are in DB room)
+                )
+
+                logger.info(f"Created fresh room for {room_key} (old={old_room_id}, new={new_room_id})")
+            else:
+                # Location doesn't exist in DB, just clear the mapping
+                LocationService.delete_room_mapping(world.name, room_key)
+                logger.info(f"Removed stale room mapping {room_key}")
+
+    # Get starting location from database, or create it from filesystem if not found
+    starting_location = await crud.get_location_by_name(db, world.id, starting_location_name)
+    if not starting_location:
+        # Try to create the location from filesystem
+        facade = WorldFacade(db)
+        starting_location = await facade._create_location_from_filesystem(world.name, world.id, starting_location_name)
+        if not starting_location:
+            raise ValueError(f"Starting location '{starting_location_name}' not found in database or filesystem")
+        logger.info(f"Created starting location '{starting_location_name}' from filesystem during reset")
+
+    # Reset player state in database
+    player_state = await crud.get_player_state(db, world.id)
+    if player_state:
+        player_state.turn_count = 0
+        player_state.current_location_id = starting_location.id
+        player_state.stats = json.dumps(initial_stats)
+        player_state.inventory = json.dumps(initial_inventory)
+        player_state.effects = "[]"
+        player_state.action_history = "[]"
+        player_state.is_chat_mode = False
+        player_state.chat_mode_start_message_id = None
+        await db.commit()
+        logger.info("Reset player state in database")
+
+    # Reset player.yaml in filesystem
+    fs_player_state = FSPlayerState(
+        current_location=starting_location_name,
+        turn_count=0,
+        stats=initial_stats,
+        inventory=initial_inventory,
+        effects=[],
+        recent_actions=[],
+        game_time=initial_game_time,
+    )
+    PlayerService.save_player_state(world.name, fs_player_state)
+    logger.info(f"Reset player.yaml in filesystem (game_time: {initial_game_time['hour']}:00)")
+
+    # Reset _state.json to only contain onboarding room and starting location
+    state = LocationService.load_state(world.name)
+    starting_room_key = f"location:{starting_location_name}"
+
+    # Keep only onboarding and starting location rooms
+    preserved_rooms = {}
+    if "onboarding" in state.rooms:
+        preserved_rooms["onboarding"] = state.rooms["onboarding"]
+    if starting_room_key in state.rooms:
+        preserved_rooms[starting_room_key] = state.rooms[starting_room_key]
+
+    state.rooms = preserved_rooms
+    state.suggestions = []
+    state.current_room = starting_room_key
+    # Clear stale arrival context from previous travel
+    if "arrival_context" in state.ui:
+        del state.ui["arrival_context"]
+    LocationService.save_state(world.name, state)
+    logger.info(f"Reset _state.json rooms to: {list(preserved_rooms.keys())}")
+
+    # Reset is_discovered for all locations except starting location
+    all_locations = await crud.get_locations(db, world.id)
+    for loc in all_locations:
+        if loc.id == starting_location.id:
+            # Keep starting location discovered
+            if not loc.is_discovered:
+                loc.is_discovered = True
+        else:
+            # Reset other locations to undiscovered
+            if loc.is_discovered:
+                loc.is_discovered = False
+    await db.commit()
+    logger.info(f"Reset is_discovered for {len(all_locations)} locations (starting location: {starting_location.name})")
+
+    # Clear events.md files in all locations
+    world_path = WorldService.get_world_path(world.name)
+    locations_path = world_path / "locations"
+    if locations_path.exists():
+        for loc_dir in locations_path.iterdir():
+            if loc_dir.is_dir():
+                events_file = loc_dir / "events.md"
+                if events_file.exists():
+                    # Reset to empty (will be regenerated)
+                    with open(events_file, "w", encoding="utf-8") as f:
+                        f.write("")
+        logger.info("Cleared events.md files")
+
+    # Reset history.md to initial state
+    history_file = world_path / "history.md"
+    if history_file.exists():
+        with open(history_file, "w", encoding="utf-8") as f:
+            f.write("# World History\n\n")
+        logger.info("Reset history.md")
+
+    # Clear recent_events.md for all agents in this world
+    agents_path = world_path / "agents"
+    if agents_path.exists():
+        cleared_count = 0
+        for agent_dir in agents_path.iterdir():
+            if agent_dir.is_dir():
+                recent_events_file = agent_dir / "recent_events.md"
+                if recent_events_file.exists():
+                    recent_events_file.unlink()
+                    cleared_count += 1
+        if cleared_count > 0:
+            logger.info(f"Cleared {cleared_count} agent recent_events.md files")
+
+    # Prepare arrival message
+    location_display = starting_location.display_name or starting_location.name
+    default_name = "여행자" if world.language == Language.KOREAN else "The traveler"
+    user_name = world.user_name if world.user_name else default_name
+    arrival_content = Localization.get_arrival_message(user_name, location_display, world.language)
+
+    # Send arrival message to starting location
+    if starting_location.room_id:
+        arrival_msg = schemas.MessageCreate(
+            content=arrival_content,
+            role="user",
+            participant_type="system",
+            participant_name="System",
+        )
+        await crud.create_message(db, starting_location.room_id, arrival_msg, update_room_activity=True)
+        logger.info("Sent arrival message for reset")
+
+    logger.info(f"Successfully reset world '{world.name}'")
+    return starting_location, arrival_content
+
+
 @router.post("/{world_id}/enter")
 async def enter_world(
     world_id: int,
@@ -286,9 +580,8 @@ async def enter_world(
 
     This endpoint:
     1. Syncs phase from filesystem (source of truth)
-    2. Syncs player state from filesystem if needed
-    3. Sends arrival system message if not already sent
-    4. Returns the world data with updated phase
+    2. Resets world to initial state (clears messages, resets player)
+    3. Triggers Action Manager to generate initial scene
     """
     # Check ownership first
     world = await crud.get_world(db, world_id)
@@ -297,7 +590,7 @@ async def enter_world(
     if world.owner_id != identity.user_id and identity.role != "admin":
         raise HTTPException(status_code=403, detail="Not your world")
 
-    # Use facade for sync operations
+    # Use facade for sync operations (ensures world is active)
     facade = WorldFacade(db)
     try:
         entry_result = await facade.enter_world(world_id)
@@ -306,36 +599,56 @@ async def enter_world(
             raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
 
-    # If arrival message was sent and we have a room, trigger initial scene
-    if entry_result.arrival_message_sent and entry_result.room_id:
-        target_room_id = entry_result.room_id
-        # Get arrival content for the scene trigger
-        player_state = await crud.get_player_state(db, world_id)
-        if player_state and player_state.current_location_id:
-            arrival_location = await crud.get_location(db, player_state.current_location_id)
-            if arrival_location:
-                location_name = arrival_location.display_name or arrival_location.name
-                default_name = "여행자" if entry_result.world.language == Language.KOREAN else "The traveler"
-                user_name = entry_result.world.user_name if entry_result.world.user_name else default_name
-                arrival_content = Localization.get_arrival_message(
-                    user_name, location_name, entry_result.world.language
-                )
+    # Refresh world after sync
+    world = await crud.get_world(db, world_id)
 
-                async def trigger_initial_scene():
-                    async with async_session_maker() as session:
-                        trpg_orchestrator = get_trpg_orchestrator()
-                        task_world = await crud.get_world(session, world_id)
-                        if task_world:
-                            await trpg_orchestrator.handle_player_action(
-                                db=session,
-                                room_id=target_room_id,
-                                action_text=arrival_content,
-                                agent_manager=agent_manager,
-                                world=task_world,
-                            )
+    # Perform reset and trigger initial scene
+    try:
+        starting_location, arrival_content = await _perform_world_reset(db, world, agent_manager)
 
-                background_tasks.add_task(trigger_initial_scene)
-                logger.info("Enter: Triggered initial scene generation")
+        # Trigger initial scene generation in background
+        if starting_location.room_id:
+            target_room_id = starting_location.room_id
+
+            # Pre-connect Action Manager for faster first action
+            async def pre_connect_am():
+                async with async_session_maker() as session:
+                    am_agent = await crud.get_agent_by_name(session, "Action_Manager")
+                    if am_agent:
+                        await agent_manager.pre_connect(
+                            db=session,
+                            room_id=target_room_id,
+                            agent_id=am_agent.id,
+                            agent_name="Action_Manager",
+                            world_name=world.name,
+                            world_id=world.id,
+                            config_file=am_agent.config_file,
+                            group_name=am_agent.group,
+                        )
+
+            background_tasks.add_task(pre_connect_am)
+
+            async def trigger_initial_scene():
+                async with async_session_maker() as session:
+                    trpg_orchestrator = get_trpg_orchestrator()
+                    task_world = await crud.get_world(session, world_id)
+                    if task_world:
+                        await trpg_orchestrator.handle_player_action(
+                            db=session,
+                            room_id=target_room_id,
+                            action_text=arrival_content,
+                            agent_manager=agent_manager,
+                            world=task_world,
+                        )
+
+            background_tasks.add_task(trigger_initial_scene)
+            logger.info("Enter: Triggered initial scene generation (with AM pre-connect)")
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to reset world during enter: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to enter world: {str(e)}")
 
     # Build response
     world_schema = schemas.World.model_validate(entry_result.world)
@@ -346,7 +659,7 @@ async def enter_world(
 
     return {
         "world": world_schema,
-        "arrival_message_sent": entry_result.arrival_message_sent,
+        "arrival_message_sent": True,  # Always true now since we always reset
     }
 
 
@@ -383,202 +696,11 @@ async def reset_world(
     if world.phase != WorldPhase.ACTIVE:
         raise HTTPException(status_code=400, detail="Can only reset active worlds")
 
-    # Load initial state from _initial.json
-    initial_state = WorldResetService.load_initial_state(world.name)
-    if not initial_state:
-        raise HTTPException(
-            status_code=400,
-            detail="No initial state found for this world. Only worlds created after this feature can be reset.",
-        )
-
-    starting_location_name = initial_state["starting_location"]
-    initial_stats = initial_state["initial_stats"]
-    initial_inventory = initial_state["initial_inventory"]
-
-    logger.info(f"Resetting world '{world.name}' to initial state")
-
     try:
-        # Clean up stale entries from _index.yaml (entries without directories)
-        stale_entries = LocationService.cleanup_stale_entries(world.name)
-        if stale_entries:
-            logger.info(f"Cleaned up {len(stale_entries)} stale entries from _index.yaml: {stale_entries}")
+        starting_location, arrival_content = await _perform_world_reset(db, world, agent_manager)
 
-        # Sync database locations with filesystem (delete orphaned locations)
-        from crud.locations import sync_locations_with_filesystem
-
-        deleted_count = await sync_locations_with_filesystem(db, world_id, world.name)
-        if deleted_count > 0:
-            logger.info(f"Cleaned up {deleted_count} orphaned locations during reset")
-
-        # Sync database agents with filesystem (delete stale agents whose config files were removed)
-        stale_agents_count = await crud.sync_agents_with_filesystem(db, world.name)
-        if stale_agents_count > 0:
-            logger.info(f"Cleaned up {stale_agents_count} stale agents during reset")
-
-        # Get all room mappings for this world
-        room_mappings = LocationService.get_all_room_mappings(world.name)
-
-        # Clear location room messages and agent sessions
-        for room_key, mapping in room_mappings.items():
-            if room_key.startswith("location:"):
-                room_id = mapping.db_room_id
-                if room_id:
-                    # Clear messages in this room
-                    await crud.delete_room_messages(db, room_id)
-
-                    # Clear agent sessions (forces fresh Claude SDK sessions)
-                    await db.execute(
-                        models.RoomAgentSession.__table__.delete().where(models.RoomAgentSession.room_id == room_id)
-                    )
-
-                    # Cleanup client pool connections
-                    agents = await crud.get_agents(db, room_id)
-                    for agent in agents:
-                        pool_key = f"{room_id}:{agent.id}"
-                        await agent_manager.client_pool.cleanup(pool_key)
-
-                    # Remove non-system characters from the room
-                    # System agents (gameplay, onboarding) stay, but characters added during play are removed
-                    system_groups = {"gameplay", "onboarding"}
-                    characters_to_remove = [a for a in agents if a.group not in system_groups]
-                    for character in characters_to_remove:
-                        await crud.remove_agent_from_room(db, room_id, character.id)
-                        logger.info(f"Removed character '{character.name}' from room {room_key}")
-
-                    # Clear character agents from _state.json room mapping
-                    # Keep only system agent names in the mapping
-                    system_agent_names = [a.name for a in agents if a.group in system_groups]
-                    state = LocationService.load_state(world.name)
-                    if room_key in state.rooms:
-                        state.rooms[room_key].agents = system_agent_names
-                        LocationService.save_state(world.name, state)
-
-                    logger.info(f"Cleared room {room_key} (id={room_id})")
-
-        # Get starting location from database
-        starting_location = await crud.get_location_by_name(db, world_id, starting_location_name)
-        if not starting_location:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Starting location '{starting_location_name}' not found in database",
-            )
-
-        # Reset player state in database
-        player_state = await crud.get_player_state(db, world_id)
-        if player_state:
-            import json
-
-            player_state.turn_count = 0
-            player_state.current_location_id = starting_location.id
-            player_state.stats = json.dumps(initial_stats)
-            player_state.inventory = json.dumps(initial_inventory)
-            player_state.effects = "[]"
-            player_state.action_history = "[]"
-            player_state.is_chat_mode = False
-            player_state.chat_mode_start_message_id = None
-            await db.commit()
-            logger.info("Reset player state in database")
-
-        # Reset player.yaml in filesystem
-        from domain.entities.world_models import PlayerState as FSPlayerState
-
-        fs_player_state = FSPlayerState(
-            current_location=starting_location_name,
-            turn_count=0,
-            stats=initial_stats,
-            inventory=initial_inventory,
-            effects=[],
-            recent_actions=[],
-        )
-        PlayerService.save_player_state(world.name, fs_player_state)
-        logger.info("Reset player.yaml in filesystem")
-
-        # Reset _state.json to only contain onboarding room and starting location
-        state = LocationService.load_state(world.name)
-        starting_room_key = f"location:{starting_location_name}"
-
-        # Keep only onboarding and starting location rooms
-        preserved_rooms = {}
-        if "onboarding" in state.rooms:
-            preserved_rooms["onboarding"] = state.rooms["onboarding"]
-        if starting_room_key in state.rooms:
-            preserved_rooms[starting_room_key] = state.rooms[starting_room_key]
-
-        state.rooms = preserved_rooms
-        state.suggestions = []
-        state.current_room = starting_room_key
-        # Clear stale arrival context from previous travel
-        if "arrival_context" in state.ui:
-            del state.ui["arrival_context"]
-        LocationService.save_state(world.name, state)
-        logger.info(f"Reset _state.json rooms to: {list(preserved_rooms.keys())}")
-
-        # Reset is_discovered for all locations except starting location
-        all_locations = await crud.get_locations(db, world_id)
-        for loc in all_locations:
-            if loc.id == starting_location.id:
-                # Keep starting location discovered
-                if not loc.is_discovered:
-                    loc.is_discovered = True
-            else:
-                # Reset other locations to undiscovered
-                if loc.is_discovered:
-                    loc.is_discovered = False
-        await db.commit()
-        logger.info(
-            f"Reset is_discovered for {len(all_locations)} locations (starting location: {starting_location.name})"
-        )
-
-        # Clear events.md files in all locations
-        world_path = WorldService.get_world_path(world.name)
-        locations_path = world_path / "locations"
-        if locations_path.exists():
-            for loc_dir in locations_path.iterdir():
-                if loc_dir.is_dir():
-                    events_file = loc_dir / "events.md"
-                    if events_file.exists():
-                        # Reset to empty (will be regenerated)
-                        with open(events_file, "w", encoding="utf-8") as f:
-                            f.write("")
-            logger.info("Cleared events.md files")
-
-        # Reset history.md to initial state
-        history_file = world_path / "history.md"
-        if history_file.exists():
-            with open(history_file, "w", encoding="utf-8") as f:
-                f.write("# World History\n\n")
-            logger.info("Reset history.md")
-
-        # Clear recent_events.md for all agents in this world
-        agents_path = world_path / "agents"
-        if agents_path.exists():
-            cleared_count = 0
-            for agent_dir in agents_path.iterdir():
-                if agent_dir.is_dir():
-                    recent_events_file = agent_dir / "recent_events.md"
-                    if recent_events_file.exists():
-                        recent_events_file.unlink()
-                        cleared_count += 1
-            if cleared_count > 0:
-                logger.info(f"Cleared {cleared_count} agent recent_events.md files")
-
-        # Send arrival message to starting location
+        # Trigger initial scene generation in background
         if starting_location.room_id:
-            location_display = starting_location.display_name or starting_location.name
-            default_name = "여행자" if world.language == Language.KOREAN else "The traveler"
-            user_name = world.user_name if world.user_name else default_name
-
-            arrival_content = Localization.get_arrival_message(user_name, location_display, world.language)
-            arrival_msg = schemas.MessageCreate(
-                content=arrival_content,
-                role="user",
-                participant_type="system",
-                participant_name="System",
-            )
-            await crud.create_message(db, starting_location.room_id, arrival_msg, update_room_activity=True)
-            logger.info("Sent arrival message for reset")
-
-            # Trigger initial scene generation in background
             target_room_id = starting_location.room_id
 
             async def trigger_reset_scene():
@@ -597,8 +719,7 @@ async def reset_world(
             background_tasks.add_task(trigger_reset_scene)
             logger.info("Triggered initial scene generation for reset")
 
-        logger.info(f"Successfully reset world '{world.name}'")
-
+        location_display = starting_location.display_name or starting_location.name
         return schemas.WorldResetResponse(
             success=True,
             message=f"World '{world.name}' has been reset to its initial state",
@@ -606,8 +727,8 @@ async def reset_world(
             starting_location=location_display,
         )
 
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to reset world '{world.name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to reset world: {str(e)}")

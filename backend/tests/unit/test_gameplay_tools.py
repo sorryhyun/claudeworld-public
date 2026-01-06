@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
-from sdk.config.gameplay_inputs import (
+from sdk.config.gameplay_tool_definitions import (
+    DeleteCharacterInput,
     RemoveCharacterInput,
     TravelInput,
 )
@@ -28,9 +29,19 @@ class TestGameplayInputModels:
         with pytest.raises(ValidationError):
             RemoveCharacterInput(character_name="   ")
 
-    def test_remove_character_input_normalizes_reason(self):
+    def test_delete_character_input_required_name(self):
+        """Test that character_name is required for DeleteCharacterInput."""
+        with pytest.raises(ValidationError):
+            DeleteCharacterInput()
+
+    def test_delete_character_input_validates_empty_name(self):
+        """Test that empty character name is rejected for DeleteCharacterInput."""
+        with pytest.raises(ValidationError):
+            DeleteCharacterInput(character_name="   ")
+
+    def test_delete_character_input_normalizes_reason(self):
         """Test that reason is normalized to lowercase."""
-        inp = RemoveCharacterInput(character_name="Test", reason="DEATH")
+        inp = DeleteCharacterInput(character_name="Test", reason="DEATH")
         assert inp.reason == "death"
 
     def test_travel_input_required_destination(self):
@@ -206,6 +217,7 @@ class TestLocationToolsCreation:
 class TestActionManagerMCPServer:
     """Tests for action manager MCP server creation."""
 
+    @patch("sdk.tools.gameplay_tools.create_equipment_tools")
     @patch("sdk.tools.gameplay_tools.create_narrative_tools")
     @patch("sdk.tools.gameplay_tools.create_mechanics_tools")
     @patch("sdk.tools.gameplay_tools.create_location_tools")
@@ -218,6 +230,7 @@ class TestActionManagerMCPServer:
         mock_create_loc,
         mock_create_mech,
         mock_create_narr,
+        mock_create_equip,
     ):
         """Test creating action manager MCP server."""
         from sdk.tools.gameplay_tools import create_action_manager_mcp_server
@@ -226,6 +239,13 @@ class TestActionManagerMCPServer:
         mock_create_loc.return_value = [MagicMock(name="travel")]
         mock_create_mech.return_value = [MagicMock(name="stat_calc")]
         mock_create_narr.return_value = [MagicMock(name="narration"), MagicMock(name="suggest_options")]
+        mock_create_equip.return_value = [
+            MagicMock(name="equip_item"),
+            MagicMock(name="unequip_item"),
+            MagicMock(name="use_item"),
+            MagicMock(name="list_equipment"),
+            MagicMock(name="set_flag"),
+        ]
         mock_create_mcp.return_value = MagicMock()
 
         ctx = ToolContext(
@@ -243,9 +263,11 @@ class TestActionManagerMCPServer:
         mock_create_loc.assert_called_once_with(ctx)
         mock_create_mech.assert_called_once_with(ctx)
         mock_create_narr.assert_called_once_with(ctx)
+        mock_create_equip.assert_called_once_with(ctx)
 
         # MCP server should be created with all tools combined
         mock_create_mcp.assert_called_once()
         call_args = mock_create_mcp.call_args
         assert call_args.kwargs["name"] == "action_manager"
-        assert len(call_args.kwargs["tools"]) == 5  # char(1) + loc(1) + mech(1) + narr(2)
+        # char(1) + loc(1) + mech(1) + narr(2) + equip(5) = 10 tools
+        assert len(call_args.kwargs["tools"]) == 10

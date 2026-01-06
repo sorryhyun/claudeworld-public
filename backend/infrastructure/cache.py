@@ -80,7 +80,6 @@ class CacheManager:
 
             entry = self._cache[key]
 
-            # Check if expired
             if entry.is_expired():
                 del self._cache[key]
                 self._stats["misses"] += 1
@@ -169,15 +168,11 @@ class CacheManager:
         Returns:
             Cached or computed value
         """
-        # Try to get from cache first
         cached_value = self.get(key)
         if cached_value is not None:
             return cached_value
 
-        # Compute value
         value = factory()
-
-        # Store in cache
         self.set(key, value, ttl_seconds)
 
         return value
@@ -199,7 +194,6 @@ class CacheManager:
 
             entry = self._cache[key]
 
-            # Check if expired
             if entry.is_expired():
                 del self._cache[key]
                 self._stats["misses"] += 1
@@ -235,9 +229,7 @@ class CacheManager:
         Returns:
             Cached or computed value
         """
-        # Use async lock for all operations to avoid blocking the event loop
         async with self._get_async_lock():
-            # Check cache
             if key in self._cache:
                 entry = self._cache[key]
                 if not entry.is_expired():
@@ -249,13 +241,8 @@ class CacheManager:
             else:
                 self._stats["misses"] += 1
 
-            # Compute value (async) - release lock during computation to avoid deadlocks
-            # We need to release the lock to allow factory() to make DB calls that might also use cache
-
-        # Compute value outside the lock
         value = await factory()
 
-        # Store in cache
         async with self._get_async_lock():
             expires_at = time.time() + ttl_seconds
             self._cache[key] = CacheEntry(value=value, expires_at=expires_at)

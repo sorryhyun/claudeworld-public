@@ -16,9 +16,11 @@ import crud
 import schemas
 from claude_agent_sdk import tool
 from domain.value_objects.enums import MessageRole
+from infrastructure.logging.perf_logger import track_perf
 from services.location_service import LocationService
+from services.player_service import PlayerService
 
-from sdk.config.gameplay_inputs import (
+from sdk.config.gameplay_tool_definitions import (
     NarrationInput,
     SuggestOptionsInput,
 )
@@ -61,6 +63,12 @@ def create_narrative_tools(ctx: ToolContext) -> list:
             narration_description,
             NarrationInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_narration",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def narration_tool(args: dict[str, Any]):
             """
             Create a visible narrative message in the conversation.
@@ -79,11 +87,31 @@ def create_narrative_tools(ctx: ToolContext) -> list:
                 agent_id = ctx.require_agent_id()
                 room_id = ctx.require_room_id()
 
+                # Load game_time_snapshot from player state for message timestamp
+                game_time_snapshot = None
+                player_state = PlayerService.load_player_state(world_name)
+                if player_state and player_state.game_time:
+                    game_time_snapshot = player_state.game_time
+
+                # Build thinking field with NPC reactions (for collapsible display)
+                thinking_content = None
+                if ctx.npc_reactions:
+                    parts = ["[NPC_REACTIONS]"]
+                    for reaction in ctx.npc_reactions:
+                        parts.append(f"=== {reaction['agent_name']} ===")
+                        parts.append(reaction["content"])
+                        parts.append("")
+                    parts.append("[/NPC_REACTIONS]")
+                    thinking_content = "\n".join(parts)
+                    logger.info(f"📝 Including {len(ctx.npc_reactions)} NPC reactions in thinking field")
+
                 # Create message via crud.create_message()
                 message = schemas.MessageCreate(
                     content=narrative,
                     role=MessageRole.ASSISTANT,
                     agent_id=agent_id,
+                    game_time_snapshot=game_time_snapshot,
+                    thinking=thinking_content,  # Store NPC reactions in thinking field
                 )
                 await crud.create_message(db, room_id, message, update_room_activity=True)
 
@@ -129,6 +157,12 @@ def create_narrative_tools(ctx: ToolContext) -> list:
             "suggest_options",
             suggest_options_description,
             SuggestOptionsInput.model_json_schema(),
+        )
+        @track_perf(
+            "tool_suggest_options",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
         )
         async def suggest_options_tool(args: dict[str, Any]):
             """

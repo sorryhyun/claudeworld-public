@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
-import { api } from '../services';
-import type { AgentConfig } from '../types';
+import { useState, useCallback } from "react";
+import { api } from "../services";
+import type { AgentConfig } from "../types";
 
 /**
  * Custom hook for fetching available agent configurations
@@ -18,9 +18,10 @@ export function useFetchAgentConfigs() {
       const data = await api.getAgentConfigs();
       setConfigs(data.configs);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch configs');
+      const error =
+        err instanceof Error ? err : new Error("Failed to fetch configs");
       setError(error);
-      console.error('Failed to fetch agent configs:', error);
+      console.error("Failed to fetch agent configs:", error);
     } finally {
       setLoading(false);
     }

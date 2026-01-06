@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import type { Agent, AgentCreate, AgentConfig } from '../../types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { useState } from "react";
+import type { Agent, AgentCreate, AgentConfig } from "../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 interface CreateAgentFormProps {
   availableConfigs: AgentConfig;
@@ -16,15 +16,15 @@ export const CreateAgentForm = ({
   onCreateAgent,
   onClose,
 }: CreateAgentFormProps) => {
-  const [createMode, setCreateMode] = useState<'config' | 'custom'>('config');
+  const [createMode, setCreateMode] = useState<"config" | "custom">("config");
   const [newAgent, setNewAgent] = useState({
-    name: '',
-    config_file: '',
-    in_a_nutshell: '',
-    characteristics: '',
-    backgrounds: '',
-    memory: '',
-    recent_events: '',
+    name: "",
+    config_file: "",
+    in_a_nutshell: "",
+    characteristics: "",
+    backgrounds: "",
+    memory: "",
+    recent_events: "",
   });
   const [agentError, setAgentError] = useState<string | null>(null);
 
@@ -34,30 +34,33 @@ export const CreateAgentForm = ({
 
     try {
       setAgentError(null);
-      const agentData = createMode === 'config'
-        ? { name: newAgent.name, config_file: newAgent.config_file }
-        : {
-            name: newAgent.name,
-            in_a_nutshell: newAgent.in_a_nutshell || null,
-            characteristics: newAgent.characteristics || null,
-            backgrounds: newAgent.backgrounds || null,
-            memory: newAgent.memory || null,
-            recent_events: newAgent.recent_events || null,
-          };
+      const agentData =
+        createMode === "config"
+          ? { name: newAgent.name, config_file: newAgent.config_file }
+          : {
+              name: newAgent.name,
+              in_a_nutshell: newAgent.in_a_nutshell || null,
+              characteristics: newAgent.characteristics || null,
+              backgrounds: newAgent.backgrounds || null,
+              memory: newAgent.memory || null,
+              recent_events: newAgent.recent_events || null,
+            };
 
       await onCreateAgent(agentData);
       setNewAgent({
-        name: '',
-        config_file: '',
-        in_a_nutshell: '',
-        characteristics: '',
-        backgrounds: '',
-        memory: '',
-        recent_events: '',
+        name: "",
+        config_file: "",
+        in_a_nutshell: "",
+        characteristics: "",
+        backgrounds: "",
+        memory: "",
+        recent_events: "",
       });
       onClose();
     } catch (err) {
-      setAgentError(err instanceof Error ? err.message : 'Failed to create agent');
+      setAgentError(
+        err instanceof Error ? err.message : "Failed to create agent",
+      );
     }
   };
 
@@ -66,24 +69,24 @@ export const CreateAgentForm = ({
       <div className="flex gap-2 mb-3">
         <Button
           type="button"
-          onClick={() => setCreateMode('config')}
-          variant={createMode === 'config' ? 'default' : 'outline'}
+          onClick={() => setCreateMode("config")}
+          variant={createMode === "config" ? "default" : "outline"}
           size="sm"
           className={cn(
             "flex-1",
-            createMode === 'config' && "bg-emerald-600 hover:bg-emerald-700"
+            createMode === "config" && "bg-emerald-600 hover:bg-emerald-700",
           )}
         >
           Config File
         </Button>
         <Button
           type="button"
-          onClick={() => setCreateMode('custom')}
-          variant={createMode === 'custom' ? 'default' : 'outline'}
+          onClick={() => setCreateMode("custom")}
+          variant={createMode === "custom" ? "default" : "outline"}
           size="sm"
           className={cn(
             "flex-1",
-            createMode === 'custom' && "bg-emerald-600 hover:bg-emerald-700"
+            createMode === "custom" && "bg-emerald-600 hover:bg-emerald-700",
           )}
         >
           Custom
@@ -102,11 +105,13 @@ export const CreateAgentForm = ({
           autoFocus
         />
 
-        {createMode === 'config' ? (
+        {createMode === "config" ? (
           <>
             <select
               value={newAgent.config_file}
-              onChange={(e) => setNewAgent({ ...newAgent, config_file: e.target.value })}
+              onChange={(e) =>
+                setNewAgent({ ...newAgent, config_file: e.target.value })
+              }
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
               required
             >
@@ -127,13 +132,17 @@ export const CreateAgentForm = ({
           <div className="space-y-2">
             <Textarea
               value={newAgent.in_a_nutshell}
-              onChange={(e) => setNewAgent({ ...newAgent, in_a_nutshell: e.target.value })}
+              onChange={(e) =>
+                setNewAgent({ ...newAgent, in_a_nutshell: e.target.value })
+              }
               placeholder="In a Nutshell (brief identity)"
               className="h-16 sm:h-20 resize-none"
             />
             <Textarea
               value={newAgent.characteristics}
-              onChange={(e) => setNewAgent({ ...newAgent, characteristics: e.target.value })}
+              onChange={(e) =>
+                setNewAgent({ ...newAgent, characteristics: e.target.value })
+              }
               placeholder="Characteristics (optional)"
               className="h-16 sm:h-20 resize-none"
             />

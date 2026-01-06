@@ -1,4 +1,4 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -14,7 +14,12 @@ help:
 	@echo "  make run-backend       - Run backend server only (PostgreSQL)"
 	@echo "  make run-backend-sqlite- Run backend server only (SQLite)"
 	@echo "  make run-backend-perf  - Run backend server only (SQLite) with performance logging"
+	@echo "  make run-backend-trace - Run backend server only (SQLite) with CLI tracing"
 	@echo "  make run-frontend      - Run frontend server only"
+	@echo ""
+	@echo "CLI Tracing (requires patched CLI with observability patches):"
+	@echo "  make dev-trace         - Run dev mode with CLI tracing (outputs to traces.jsonl)"
+	@echo "  make diagnose-traces   - Analyze trace file for bottlenecks (FILE=traces.jsonl)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make setup             - Run .env setup wizard (or re-run with --force)"
@@ -76,7 +81,8 @@ run-backend-sqlite:
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
 	@echo "Performance metrics will be written to ./latency.log"
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
+	@echo "Terminal output will be written to ./run.log"
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000 2>&1 | tee $(PWD)/run.log
 
 run-frontend:
 	@echo "Starting frontend server..."
@@ -115,11 +121,51 @@ dev-perf:
 	@echo "Frontend will run on http://localhost:5173"
 	@echo ""
 	@echo "📊 PERFORMANCE LOGGING ENABLED"
-	@echo "   Metrics will be written to: ./latency.log"
+	@echo "   Performance metrics: ./latency.log"
+	@echo "   Terminal output:     ./run.log"
+	@echo ""
 	@echo "   Monitor with: tail -f latency.log"
+	@echo "   Or both:      tail -f latency.log run.log"
 	@echo ""
 	@echo "Press Ctrl+C to stop all servers"
 	@$(MAKE) -j2 run-backend-perf run-frontend
+
+run-backend-trace:
+	@echo "Starting backend server (SQLite) with CLI tracing..."
+	@echo "Traces will be written to ./traces.jsonl"
+	@echo "Analyze with: make diagnose-traces FILE=traces.jsonl"
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db ENABLE_CLI_TRACING=true uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000 2>$(PWD)/traces.jsonl
+
+dev-trace:
+	@mkdir -p /tmp/claude-empty
+	@echo "Starting backend (SQLite) and frontend with CLI TRACING..."
+	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
+	@echo "Frontend will run on http://localhost:5173"
+	@echo ""
+	@echo "🔍 CLI TRACING ENABLED (requires patched CLI with observability patches)"
+	@echo "   Trace output: ./traces.jsonl"
+	@echo ""
+	@echo "   Monitor with: tail -f traces.jsonl"
+	@echo "   Analyze with: make diagnose-traces FILE=traces.jsonl"
+	@echo ""
+	@echo "Press Ctrl+C to stop all servers"
+	@$(MAKE) -j2 run-backend-trace run-frontend
+
+diagnose-traces:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make diagnose-traces FILE=traces.jsonl [THRESHOLD=100]"; \
+		echo ""; \
+		echo "Analyzes CLI traces to identify performance bottlenecks."; \
+		echo ""; \
+		echo "Arguments:"; \
+		echo "  FILE      - Path to trace file (JSONL format)"; \
+		echo "  THRESHOLD - Bottleneck threshold in ms (default: 100)"; \
+		echo "  FORMAT    - Output format: text or json (default: text)"; \
+	else \
+		THRESHOLD=$${THRESHOLD:-100}; \
+		FORMAT=$${FORMAT:-text}; \
+		uv run python scripts/diagnose_traces.py "$(FILE)" --threshold $$THRESHOLD --format $$FORMAT; \
+	fi
 
 prod:
 	@echo "Starting production deployment..."
@@ -151,6 +197,7 @@ clean:
 	rm -rf backend/*.db
 	rm -f claudeworld.db
 	rm -f latency.log
+	rm -f traces.jsonl
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules/.vite
 	@echo "Clean complete!"

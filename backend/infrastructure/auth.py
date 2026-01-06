@@ -1,0 +1,379 @@
+"""
+Authentication middleware and utilities for JWT token-based authentication.
+
+SECURITY NOTES:
+- Passwords are hashed using bcrypt before comparison
+- JWT tokens are issued upon successful login
+- Tokens are sent via X-API-Key header for all endpoints
+- Always use HTTPS in production to protect credentials in transit
+- Rate limiting via slowapi to prevent brute force attacks
+"""
+
+import logging
+import os
+import secrets
+import sys
+from datetime import datetime, timedelta
+
+import bcrypt
+import jwt
+from core import get_settings
+from domain.value_objects.enums import UserRole
+from fastapi import HTTPException, Request, status
+
+logger = logging.getLogger("Auth")
+
+
+def get_api_key_hash_from_env() -> str:
+    """
+    Get the hashed API key from environment variable.
+
+    The API_KEY_HASH should be a bcrypt hash generated from your password.
+    Use the generate_hash.py script to create one.
+
+    Raises:
+        SystemExit: If API_KEY_HASH is not set in production
+    """
+    # Prefer direct environment variable (supports runtime overrides in tests)
+    api_key_hash = os.getenv("API_KEY_HASH") or get_settings().api_key_hash
+    if api_key_hash:
+        return api_key_hash
+
+    # API_KEY_HASH is required
+    logger.error("❌ ERROR: API_KEY_HASH is not set in environment variables!")
+    logger.error("❌ Authentication cannot work without a password configured.")
+    logger.error("💡 To fix: Run 'python generate_hash.py' to create a hash, then add it to .env")
+    sys.exit(1)
+
+
+def get_guest_password_hash_from_env() -> str | None:
+    """
+    Get the hashed guest password from environment variable.
+
+    The GUEST_PASSWORD_HASH should be a bcrypt hash generated from your guest password.
+    Use the generate_hash.py script to create one.
+
+    Returns:
+        str | None: The guest password hash if set, None otherwise
+    """
+    return os.getenv("GUEST_PASSWORD_HASH") or get_settings().guest_password_hash
+
+
+def is_guest_login_enabled() -> bool:
+    """
+    Check if guest login is enabled via environment variable.
+
+    Returns:
+        bool: True if guest login is enabled, False otherwise
+    """
+    env_value = os.getenv("ENABLE_GUEST_LOGIN")
+    if env_value is not None:
+        return str(env_value).lower() in {"1", "true", "yes", "on"}
+    return get_settings().enable_guest_login
+
+
+def validate_api_key(provided_key: str) -> bool:
+    """
+    Validate the provided API key against the configured hashed password.
+
+    Uses constant-time comparison via bcrypt to prevent timing attacks.
+
+    Args:
+        provided_key: The plaintext password/API key provided by the user
+
+    Returns:
+        bool: True if the password matches, False otherwise
+    """
+    try:
+        expected_hash = get_api_key_hash_from_env()
+        return bcrypt.checkpw(provided_key.encode("utf-8"), expected_hash.encode("utf-8"))
+    except Exception as e:
+        logger.error(f"❌ Error validating API key: {e}")
+        return False
+
+
+def validate_password_with_role(provided_key: str) -> UserRole | None:
+    """
+    Validate the provided password and return the user's role.
+
+    Checks against both admin and guest password hashes (if guest login is enabled).
+
+    Args:
+        provided_key: The plaintext password provided by the user
+
+    Returns:
+        UserRole | None: UserRole.ADMIN if admin password matches, UserRole.GUEST if guest password matches,
+                         None if no password matches
+    """
+    try:
+        admin_hash = get_api_key_hash_from_env()
+        if bcrypt.checkpw(provided_key.encode("utf-8"), admin_hash.encode("utf-8")):
+            return UserRole.ADMIN
+
+        if is_guest_login_enabled():
+            guest_hash = get_guest_password_hash_from_env()
+            if guest_hash:
+                if bcrypt.checkpw(provided_key.encode("utf-8"), guest_hash.encode("utf-8")):
+                    return UserRole.GUEST
+
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error validating password: {e}")
+        return None
+
+
+def get_jwt_secret() -> str:
+    """
+    Get the JWT secret key from environment variable.
+
+    Raises:
+        SystemExit: If JWT_SECRET is not set in production
+
+    Returns:
+        str: The JWT secret key
+    """
+    jwt_secret = os.getenv("JWT_SECRET") or get_settings().jwt_secret
+    if not jwt_secret:
+        logger.error("❌ ERROR: JWT_SECRET is not set in environment variables!")
+        logger.error("❌ Without a stable secret, tokens will be invalidated on every server restart.")
+        logger.error("💡 To fix: Generate a secret with 'python -c \"import secrets; print(secrets.token_hex(32))\"'")
+        logger.error("💡 Then add JWT_SECRET=<your_secret> to your .env file")
+        sys.exit(1)
+    return jwt_secret
+
+
+def generate_jwt_token(role: UserRole = UserRole.ADMIN, expiration_hours: int = 168, user_id: str | None = None) -> str:
+    """
+    Generate a JWT token for authentication.
+
+    Args:
+        role: User role (UserRole.ADMIN or UserRole.GUEST)
+        expiration_hours: Hours until token expires (default: 168 = 7 days)
+        user_id: Unique identifier for the authenticated user (auto-generated for guests)
+
+    Returns:
+        str: Encoded JWT token
+    """
+    if user_id is None:
+        if role == UserRole.GUEST:
+            user_id = f"guest-{secrets.token_hex(6)}"
+        else:
+            user_id = "admin"
+
+    secret = get_jwt_secret()
+    payload = {
+        "exp": datetime.utcnow() + timedelta(hours=expiration_hours),
+        "iat": datetime.utcnow(),
+        "type": "access_token",
+        "role": role,
+        "user_id": user_id,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
+def validate_jwt_token(token: str) -> dict | None:
+    """
+    Validate a JWT token and return its payload.
+
+    Args:
+        token: The JWT token to validate
+
+    Returns:
+        dict | None: Token payload if valid, None otherwise
+    """
+    try:
+        secret = get_jwt_secret()
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        logger.warning("⚠️  JWT token has expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"⚠️  Invalid JWT token: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error validating JWT token: {e}")
+        return None
+
+
+def get_role_from_token(token: str) -> UserRole | None:
+    """
+    Extract the role from a JWT token.
+
+    Args:
+        token: The JWT token
+
+    Returns:
+        UserRole | None: The role (UserRole.ADMIN or UserRole.GUEST) if valid, None otherwise
+    """
+    payload = validate_jwt_token(token)
+    if payload:
+        role_str = payload.get("role", "admin")
+        return UserRole.ADMIN if role_str == "admin" else UserRole.GUEST
+    return None
+
+
+def get_user_id_from_token(token: str) -> str | None:
+    """
+    Extract the user_id from a JWT token.
+
+    Falls back to role when missing for backward compatibility with legacy tokens.
+    """
+    payload = validate_jwt_token(token)
+    if not payload:
+        return None
+
+    # Legacy tokens didn't include user_id; fallback to role-based defaults
+    if "user_id" not in payload:
+        role_str = payload.get("role", "admin")
+        return "admin" if role_str == "admin" else "guest"
+
+    return payload.get("user_id")
+
+
+class AuthMiddleware:
+    """
+    Pure ASGI middleware for JWT token authentication.
+
+    Using pure ASGI instead of BaseHTTPMiddleware to support SSE/streaming responses
+    (required for MCP endpoint compatibility).
+
+    Authentication methods:
+    - REST API: X-API-Key header (contains JWT token)
+
+    Excluded paths (no auth required):
+    - /auth/login - Login endpoint
+    - /auth/health - Health check
+    - /docs, /openapi.json, /redoc - API documentation
+    - /mcp - MCP endpoint (SSE streaming)
+    """
+
+    EXCLUDED_PATHS = {
+        "/",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/auth/login",
+        "/auth/health",
+    }
+
+    EXCLUDED_PREFIXES = (
+        "/mcp",
+        "/assets",
+    )
+
+    STATIC_EXTENSIONS = (
+        ".css",
+        ".js",
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".map",
+    )
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope["path"]
+        method = scope["method"]
+        headers = dict(scope.get("headers", []))
+
+        if path in self.EXCLUDED_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        if path.startswith(self.EXCLUDED_PREFIXES):
+            await self.app(scope, receive, send)
+            return
+
+        if path.endswith(self.STATIC_EXTENSIONS):
+            await self.app(scope, receive, send)
+            return
+
+        if path.startswith("/agents/") and path.endswith("/profile-pic"):
+            await self.app(scope, receive, send)
+            return
+
+        if method == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+
+        token = headers.get(b"x-api-key", b"").decode("utf-8") or None
+
+        token_payload = validate_jwt_token(token) if token else None
+        if not token_payload:
+            origin = headers.get(b"origin", b"").decode("utf-8")
+            response_headers = [
+                (b"content-type", b"application/json"),
+            ]
+            if origin:
+                response_headers.extend(
+                    [
+                        (b"access-control-allow-origin", origin.encode()),
+                        (b"access-control-allow-credentials", b"true"),
+                        (b"access-control-allow-methods", b"*"),
+                        (b"access-control-allow-headers", b"*"),
+                    ]
+                )
+
+            body = b'{"detail":"Invalid or missing authentication token"}'
+            response_headers.append((b"content-length", str(len(body)).encode()))
+
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": response_headers,
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": body,
+                }
+            )
+            return
+
+        if "state" not in scope:
+            scope["state"] = {}
+        scope["state"]["user_role"] = token_payload.get("role", "admin")
+        scope["state"]["user_id"] = token_payload.get("user_id") or (
+            "admin" if scope["state"]["user_role"] == "admin" else "guest"
+        )
+
+        await self.app(scope, receive, send)
+
+
+def require_admin(request: Request):
+    """
+    Dependency function to require admin role for an endpoint.
+
+    Args:
+        request: The FastAPI request object
+
+    Raises:
+        HTTPException: 403 Forbidden if user is not an admin
+
+    Usage:
+        @app.delete("/rooms/{room_id}", dependencies=[Depends(require_admin)])
+        async def delete_room(room_id: int):
+            ...
+    """
+    user_role = getattr(request.state, "user_role", None)
+    if user_role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires admin privileges. Guests can chat but cannot modify rooms, agents, or messages.",
+        )

@@ -10,9 +10,9 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-import models
 import schemas
-from database import serialized_write
+from infrastructure.database import models
+from infrastructure.database.connection import serialized_write
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -537,14 +537,14 @@ async def get_characters_at_location(
     Returns:
         List of Agent models at the location
     """
-    # Chain selectinload to load room and its agents in a single query
-    # This avoids issues with SQLAlchemy's identity map returning cached objects
-    # that don't have the agents relationship loaded
-    location = await db.get(
-        models.Location,
-        location_id,
-        options=[selectinload(models.Location.room).selectinload(models.Room.agents)],
+    # Use select() instead of db.get() to ensure fresh query with eager loading
+    # db.get() can return cached objects from identity map without relationships loaded
+    result = await db.execute(
+        select(models.Location)
+        .where(models.Location.id == location_id)
+        .options(selectinload(models.Location.room).selectinload(models.Room.agents))
     )
+    location = result.scalar_one_or_none()
     if not location or not location.room:
         return []
 

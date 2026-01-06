@@ -3,6 +3,7 @@ Domain services - pure domain logic (stateless, no I/O).
 """
 
 from .access_control import AccessControl
+from .item_validation import ItemValidator
 from .localization import Localization
 from .memory import MemoryEntry
 from .player_rules import (
@@ -22,6 +23,7 @@ from .player_state_serializer import PlayerStateSerializer
 __all__ = [
     "MemoryEntry",
     "AccessControl",
+    "ItemValidator",
     "Localization",
     "PlayerStateSerializer",
     "DomainInventoryItem",

@@ -175,7 +175,7 @@ class TestGuestMessageRestrictions:
     @pytest.mark.api
     async def test_guest_can_send_messages(self, guest_client, test_db):
         """Test that guest can send messages to their own room."""
-        from models import Room
+        from infrastructure.database.models import Room
 
         client, token = guest_client
 
@@ -195,7 +195,7 @@ class TestGuestMessageRestrictions:
     @pytest.mark.api
     async def test_guest_can_poll_messages(self, guest_client, test_db):
         """Test that guest can poll for messages in their own room."""
-        from models import Room
+        from infrastructure.database.models import Room
 
         client, token = guest_client
 

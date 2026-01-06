@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
-import type { Agent, AgentCreate } from '../types';
-import { useAgents } from '../hooks/useAgents';
-import { api } from '../services';
+import { createContext, useContext, useState, ReactNode } from "react";
+import type { Agent, AgentCreate } from "../types";
+import { useAgents } from "../hooks/useAgents";
+import { api } from "../services";
 
 interface AgentContextValue {
   // Agent data
@@ -25,7 +25,7 @@ const AgentContext = createContext<AgentContextValue | undefined>(undefined);
 export function useAgentContext() {
   const context = useContext(AgentContext);
   if (context === undefined) {
-    throw new Error('useAgentContext must be used within an AgentProvider');
+    throw new Error("useAgentContext must be used within an AgentProvider");
   }
   return context;
 }
@@ -35,13 +35,16 @@ interface AgentProviderProps {
   onAgentRoomSelected?: (roomId: number) => void; // Callback when agent's direct room is selected
 }
 
-export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderProps) {
+export function AgentProvider({
+  children,
+  onAgentRoomSelected,
+}: AgentProviderProps) {
   const {
     agents,
     loading,
     createAgent: createAgentHook,
     deleteAgent: deleteAgentHook,
-    refreshAgents
+    refreshAgents,
   } = useAgents();
 
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
@@ -58,7 +61,7 @@ export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderPr
         onAgentRoomSelected(room.id);
       }
     } catch (err) {
-      console.error('Failed to open direct chat:', err);
+      console.error("Failed to open direct chat:", err);
       throw err;
     }
   };
@@ -102,8 +105,6 @@ export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderPr
   };
 
   return (
-    <AgentContext.Provider value={value}>
-      {children}
-    </AgentContext.Provider>
+    <AgentContext.Provider value={value}>{children}</AgentContext.Provider>
   );
 }

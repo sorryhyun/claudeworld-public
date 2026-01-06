@@ -1,32 +1,32 @@
-import { useState, useEffect, memo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useState, useEffect, memo } from "react";
+import { useTranslation } from "react-i18next";
 
 interface TurnIndicatorProps {
-  phase?: 'thinking' | 'generating' | 'finalizing';
+  phase?: "thinking" | "generating" | "finalizing";
   startTime?: number;
 }
 
 // Helper hints shown after waiting for a while
 const hints = {
   en: [
-    'Complex actions may take longer to process...',
-    'The narrator is weaving your story...',
-    'Great adventures require patience...',
-    'Consulting the world state...',
+    "Complex actions may take longer to process...",
+    "The narrator is weaving your story...",
+    "Great adventures require patience...",
+    "Consulting the world state...",
   ],
   ko: [
-    '복잡한 행동은 처리에 시간이 더 걸릴 수 있습니다...',
-    '나레이터가 스토리를 엮고 있습니다...',
-    '위대한 모험에는 인내가 필요합니다...',
-    '세계 상태를 확인 중입니다...',
+    "복잡한 행동은 처리에 시간이 더 걸릴 수 있습니다...",
+    "나레이터가 스토리를 엮고 있습니다...",
+    "위대한 모험에는 인내가 필요합니다...",
+    "세계 상태를 확인 중입니다...",
   ],
 };
 
 // Phase configurations with progress percentages
 const phaseConfig = {
-  thinking: { progress: 25, labelEn: 'Thinking', labelKo: '생각 중' },
-  generating: { progress: 60, labelEn: 'Generating', labelKo: '생성 중' },
-  finalizing: { progress: 90, labelEn: 'Finalizing', labelKo: '마무리 중' },
+  thinking: { progress: 25, labelEn: "Thinking", labelKo: "생각 중" },
+  generating: { progress: 60, labelEn: "Generating", labelKo: "생성 중" },
+  finalizing: { progress: 90, labelEn: "Finalizing", labelKo: "마무리 중" },
 };
 
 // Format elapsed time as MM:SS
@@ -34,13 +34,17 @@ const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   if (mins > 0) {
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
   return `${secs}s`;
 };
 
 // Isolated timer component - re-renders every second without affecting parent
-const ElapsedTimer = memo(function ElapsedTimer({ startTime }: { startTime: number }) {
+const ElapsedTimer = memo(function ElapsedTimer({
+  startTime,
+}: {
+  startTime: number;
+}) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -97,17 +101,17 @@ const HintDisplay = memo(function HintDisplay({
 });
 
 export const TurnIndicator = memo(function TurnIndicator({
-  phase = 'thinking',
+  phase = "thinking",
   startTime,
 }: TurnIndicatorProps) {
   const { t, i18n } = useTranslation();
   const effectiveStartTime = startTime || Date.now();
 
-  const lang = i18n.language === 'ko' ? 'ko' : 'en';
+  const lang = i18n.language === "ko" ? "ko" : "en";
   const currentHints = hints[lang];
 
   const config = phaseConfig[phase];
-  const phaseLabel = lang === 'ko' ? config.labelKo : config.labelEn;
+  const phaseLabel = lang === "ko" ? config.labelKo : config.labelEn;
 
   return (
     <div className="px-4 py-3 bg-slate-50 border-t border-slate-200">
@@ -119,7 +123,7 @@ export const TurnIndicator = memo(function TurnIndicator({
             <div className="animate-spin h-5 w-5 border-2 border-slate-300 border-t-indigo-600 rounded-full" />
             <div
               className="absolute inset-0 animate-ping opacity-20 h-5 w-5 border-2 border-indigo-400 rounded-full"
-              style={{ animationDuration: '1.5s' }}
+              style={{ animationDuration: "1.5s" }}
             />
           </div>
 
@@ -127,7 +131,7 @@ export const TurnIndicator = memo(function TurnIndicator({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium text-sm text-slate-700">
-                {t('turnIndicator.processing', 'Processing your action...')}
+                {t("turnIndicator.processing", "Processing your action...")}
               </span>
               <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
                 {phaseLabel}
@@ -137,7 +141,10 @@ export const TurnIndicator = memo(function TurnIndicator({
             {/* Hint text - shown after delay (isolated component) */}
             <HintDisplay
               startTime={effectiveStartTime}
-              defaultSubtitle={t('turnIndicator.subtitle', 'The narrator is crafting a response')}
+              defaultSubtitle={t(
+                "turnIndicator.subtitle",
+                "The narrator is crafting a response",
+              )}
               hints={currentHints}
             />
           </div>
@@ -156,14 +163,26 @@ export const TurnIndicator = memo(function TurnIndicator({
 
         {/* Phase indicators */}
         <div className="mt-2 flex justify-between text-[10px] text-slate-400">
-          <span className={phase === 'thinking' ? 'text-indigo-600 font-medium' : ''}>
-            {t('turnIndicator.phaseThinking', 'Thinking')}
+          <span
+            className={
+              phase === "thinking" ? "text-indigo-600 font-medium" : ""
+            }
+          >
+            {t("turnIndicator.phaseThinking", "Thinking")}
           </span>
-          <span className={phase === 'generating' ? 'text-indigo-600 font-medium' : ''}>
-            {t('turnIndicator.phaseGenerating', 'Generating')}
+          <span
+            className={
+              phase === "generating" ? "text-indigo-600 font-medium" : ""
+            }
+          >
+            {t("turnIndicator.phaseGenerating", "Generating")}
           </span>
-          <span className={phase === 'finalizing' ? 'text-indigo-600 font-medium' : ''}>
-            {t('turnIndicator.phaseFinalizing', 'Finalizing')}
+          <span
+            className={
+              phase === "finalizing" ? "text-indigo-600 font-medium" : ""
+            }
+          >
+            {t("turnIndicator.phaseFinalizing", "Finalizing")}
           </span>
         </div>
       </div>

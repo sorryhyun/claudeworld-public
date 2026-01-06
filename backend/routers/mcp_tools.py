@@ -10,10 +10,10 @@ from typing import Optional
 import crud
 import schemas
 from core import get_settings
-from database import get_db
-from dependencies import get_agent_manager, get_chat_orchestrator
+from core.dependencies import get_agent_manager, get_chat_orchestrator
 from domain.value_objects.enums import MessageRole
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database.connection import get_db
 from orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field
 from sdk import AgentManager

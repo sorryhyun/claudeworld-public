@@ -13,12 +13,12 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import models
 import schemas
-from database import serialized_write
 from domain.entities.world_models import WorldConfig
 from domain.services.localization import Localization
 from domain.value_objects.enums import Language, WorldPhase
+from infrastructure.database import models
+from infrastructure.database.connection import serialized_write
 
 from services.location_service import LocationService
 from services.player_service import PlayerService
@@ -294,7 +294,12 @@ class WorldFacade:
         if not world:
             raise ValueError("World not found")
 
-        # Sync from FS
+        # Apply any pending phase change (set by onboarding complete tool)
+        # This is called here instead of automatically after agent turns,
+        # so the phase only changes when user explicitly enters the world
+        WorldService.apply_pending_phase(world.name)
+
+        # Sync from FS (will now include the applied phase change)
         await self.sync_from_fs(world)
 
         # Refresh world after sync

@@ -7,6 +7,7 @@ Tests conversation context building from room messages.
 import os
 from unittest.mock import Mock, patch
 
+from domain.value_objects.contexts import ConversationContextParams, ConversationMode
 from orchestration.context import build_conversation_context
 
 
@@ -23,7 +24,8 @@ class TestBuildConversationContext:
             }
         }
 
-        context = build_conversation_context([])
+        params = ConversationContextParams(messages=[])
+        context = build_conversation_context(params)
 
         assert context == ""
 
@@ -41,7 +43,7 @@ class TestBuildConversationContext:
         # Mock the settings object to return our test user name
         mock_settings.user_name = "TestUser"
 
-        # Create mock messages with image_data=None to avoid Mock truthiness
+        # Create mock messages with image_data=None and images=None to avoid Mock truthiness
         msg1 = Mock(
             role="user",
             content="Hello!",
@@ -49,6 +51,7 @@ class TestBuildConversationContext:
             participant_name=None,
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
         msg2 = Mock(
@@ -58,9 +61,11 @@ class TestBuildConversationContext:
             participant_name=None,
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
-        context = build_conversation_context([msg1, msg2])
+        params = ConversationContextParams(messages=[msg1, msg2])
+        context = build_conversation_context(params)
 
         assert "Conversation:" in context
         assert "TestUser: Hello!" in context
@@ -75,9 +80,10 @@ class TestBuildConversationContext:
         mock_agent = Mock()
         mock_agent.name = "Alice"
 
-        msg = Mock(role="assistant", content="Hi there!", agent_id=1, agent=mock_agent, image_data=None)
+        msg = Mock(role="assistant", content="Hi there!", agent_id=1, agent=mock_agent, image_data=None, images=None)
 
-        context = build_conversation_context([msg])
+        params = ConversationContextParams(messages=[msg])
+        context = build_conversation_context(params)
 
         assert "Alice: Hi there!" in context
 
@@ -89,11 +95,21 @@ class TestBuildConversationContext:
         # Import SKIP_MESSAGE_TEXT
         from core.settings import SKIP_MESSAGE_TEXT
 
-        msg1 = Mock(role="assistant", content=SKIP_MESSAGE_TEXT, agent_id=1, agent=Mock(name="Alice"), image_data=None)
+        msg1 = Mock(
+            role="assistant",
+            content=SKIP_MESSAGE_TEXT,
+            agent_id=1,
+            agent=Mock(name="Alice"),
+            image_data=None,
+            images=None,
+        )
 
-        msg2 = Mock(role="assistant", content="Real message", agent_id=2, agent=Mock(name="Bob"), image_data=None)
+        msg2 = Mock(
+            role="assistant", content="Real message", agent_id=2, agent=Mock(name="Bob"), image_data=None, images=None
+        )
 
-        context = build_conversation_context([msg1, msg2])
+        params = ConversationContextParams(messages=[msg1, msg2])
+        context = build_conversation_context(params)
 
         # Should not include skip message
         assert SKIP_MESSAGE_TEXT not in context
@@ -101,19 +117,39 @@ class TestBuildConversationContext:
 
     @patch("orchestration.context.get_conversation_context_config")
     def test_build_context_with_agent_id_filter(self, mock_get_config):
-        """Test building context with agent_id filter (only new messages)."""
+        """Test building context with agent filter (only new messages)."""
         mock_get_config.return_value = {"conversation_context": {"header": "Conversation:", "footer": ""}}
+
+        # Create mock agent for filtering
+        mock_agent = Mock()
+        mock_agent.id = 1
+        mock_agent.name = "Alice"
+        mock_agent.group = None
 
         # Create messages before and after agent's last response
         messages = [
-            Mock(role="user", content="Message 1", agent_id=None, participant_type="user", image_data=None),
-            Mock(role="assistant", content="Agent response", agent_id=1, agent=Mock(name="Alice"), image_data=None),
-            Mock(role="user", content="Message 2", agent_id=None, participant_type="user", image_data=None),
-            Mock(role="user", content="Message 3", agent_id=None, participant_type="user", image_data=None),
+            Mock(
+                role="user", content="Message 1", agent_id=None, participant_type="user", image_data=None, images=None
+            ),
+            Mock(
+                role="assistant",
+                content="Agent response",
+                agent_id=1,
+                agent=Mock(name="Alice"),
+                image_data=None,
+                images=None,
+            ),
+            Mock(
+                role="user", content="Message 2", agent_id=None, participant_type="user", image_data=None, images=None
+            ),
+            Mock(
+                role="user", content="Message 3", agent_id=None, participant_type="user", image_data=None, images=None
+            ),
         ]
 
         with patch.dict(os.environ, {"USER_NAME": "User"}):
-            context = build_conversation_context(messages, agent_id=1)
+            params = ConversationContextParams(messages=messages, agent=mock_agent)
+            context = build_conversation_context(params)
 
         # Should only include messages after agent's last response
         assert "Message 1" not in context
@@ -128,11 +164,19 @@ class TestBuildConversationContext:
 
         # Create many messages
         messages = [
-            Mock(role="user", content=f"Message {i}", agent_id=None, participant_type="user", image_data=None)
+            Mock(
+                role="user",
+                content=f"Message {i}",
+                agent_id=None,
+                participant_type="user",
+                image_data=None,
+                images=None,
+            )
             for i in range(100)
         ]
 
-        context = build_conversation_context(messages, limit=5)
+        params = ConversationContextParams(messages=messages, limit=5)
+        context = build_conversation_context(params)
 
         # Should only include last 5 messages (+ header/footer)
         assert "Message 95" in context
@@ -152,17 +196,19 @@ class TestBuildConversationContext:
             participant_name="Charlie",
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
-        context = build_conversation_context([msg])
+        params = ConversationContextParams(messages=[msg])
+        context = build_conversation_context(params)
 
         # Should use participant_name as speaker
         assert "Charlie: Hello from character!" in context
 
     @patch("orchestration.context.get_conversation_context_config")
     @patch("orchestration.context.format_with_particles")
-    def test_build_context_one_on_one_with_user_instruction(self, mock_format_particles, mock_get_config):
-        """Test 1-on-1 conversation instruction with user."""
+    def test_build_context_chat_mode_with_user_instruction(self, mock_format_particles, mock_get_config):
+        """Test chat mode conversation instruction with user."""
         mock_get_config.return_value = {
             "conversation_context": {
                 "header": "",
@@ -176,11 +222,26 @@ class TestBuildConversationContext:
         }
         mock_format_particles.return_value = "Respond to TestUser."
 
+        # Create mock agent
+        mock_agent = Mock()
+        mock_agent.id = 1
+        mock_agent.name = "Alice"
+        mock_agent.group = None
+
         msg = Mock(
-            role="user", content="Hello", participant_type="user", participant_name=None, agent_id=None, image_data=None
+            role="user",
+            content="Hello",
+            participant_type="user",
+            participant_name=None,
+            agent_id=None,
+            image_data=None,
+            images=None,
         )
 
-        context = build_conversation_context([msg], agent_name="Alice", agent_count=1, user_name="TestUser")
+        params = ConversationContextParams(
+            messages=[msg], agent=mock_agent, agent_count=1, mode=ConversationMode.CHAT, world_user_name="TestUser"
+        )
+        context = build_conversation_context(params)
 
         # Should use response_agent instruction template
         mock_format_particles.assert_called_once()
@@ -203,6 +264,12 @@ class TestBuildConversationContext:
         }
         mock_format_particles.return_value = "Respond as Alice."
 
+        # Create mock agent
+        mock_agent = Mock()
+        mock_agent.id = 1
+        mock_agent.name = "Alice"
+        mock_agent.group = None
+
         msg = Mock(
             role="user",
             content="Hello everyone",
@@ -210,13 +277,17 @@ class TestBuildConversationContext:
             participant_name=None,
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
-        context = build_conversation_context(
-            [msg],
-            agent_name="Alice",
+        params = ConversationContextParams(
+            messages=[msg],
+            agent=mock_agent,
             agent_count=3,  # Multiple agents
+            mode=ConversationMode.GAME,
+            world_user_name="TestUser",
         )
+        context = build_conversation_context(params)
 
         # Should use response_agent instruction template
         mock_format_particles.assert_called_once()
@@ -236,6 +307,7 @@ class TestBuildConversationContext:
                 participant_type="user",
                 participant_name=None,
                 image_data=None,
+                images=None,
             ),
             Mock(
                 role="user",
@@ -244,6 +316,7 @@ class TestBuildConversationContext:
                 participant_type="user",
                 participant_name=None,
                 image_data=None,
+                images=None,
             ),
             Mock(
                 role="user",
@@ -252,12 +325,85 @@ class TestBuildConversationContext:
                 participant_type="user",
                 participant_name=None,
                 image_data=None,
+                images=None,
             ),
         ]
 
         with patch.dict(os.environ, {"USER_NAME": "User"}):
-            context = build_conversation_context(messages)
+            params = ConversationContextParams(messages=messages)
+            context = build_conversation_context(params)
 
         # Should only include "Same message" once
         assert context.count("Same message") == 1
         assert "Different message" in context
+
+    @patch("orchestration.context.get_conversation_context_config")
+    def test_build_context_keeps_only_latest_action_manager_message(self, mock_get_config):
+        """Test that only the most recent Action Manager message is kept when flag is set."""
+        mock_get_config.return_value = {"conversation_context": {"header": "", "footer": ""}}
+
+        # Create mock agent
+        action_manager = Mock()
+        action_manager.name = "Action_Manager"
+
+        # Create messages with multiple Action Manager narrations
+        messages = [
+            Mock(
+                role="user",
+                content="First player action",
+                agent_id=None,
+                participant_type="user",
+                participant_name="카즈마",
+                image_data=None,
+                images=None,
+            ),
+            Mock(
+                role="assistant",
+                content="Old GM narration - should be filtered",
+                agent_id=1,
+                agent=action_manager,
+                image_data=None,
+                images=None,
+            ),
+            Mock(
+                role="user",
+                content="Second player action",
+                agent_id=None,
+                participant_type="user",
+                participant_name="카즈마",
+                image_data=None,
+                images=None,
+            ),
+            Mock(
+                role="assistant",
+                content="Latest GM narration - should be kept",
+                agent_id=1,
+                agent=action_manager,
+                image_data=None,
+                images=None,
+            ),
+            Mock(
+                role="user",
+                content="Third player action",
+                agent_id=None,
+                participant_type="user",
+                participant_name="카즈마",
+                image_data=None,
+                images=None,
+            ),
+        ]
+
+        # Without flag - all Action Manager messages should be included
+        params_all = ConversationContextParams(messages=messages, keep_only_latest_action_manager=False)
+        context_all = build_conversation_context(params_all)
+        assert "Old GM narration" in context_all
+        assert "Latest GM narration" in context_all
+
+        # With flag - only the LATEST Action Manager message should be kept
+        params_latest = ConversationContextParams(messages=messages, keep_only_latest_action_manager=True)
+        context_latest_only = build_conversation_context(params_latest)
+        assert "Old GM narration" not in context_latest_only  # Older one filtered
+        assert "Latest GM narration" in context_latest_only  # Latest one kept
+        assert "First player action" in context_latest_only
+        assert "Second player action" in context_latest_only
+        assert "Third player action" in context_latest_only

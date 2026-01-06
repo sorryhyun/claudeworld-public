@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import type { Agent, AgentUpdate } from '../types';
-import { api } from '../services';
+import { useState, useEffect } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
+import type { Agent, AgentUpdate } from "../types";
+import { api } from "../services";
 
 interface AgentProfileModalProps {
   agent: Agent;
@@ -9,7 +9,11 @@ interface AgentProfileModalProps {
   onUpdate: () => void;
 }
 
-export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModalProps) => {
+export const AgentProfileModal = ({
+  agent,
+  onClose,
+  onUpdate,
+}: AgentProfileModalProps) => {
   const [editedAgent, setEditedAgent] = useState<Agent>(agent);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,26 +24,26 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
   // Handle Escape key to close modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
   const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setError('Please select an image file');
+      if (!file.type.startsWith("image/")) {
+        setError("Please select an image file");
         return;
       }
 
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        setError('Image size must be less than 5MB');
+        setError("Image size must be less than 5MB");
         return;
       }
 
@@ -50,7 +54,7 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
         setError(null);
       };
       reader.onerror = () => {
-        setError('Failed to read image file');
+        setError("Failed to read image file");
       };
       reader.readAsDataURL(file);
     }
@@ -78,7 +82,7 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
       onUpdate();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update agent');
+      setError(err instanceof Error ? err.message : "Failed to update agent");
     } finally {
       setIsSaving(false);
     }
@@ -86,7 +90,10 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div ref={modalRef} className="bg-white rounded-lg sm:rounded-xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        className="bg-white rounded-lg sm:rounded-xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
+      >
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-cyan-600 p-4 sm:p-6 rounded-t-lg sm:rounded-t-xl z-10">
           <div className="flex items-center justify-between gap-3">
@@ -124,22 +131,41 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
                     className="absolute -top-1 -right-1 w-6 h-6 sm:w-5 sm:h-5 bg-red-500 rounded-full text-white flex items-center justify-center hover:bg-red-600 active:bg-red-700 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 touch-manipulation"
                     title="Remove profile picture"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 )}
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg sm:text-2xl font-bold text-white truncate">{agent.name}</h2>
-                <p className="text-emerald-100 text-xs sm:text-sm">Agent Profile</p>
+                <h2 className="text-lg sm:text-2xl font-bold text-white truncate">
+                  {agent.name}
+                </h2>
+                <p className="text-emerald-100 text-xs sm:text-sm">
+                  Agent Profile
+                </p>
               </div>
             </div>
             <button
               onClick={onClose}
               className="text-white hover:bg-white/20 active:bg-white/30 p-2 rounded-lg transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
             >
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                className="w-5 h-5 sm:w-6 sm:h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -171,9 +197,12 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
               In a Nutshell
             </label>
             <textarea
-              value={editedAgent.in_a_nutshell || ''}
+              value={editedAgent.in_a_nutshell || ""}
               onChange={(e) =>
-                setEditedAgent({ ...editedAgent, in_a_nutshell: e.target.value })
+                setEditedAgent({
+                  ...editedAgent,
+                  in_a_nutshell: e.target.value,
+                })
               }
               className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
               rows={3}
@@ -187,9 +216,12 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
               Characteristics
             </label>
             <textarea
-              value={editedAgent.characteristics || ''}
+              value={editedAgent.characteristics || ""}
               onChange={(e) =>
-                setEditedAgent({ ...editedAgent, characteristics: e.target.value })
+                setEditedAgent({
+                  ...editedAgent,
+                  characteristics: e.target.value,
+                })
               }
               className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
               rows={4}
@@ -203,7 +235,7 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
               Backgrounds
             </label>
             <textarea
-              value={editedAgent.backgrounds || ''}
+              value={editedAgent.backgrounds || ""}
               onChange={(e) =>
                 setEditedAgent({ ...editedAgent, backgrounds: e.target.value })
               }
@@ -219,8 +251,10 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
               Memory
             </label>
             <textarea
-              value={editedAgent.memory || ''}
-              onChange={(e) => setEditedAgent({ ...editedAgent, memory: e.target.value })}
+              value={editedAgent.memory || ""}
+              onChange={(e) =>
+                setEditedAgent({ ...editedAgent, memory: e.target.value })
+              }
               className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
               rows={4}
               placeholder="Medium-term memory..."
@@ -233,9 +267,12 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
               Recent Events
             </label>
             <textarea
-              value={editedAgent.recent_events || ''}
+              value={editedAgent.recent_events || ""}
               onChange={(e) =>
-                setEditedAgent({ ...editedAgent, recent_events: e.target.value })
+                setEditedAgent({
+                  ...editedAgent,
+                  recent_events: e.target.value,
+                })
               }
               className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
               rows={3}
@@ -287,7 +324,7 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
             disabled={isSaving}
             className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed font-medium transition-colors shadow-sm hover:shadow-md text-sm sm:text-base min-h-[44px] touch-manipulation"
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </div>

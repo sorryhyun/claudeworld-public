@@ -6,11 +6,11 @@ import {
   useEffect,
   memo,
   type ReactNode,
-} from 'react';
-import { zIndex } from '../../styles/tokens';
+} from "react";
+import { zIndex } from "../../styles/tokens";
 
 // Toast types
-export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastType = "success" | "error" | "warning" | "info";
 
 export interface Toast {
   id: string;
@@ -25,7 +25,7 @@ export interface Toast {
 
 interface ToastContextValue {
   toasts: Toast[];
-  showToast: (toast: Omit<Toast, 'id'>) => string;
+  showToast: (toast: Omit<Toast, "id">) => string;
   dismissToast: (id: string) => void;
   clearToasts: () => void;
 }
@@ -35,7 +35,12 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 // Toast icons for each type
 const icons: Record<ToastType, ReactNode> = {
   success: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -45,7 +50,12 @@ const icons: Record<ToastType, ReactNode> = {
     </svg>
   ),
   error: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -55,7 +65,12 @@ const icons: Record<ToastType, ReactNode> = {
     </svg>
   ),
   warning: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -65,7 +80,12 @@ const icons: Record<ToastType, ReactNode> = {
     </svg>
   ),
   info: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -77,26 +97,29 @@ const icons: Record<ToastType, ReactNode> = {
 };
 
 // Color classes for each type
-const typeClasses: Record<ToastType, { bg: string; icon: string; border: string }> = {
+const typeClasses: Record<
+  ToastType,
+  { bg: string; icon: string; border: string }
+> = {
   success: {
-    bg: 'bg-green-50',
-    icon: 'text-green-500',
-    border: 'border-green-200',
+    bg: "bg-green-50",
+    icon: "text-green-500",
+    border: "border-green-200",
   },
   error: {
-    bg: 'bg-red-50',
-    icon: 'text-red-500',
-    border: 'border-red-200',
+    bg: "bg-red-50",
+    icon: "text-red-500",
+    border: "border-red-200",
   },
   warning: {
-    bg: 'bg-amber-50',
-    icon: 'text-amber-500',
-    border: 'border-amber-200',
+    bg: "bg-amber-50",
+    icon: "text-amber-500",
+    border: "border-amber-200",
   },
   info: {
-    bg: 'bg-blue-50',
-    icon: 'text-blue-500',
-    border: 'border-blue-200',
+    bg: "bg-blue-50",
+    icon: "text-blue-500",
+    border: "border-blue-200",
   },
 };
 
@@ -140,21 +163,20 @@ const ToastItem = memo(function ToastItem({
   return (
     <div
       role="alert"
-      aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
+      aria-live={toast.type === "error" ? "assertive" : "polite"}
       className={`
         flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg max-w-sm
         ${classes.bg} ${classes.border}
         transition-all duration-200 ease-out
-        ${isExiting
-          ? 'opacity-0 translate-x-4 scale-95'
-          : 'opacity-100 translate-x-0 scale-100 animate-in slide-in-from-right-4'
+        ${
+          isExiting
+            ? "opacity-0 translate-x-4 scale-95"
+            : "opacity-100 translate-x-0 scale-100 animate-in slide-in-from-right-4"
         }
       `}
     >
       {/* Icon */}
-      <div className={`flex-shrink-0 ${classes.icon}`}>
-        {icons[toast.type]}
-      </div>
+      <div className={`flex-shrink-0 ${classes.icon}`}>{icons[toast.type]}</div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -180,7 +202,12 @@ const ToastItem = memo(function ToastItem({
         className="flex-shrink-0 p-1 text-slate-400 hover:text-slate-600 rounded transition-colors"
         aria-label="Dismiss"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -210,10 +237,7 @@ const ToastContainer = memo(function ToastContainer({
     >
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
-          <ToastItem
-            toast={toast}
-            onDismiss={() => dismissToast(toast.id)}
-          />
+          <ToastItem toast={toast} onDismiss={() => dismissToast(toast.id)} />
         </div>
       ))}
     </div>
@@ -224,7 +248,7 @@ const ToastContainer = memo(function ToastContainer({
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = useCallback((toast: Omit<Toast, 'id'>) => {
+  const showToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setToasts((prev) => [...prev, { ...toast, id }]);
     return id;
@@ -239,7 +263,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ToastContext.Provider value={{ toasts, showToast, dismissToast, clearToasts }}>
+    <ToastContext.Provider
+      value={{ toasts, showToast, dismissToast, clearToasts }}
+    >
       {children}
       <ToastContainer toasts={toasts} dismissToast={dismissToast} />
     </ToastContext.Provider>
@@ -250,7 +276,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) {
-    throw new Error('useToast must be used within a ToastProvider');
+    throw new Error("useToast must be used within a ToastProvider");
   }
   return context;
 }
@@ -260,16 +286,24 @@ export function useToastHelpers() {
   const { showToast } = useToast();
 
   return {
-    success: (message: string, options?: Partial<Omit<Toast, 'id' | 'type' | 'message'>>) =>
-      showToast({ type: 'success', message, ...options }),
+    success: (
+      message: string,
+      options?: Partial<Omit<Toast, "id" | "type" | "message">>,
+    ) => showToast({ type: "success", message, ...options }),
 
-    error: (message: string, options?: Partial<Omit<Toast, 'id' | 'type' | 'message'>>) =>
-      showToast({ type: 'error', message, ...options }),
+    error: (
+      message: string,
+      options?: Partial<Omit<Toast, "id" | "type" | "message">>,
+    ) => showToast({ type: "error", message, ...options }),
 
-    warning: (message: string, options?: Partial<Omit<Toast, 'id' | 'type' | 'message'>>) =>
-      showToast({ type: 'warning', message, ...options }),
+    warning: (
+      message: string,
+      options?: Partial<Omit<Toast, "id" | "type" | "message">>,
+    ) => showToast({ type: "warning", message, ...options }),
 
-    info: (message: string, options?: Partial<Omit<Toast, 'id' | 'type' | 'message'>>) =>
-      showToast({ type: 'info', message, ...options }),
+    info: (
+      message: string,
+      options?: Partial<Omit<Toast, "id" | "type" | "message">>,
+    ) => showToast({ type: "info", message, ...options }),
   };
 }

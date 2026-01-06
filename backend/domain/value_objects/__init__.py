@@ -9,7 +9,6 @@ from .action_models import (
     ToolResponse,
 )
 from .contexts import (
-    AgentMessageData,
     AgentResponseContext,
     ImageAttachment,
     MessageContext,
@@ -42,7 +41,6 @@ __all__ = [
     "ToolResponse",
     # contexts.py
     "MessageContext",
-    "AgentMessageData",
     "OrchestrationContext",
     "ImageAttachment",
     "AgentResponseContext",

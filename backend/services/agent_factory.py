@@ -7,13 +7,12 @@ from CRUD operations, providing cleaner separation of concerns.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, Optional
 
 import crud
-import models
 from core import get_settings
 from domain.entities.agent_config import AgentConfigData
+from infrastructure.database import models
 from sdk.loaders import get_group_config
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,7 +170,9 @@ class AgentFactory:
         # 7. Check if agent already exists (handles stale DB entries after world reset)
         existing_agent = await crud.get_agent_by_name(db, name, world_name=effective_world_name)
         if existing_agent:
-            logger.info(f"Agent '{name}' already exists in world '{effective_world_name}', updating instead of creating")
+            logger.info(
+                f"Agent '{name}' already exists in world '{effective_world_name}', updating instead of creating"
+            )
             return await crud.update_agent(
                 db=db,
                 agent_id=existing_agent.id,
@@ -273,12 +274,10 @@ class AgentFactory:
             logger.warning(f"Agent {agent.name} has no config file, cannot append memory")
             return agent
 
-        # Write to filesystem
-        timestamp = datetime.utcnow()
+        # Write to filesystem (uses real-time fallback since no world context)
         success = AgentConfigService.append_to_recent_events(
             config_file=agent.config_file,
             memory_entry=memory_entry,
-            timestamp=timestamp,
         )
 
         if success:

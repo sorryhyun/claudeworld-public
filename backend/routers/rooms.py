@@ -4,17 +4,17 @@ from typing import List
 
 import crud
 import schemas
-from auth import require_admin
-from database import get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     ensure_room_access,
     get_agent_manager,
     get_chat_orchestrator,
     get_request_identity,
 )
-from exceptions import RoomAlreadyExistsError
+from domain.exceptions import RoomAlreadyExistsError
+from infrastructure.auth import require_admin
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database.connection import get_db
 from orchestration import ChatOrchestrator
 from sdk import AgentManager
 from services.agent_service import clear_room_messages_with_cleanup, delete_room_with_cleanup

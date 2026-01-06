@@ -13,22 +13,6 @@ Key features:
 IMPORTANT: This module is ONLY for Task-tool sub-agents. Standalone agents
 like Chat_Summarizer (which are invoked directly via AgentManager) should
 NOT be defined here.
-
-Usage:
-    from sdk.agent.task_subagent_definitions import build_subagent_definitions_for_agent
-
-    # In AgentManager._build_agent_options():
-    agents = build_subagent_definitions_for_agent(agent_name)
-    options = ClaudeAgentOptions(
-        ...,
-        agents=agents,
-    )
-
-The SDK native pattern:
-1. Registers AgentDefinition in ClaudeAgentOptions.agents
-2. Action Manager/Onboarding Manager uses Task tool to invoke sub-agents
-3. Sub-agents use persist tools to directly apply changes
-4. Task tool result confirms the persistence was successful
 """
 
 import logging
@@ -41,7 +25,7 @@ from sdk.tools.gameplay_tools.onboarding_tools import SUBAGENT_TOOL_NAMES
 
 # Valid sub-agent types (formerly sourced from subagent_prompts.py)
 # Now sub-agent prompts are defined in characteristics.md files
-SUBAGENT_TYPES = {"item_designer", "character_designer", "location_designer"}
+SUBAGENT_TYPES = {"item_designer", "character_designer", "location_designer", "detailed_character_designer"}
 
 logger = logging.getLogger("TaskSubagentDefinitions")
 
@@ -71,6 +55,7 @@ def _get_subagent_paths() -> dict[str, Path]:
         "item_designer": agents_dir / "group_subagent" / "Item_Designer",
         "character_designer": agents_dir / "group_subagent" / "Character_Designer",
         "location_designer": agents_dir / "group_subagent" / "Location_Designer",
+        "detailed_character_designer": agents_dir / "group_subagent" / "detailed_character_designer",
     }
 
 
@@ -79,26 +64,33 @@ SUBAGENT_DISPLAY_NAMES = {
     "item_designer": "Item Designer",
     "character_designer": "Character Designer",
     "location_designer": "Location Designer",
+    "detailed_character_designer": "Detailed Character Designer",
 }
 
 # Task-tool sub-agent descriptions for the Task tool
 SUBAGENT_DESCRIPTIONS = {
     "item_designer": (
         "Invoke to design a new item template for the game world. Provide the "
-        "purpose, context, and any specific requirements. Returns structured JSON "
+        "purpose, context, and any specific requirements. Calls proper persistence tool "
         "with item_id, name, description, and properties. Use this when players "
         "find, craft, or receive new items that don't exist yet."
     ),
     "character_designer": (
         "Invoke to design a new NPC character for the game world. Provide the "
-        "purpose/role of the character. Returns structured JSON with name, role, "
+        "purpose/role of the character. Calls proper persistence tool with name, role, "
         "appearance, personality, location, and initial_disposition."
     ),
     "location_designer": (
         "Invoke to design a new location for the game world. You MUST provide the "
         "exact snake_case location name (e.g., 'fringe_market_descent', 'abandoned_warehouse') "
-        "along with the purpose and adjacent location. Returns structured JSON with name, "
+        "along with the purpose and adjacent location. Calls proper persistence tool with name, "
         "display_name, description, position, and adjacent_hints."
+    ),
+    "detailed_character_designer": (
+        "Invoke to create a comprehensive character with rich backstory and consolidated memories. "
+        "Provide detailed description of the character's role, background, personality, and desired "
+        "memories (3-8 recommended). Use this for main story NPCs when depth and complexity are needed. "
+        "Calls create_comprehensive_character and implant_consolidated_memory tools."
     ),
 }
 
@@ -173,8 +165,7 @@ You MUST use the `{persist_tool_name}` tool to persist your results. Do not retu
         prompt += """
 
 ## Output Instructions
-Provide your results as a clear, structured text response. Your output will be
-returned to the parent agent via the Task tool result."""
+Provide your results as a clear, structured text response. Your output will be returned to the parent agent via the Task tool result."""
 
     return prompt
 
@@ -300,6 +291,7 @@ def build_subagent_definitions_for_agent(agent_name: str) -> Optional[dict[str, 
             "item_designer",
             "character_designer",
             "location_designer",
+            "detailed_character_designer",
         ],
     }
 

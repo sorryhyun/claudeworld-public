@@ -287,6 +287,8 @@ class PlayerState(PlayerStateBase):
     chat_mode_start_message_id: Optional[int] = None
     # In-game time
     game_time: Optional[GameTime] = None
+    # Equipment: slot_name -> item_id mapping
+    equipment: Optional[dict] = None
 
     @model_validator(mode="before")
     @classmethod

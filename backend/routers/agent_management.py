@@ -5,10 +5,10 @@ from pathlib import Path
 
 import crud
 import schemas
-from auth import require_admin
-from database import get_db
+from infrastructure.auth import require_admin
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from infrastructure.database.connection import get_db
 from sdk.parsing import list_available_configs
 from services import AgentFactory
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -4,18 +4,19 @@ Location management routes.
 Endpoints for listing locations, traveling, updating labels, and getting location messages.
 """
 
+import json
 import logging
 from typing import Optional
 
 import crud
 import schemas
-from database import get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     get_request_identity,
 )
 from domain.services.access_control import AccessControl
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database.connection import get_db
 from services.location_service import LocationService
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -174,10 +175,12 @@ async def get_location_messages(
             "role": m.role,
             "agent_id": m.agent_id,
             "agent_name": m.agent.name if m.agent else None,
+            "agent_profile_pic": m.agent.profile_pic if m.agent else None,
             "thinking": m.thinking,
             "timestamp": m.timestamp.isoformat() if m.timestamp else None,
             "image_data": m.image_data,
             "image_media_type": m.image_media_type,
+            "game_time_snapshot": json.loads(m.game_time_snapshot) if m.game_time_snapshot else None,
         }
         for m in messages
     ]

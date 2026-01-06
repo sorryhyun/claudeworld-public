@@ -245,12 +245,16 @@ def create_onboarding_tape(agents: list) -> Optional[TurnTape]:
     return tape
 
 
-def create_gameplay_tape(agents: list) -> Optional[TurnTape]:
+def create_gameplay_tape(agents: list, npc_ids: Optional[List[int]] = None) -> Optional[TurnTape]:
     """
     Create a gameplay tape for rooms with gameplay agents (1-agent system).
 
     Action Manager is hidden from frontend - visible messages are created via
     the narration tool during execution.
+
+    Args:
+        agents: List of all agents in the room
+        npc_ids: Optional list of NPC agent IDs at current location to generate reactions
 
     Returns:
         TurnTape with gameplay sequence, or None if missing gameplay agents
@@ -265,7 +269,20 @@ def create_gameplay_tape(agents: list) -> Optional[TurnTape]:
 
     tape = TurnTape()
 
-    # Action Manager - hidden, creates visible messages via narration tool
+    # Cell 1: NPC reactions (concurrent, hidden, reaction=True)
+    # Only add if there are NPCs at the location
+    if npc_ids:
+        tape.cells.append(
+            TurnCell(
+                cell_type=CellType.CONCURRENT,
+                agent_ids=npc_ids,
+                hidden=True,
+                is_reaction=True,
+            )
+        )
+        logger.info(f"Added NPC reaction cell with {len(npc_ids)} NPCs")
+
+    # Cell 2: Action Manager - hidden, creates visible messages via narration tool
     tape.cells.append(
         TurnCell(
             cell_type=CellType.SEQUENTIAL,
@@ -274,7 +291,7 @@ def create_gameplay_tape(agents: list) -> Optional[TurnTape]:
         )
     )
 
-    logger.info("Created gameplay tape with 1-agent system (AM hidden)")
+    logger.info(f"Created gameplay tape (NPCs: {len(npc_ids) if npc_ids else 0}, AM hidden)")
     return tape
 
 

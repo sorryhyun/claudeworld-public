@@ -26,6 +26,7 @@ class ParsedStreamMessage:
         memory_entries: List of new memory entries from this message
         anthropic_calls: List of anthropic tool call arguments from this message
         structured_output: Structured output data if using output_format (e.g., WorldSeed)
+        usage: Token usage data from ResultMessage (input_tokens, output_tokens, cache info)
     """
 
     response_text: str
@@ -35,6 +36,7 @@ class ParsedStreamMessage:
     memory_entries: list[str] = field(default_factory=list)
     anthropic_calls: list[str] = field(default_factory=list)
     structured_output: Optional[dict] = None
+    usage: Optional[dict] = None
 
     @property
     def has_tool_usage(self) -> bool:
@@ -75,6 +77,14 @@ class StreamParser:
         memory_entries = []
         anthropic_calls = []
         structured_output = None
+        usage = None
+
+        # Extract usage data from ResultMessage
+        if message.__class__.__name__ == "ResultMessage":
+            if hasattr(message, "usage") and message.usage:
+                usage = message.usage
+                # Log raw usage structure for debugging
+                logger.info(f"📊 ResultMessage.usage raw: {type(usage).__name__} = {usage}")
 
         # Check for structured output (from output_format queries)
         if hasattr(message, "structured_output") and message.structured_output:
@@ -153,4 +163,5 @@ class StreamParser:
             memory_entries=memory_entries,
             anthropic_calls=anthropic_calls,
             structured_output=structured_output,
+            usage=usage,
         )

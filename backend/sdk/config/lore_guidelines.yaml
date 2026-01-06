@@ -1,0 +1,94 @@
+# Lore Writing Guidelines Configuration
+# Used by Onboarding Manager when creating world lore
+active_version: "v1"
+
+v1:
+  template: |
+    # Lore Writing Guidelines
+
+    ## A. Lore Summary (for `mcp__onboarding__draft_world`)
+    A **one-paragraph summary** (50-1000 chars) that captures:
+    - Essential setting and atmosphere
+    - Core conflict or tension
+    - Key genre/tone markers
+
+    This unblocks sub-agents immediately—they use this context to create thematically consistent content.
+
+    ## B. Comprehensive Lore (for `mcp__onboarding__persist_world`)
+    Lore must be **usable creative prose**, not bullet summaries.
+
+    ### Recommended size
+    - **8–15 paragraphs**
+
+    ### Lore layers
+    1) **Foundation (2–3 paras)**: origin, rules (magic/tech), world "shape"
+    2) **Power & Conflict (2–3 paras)**: factions, rulers, what people fight over
+    3) **Present Crisis (2–3 paras)**: what just happened / is about to happen, why "now" matters
+    4) **Culture & Texture (2–3 paras)**: daily life, beliefs, taboos, tactile details
+    5) **Mystery Seeds (1–2 paras)**: unanswered hooks inviting play
+
+    ### Proper nouns (minimum)
+    - **5–8** named entities total, mixed across:
+      - places, figures, organizations, artifacts/concepts, events
+
+    ### Lore checklist (before finalization)
+    - [ ] specific names (no generic placeholders)
+    - [ ] at least one clear conflict
+    - [ ] rules + costs of magic/tech
+    - [ ] urgency/temptation of "now"
+    - [ ] at least one mystery hook
+    - [ ] matches player requests
+    - [ ] leaves room for surprise
+    - [ ] not centered to specific characters—this may limit the flow
+
+    ## C. Stat System (for `mcp__onboarding__persist_world`)
+    Create **4–6 stats** aligned with genre/themes.
+    Each stat includes:
+    - `name` (snake_case)
+    - `display` (display name)
+    - `min` (usually 0)
+    - `max` (e.g., 100)
+    - `default` (starting value)
+    - `color` (hex color, e.g., '#ff0000')
+
+    ## D. World Notes (optional, in `persist_world`)
+    Brief notes for other agents: rules, hooks, constraints.
+
+v2:
+  template: |
+    # Lore Writing Guidelines (v2)
+
+    ## 0) Guardrails (must)
+    - Obey player requests and tone first.
+    - 8–15 paragraphs, prose not bullets.
+    - 5–8 proper nouns total.
+    - Include: conflict, rules+costs, urgency ("why now"), at least one mystery hook.
+
+    ## 1) Realism Anchors (per paragraph)
+    Each paragraph must include at least ONE anchor:
+    - economy / logistics / enforcement / physical limits / social incentive
+
+    ## 2) Weirdness Budget (surprise without randomness)
+    Allocate:
+    - 1 Major Inversion (world-defining truth)
+    - 2 Medium Implications (factions/magic/tech consequences)
+    - 3 Small Oddities (daily-life tells)
+    Rule: every weird element must be a consequence of the rules+costs.
+
+    ## 3) Foreshadow Ledger
+    - Major inversion must have 2–4 early "tells" embedded in Culture & Texture.
+    - Mystery seeds must point at those tells (without explaining them).
+
+    ## 4) Spice Dial (default: 1 unless user wants more)
+    spice_level:
+      0: cozy/clean, low dread, low brutality
+      1: mild bite (moral ambiguity, sharp bargains, uncanny detail)
+      2: hot (taboos, risky temptation, social cruelty, body-horror-lite)
+      3: nuclear (oppressive systems, high dread, grim consequences; use only if requested)
+    Rule: spice modifies intensity, not genre. Never override user tone.
+
+    ## 5) Playability Hooks (hard requirement)
+    Provide 3 immediate "player affordances" across the lore:
+    - someone to talk to
+    - somewhere to go
+    - something to pursue (object, rumor, debt, promise)

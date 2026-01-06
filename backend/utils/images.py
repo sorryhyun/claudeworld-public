@@ -77,38 +77,3 @@ def compress_image_base64(
         # This ensures the app doesn't break if there's an issue
         print(f"Image compression failed: {e}")
         return base64_data, media_type
-
-
-def get_image_info(base64_data: str) -> dict:
-    """
-    Get information about a base64-encoded image.
-
-    Args:
-        base64_data: Base64-encoded image data (without data URL prefix)
-
-    Returns:
-        Dictionary with image information:
-        - width: Image width in pixels
-        - height: Image height in pixels
-        - format: Image format (e.g., 'JPEG', 'PNG')
-        - mode: Color mode (e.g., 'RGB', 'RGBA')
-        - size_bytes: Size in bytes (base64 decoded)
-        - size_kb: Size in kilobytes
-
-    Raises:
-        ValueError: If the image data is invalid
-    """
-    try:
-        image_bytes = base64.b64decode(base64_data)
-        image = Image.open(io.BytesIO(image_bytes))
-
-        return {
-            "width": image.width,
-            "height": image.height,
-            "format": image.format,
-            "mode": image.mode,
-            "size_bytes": len(image_bytes),
-            "size_kb": round(len(image_bytes) / 1024, 2),
-        }
-    except Exception as e:
-        raise ValueError(f"Invalid image data: {e}")

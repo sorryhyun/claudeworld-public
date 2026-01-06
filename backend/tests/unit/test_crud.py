@@ -6,9 +6,9 @@ and their relationships.
 """
 
 import crud
-import models
 import pytest
 import schemas
+from infrastructure.database import models
 
 
 class TestRoomCRUD:
@@ -404,7 +404,7 @@ class TestDirectRoomOperations:
     @pytest.mark.crud
     async def test_get_or_create_direct_room_new(self, test_db):
         """Test creating a new direct room."""
-        from models import Agent
+        from infrastructure.database.models import Agent
 
         # Create an agent
         agent = Agent(name="test_agent", system_prompt="Test prompt")
@@ -425,7 +425,7 @@ class TestDirectRoomOperations:
     @pytest.mark.crud
     async def test_get_or_create_direct_room_existing(self, test_db):
         """Test getting an existing direct room."""
-        from models import Agent
+        from infrastructure.database.models import Agent
 
         # Create an agent
         agent = Agent(name="test_agent", system_prompt="Test prompt")

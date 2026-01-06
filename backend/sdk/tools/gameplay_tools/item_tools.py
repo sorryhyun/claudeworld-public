@@ -6,7 +6,7 @@ Contains tools for item creation and management:
 
 Uses ItemService for filesystem-first item template management.
 When add_to_inventory is True, items are also added to player inventory
-via PlayerService (used during onboarding for starting items).
+via PlayerFacade (which syncs to DB for frontend display).
 
 Supports batch creation of multiple items in a single call.
 """
@@ -15,10 +15,10 @@ import logging
 from typing import Any
 
 from claude_agent_sdk import tool
+from services.facades import PlayerFacade
 from services.item_service import ItemService
-from services.player_service import PlayerService
 
-from sdk.config.subagent_inputs import PersistItemInput
+from sdk.config.subagent_tool_definitions import PersistItemInput
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.context import ToolContext
 
@@ -39,6 +39,13 @@ def create_item_tools(ctx: ToolContext) -> list:
 
     # Get required dependencies from context
     world_name = ctx.require_world_name()
+
+    # Get optional db/world_id for DB sync (may be None for sub-agents)
+    db = ctx.db
+    world_id = ctx.world_id
+
+    # Create PlayerFacade for FS-first with DB sync (if available)
+    player_facade = PlayerFacade(world_name, db=db, world_id=world_id) if db and world_id else None
 
     # ==========================================================================
     # persist_item tool - Create item templates in items/ directory
@@ -82,32 +89,56 @@ def create_item_tools(ctx: ToolContext) -> list:
                         logger.warning(f"⚠️ Item '{item.item_id}' already exists, skipping")
                         continue
 
-                    # Save the new item template
+                    # Save the new item template with all new optional fields
                     ItemService.save_item_template(
                         world_name,
                         item_id=item.item_id,
                         name=item.name,
                         description=item.description,
                         properties=item.properties,
+                        # NEW fields for world-agnostic item system
+                        category=item.category,
+                        tags=item.tags,
+                        rarity=item.rarity,
+                        icon=item.icon,
+                        stacking=item.stacking.model_dump() if item.stacking else None,
+                        equippable=item.equippable.model_dump() if item.equippable else None,
+                        usable=item.usable.model_dump() if item.usable else None,
                     )
                     created_items.append(item)
                     logger.info(f"✅ Created item template: {item.item_id}")
 
                 # Add to inventory if requested (used during onboarding for starting items)
                 if validated.add_to_inventory and created_items:
-                    player_state = PlayerService.load_player_state(world_name)
-                    if player_state:
+                    if player_facade:
+                        # Use PlayerFacade for FS-first with DB sync
                         for item in created_items:
-                            inventory_entry = {
-                                "item_id": item.item_id,
-                                "quantity": item.quantity,
-                            }
-                            player_state.inventory.append(inventory_entry)
+                            await player_facade.add_item(
+                                item_id=item.item_id,
+                                name=item.name,
+                                quantity=item.quantity,
+                                description=item.description,
+                                properties=item.properties,
+                            )
                             inventory_added.append(f"{item.quantity}x {item.name}")
-                            logger.info(f"✅ Added {item.quantity}x {item.item_id} to inventory")
-                        PlayerService.save_player_state(world_name, player_state)
+                            logger.info(f"✅ Added {item.quantity}x {item.item_id} to inventory (with DB sync)")
                     else:
-                        logger.warning("Could not load player state to add items to inventory")
+                        # Fallback: FS-only (no DB sync available)
+                        from services.player_service import PlayerService
+
+                        player_state = PlayerService.load_player_state(world_name)
+                        if player_state:
+                            for item in created_items:
+                                inventory_entry = {
+                                    "item_id": item.item_id,
+                                    "quantity": item.quantity,
+                                }
+                                player_state.inventory.append(inventory_entry)
+                                inventory_added.append(f"{item.quantity}x {item.name}")
+                                logger.info(f"✅ Added {item.quantity}x {item.item_id} to inventory (FS-only)")
+                            PlayerService.save_player_state(world_name, player_state)
+                        else:
+                            logger.warning("Could not load player state to add items to inventory")
 
                 # Build response
                 response_parts = []

@@ -7,9 +7,8 @@ response generation, including prompt tracking, tool capture, and subagent handl
 
 from __future__ import annotations
 
-import json
 import logging
-import os
+import time
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from claude_agent_sdk.types import (
@@ -22,13 +21,17 @@ from claude_agent_sdk.types import (
 from infrastructure.logging.perf_logger import get_perf_logger
 
 from sdk.parsing.location_parser import parse_location_from_task_prompt
-from sdk.tools.fake_tool_executor import execute_fake_tool_call, parse_fake_tool_calls
 
 if TYPE_CHECKING:
     from domain.value_objects.contexts import AgentResponseContext
 
 logger = logging.getLogger(__name__)
 _perf = get_perf_logger()
+
+# Track subagent invocation times by agent_id for duration calculation
+_subagent_start_times: dict[
+    str, tuple[float, str, int, str]
+] = {}  # agent_id -> (start_time, parent_agent, room_id, subagent_type)
 
 # Type alias for hook functions
 HookFunc = Callable[..., Coroutine[Any, Any, SyncHookJSONOutput]]
@@ -54,13 +57,17 @@ def create_prompt_submit_hook(
         _tool_use_id: str | None,
         _ctx: dict,
     ) -> SyncHookJSONOutput:
-        """Hook to track when prompt is submitted to Claude API."""
+        """Hook to track when prompt is submitted to Claude API.
+
+        Note: user_prompt_chars is the character length of the user message string,
+        NOT the actual API token count. Real token usage comes from api_usage phase.
+        """
         _perf.log_sync(
             "prompt_submitted",
             0,  # No duration calculation, just timestamp
             agent_name,
             room_id,
-            prompt_len=len(input_data.get("prompt", "")),
+            user_prompt_chars=len(input_data.get("prompt", "")),
         )
         return {"continue_": True}
 
@@ -102,16 +109,13 @@ def create_subagent_stop_hook(
     context: AgentResponseContext,
 ) -> HookFunc:
     """
-    Create a SubagentStop hook to handle fake tool calls when subagents complete.
+    Create a SubagentStop hook to track when subagents complete.
 
-    This is crucial for run_in_background: true where parent may not wait for results.
-    The hook reads subagent output and executes any fake tool calls found.
-
-    IMPORTANT: This hook creates a fresh DB session because the parent agent's session
-    may be closed/stale by the time the background subagent completes.
+    This hook logs subagent completion for performance monitoring and calculates
+    the duration from start (tracked by PreToolUse hook) to stop.
 
     Args:
-        context: Agent response context for tool execution
+        context: Agent response context for logging
 
     Returns:
         Async hook function
@@ -119,113 +123,141 @@ def create_subagent_stop_hook(
 
     async def handle_subagent_stop(
         input_data: dict,
-        _tool_use_id: str | None,
+        tool_use_id: str | None,
         _ctx: dict,
     ) -> SyncHookJSONOutput:
-        """Hook to handle fake tool calls when subagent completes."""
+        """Hook to log when subagent completes."""
+        stop_time = time.perf_counter()
         logger.info(f"🔔 SubagentStop hook fired. Input keys: {list(input_data.keys())}")
 
-        # Try to get agent_id and read the output file
+        # Try to get agent_id
         agent_id = input_data.get("agent_id")
-        transcript_path = input_data.get("agent_transcript_path")
+        logger.info(f"🔔 SubagentStop: agent_id={agent_id}")
 
-        logger.info(f"🔔 SubagentStop: agent_id={agent_id}, transcript_path={transcript_path}")
+        # Calculate subagent duration if we have start time
+        subagent_type = "unknown"
+        parent_agent = context.agent_name
+        room_id = context.room_id
+        duration_ms = 0.0
+        matched_key = None
 
-        # Try to read the output file if we have agent_id
-        output_text = ""
-        if agent_id:
-            # The SDK writes output to /tmp/claude/{cwd}/tasks/{agent_id}.output
-            possible_paths = [
-                f"/tmp/claude/-tmp-claude-empty/tasks/{agent_id}.output",
-                f"/tmp/claude/tasks/{agent_id}.output",
-            ]
-            for path in possible_paths:
-                if os.path.exists(path):
-                    try:
-                        with open(path, encoding="utf-8") as f:
-                            output_text = f.read()
-                        logger.info(f"🔔 Read subagent output from {path} ({len(output_text)} chars)")
-                        break
-                    except Exception as e:
-                        logger.warning(f"Failed to read {path}: {e}")
+        # Try to find start time in order of reliability:
+        # 1. tool_use_id (most reliable - same ID from pre/post hooks)
+        # 2. agent_id (from SubagentStop input)
+        # 3. composite key (room:subagent_type fallback)
 
-        # If we have transcript path, try reading from there
-        if not output_text and transcript_path:
-            try:
-                with open(transcript_path, encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            entry = json.loads(line)
-                            # Look for assistant messages with text content
-                            if entry.get("type") == "assistant":
-                                msg = entry.get("message", {})
-                                for content in msg.get("content", []):
-                                    if content.get("type") == "text":
-                                        output_text += content.get("text", "")
-                        except json.JSONDecodeError:
-                            continue
-                logger.info(f"🔔 Extracted output from transcript ({len(output_text)} chars)")
-            except Exception as e:
-                logger.warning(f"Failed to read transcript: {e}")
+        keys_to_try = [k for k in [tool_use_id, agent_id] if k]
+        for key in keys_to_try:
+            if key in _subagent_start_times:
+                start_time, parent_agent, room_id, subagent_type = _subagent_start_times.pop(key)
+                duration_ms = (stop_time - start_time) * 1000
+                matched_key = key
+                logger.debug(f"Matched subagent by key: {key}, duration: {duration_ms:.2f}ms")
+                break
 
-        # Check for fake tool calls
-        if not output_text:
-            logger.info("🔔 SubagentStop: No output text found")
-            return {"continue_": True}
+        if matched_key is None:
+            # Try composite key matching by room_id
+            for k, (start, parent, rid, stype) in list(_subagent_start_times.items()):
+                # Clean up old entries (older than 5 minutes)
+                if (stop_time - start) > 300:
+                    del _subagent_start_times[k]
+                    continue
+                # Match by composite key pattern or same room
+                if rid == context.room_id:
+                    duration_ms = (stop_time - start) * 1000
+                    subagent_type = stype
+                    parent_agent = parent
+                    matched_key = k
+                    del _subagent_start_times[k]
+                    # Also clean up related composite key if exists
+                    composite = f"{rid}:{stype}"
+                    _subagent_start_times.pop(composite, None)
+                    logger.debug(f"Matched subagent by room fallback: {k}, duration: {duration_ms:.2f}ms")
+                    break
 
-        # Log first 500 chars of output for debugging
-        logger.info(f"🔔 SubagentStop output preview: {output_text[:500]}...")
-
-        # Check for fake tool calls (XML or JSON format)
-        has_xml = "<function_calls>" in output_text
-        has_json = "{" in output_text and "}" in output_text
-
-        if not has_xml and not has_json:
-            logger.info("🔔 SubagentStop: No potential tool calls found in output")
-            return {"continue_": True}
-
-        logger.info(f"🔔 SubagentStop: Found potential tool calls (XML={has_xml}, JSON={has_json}), parsing...")
-
-        # Parse and execute fake tool calls
-        fake_calls = parse_fake_tool_calls(output_text)
-        if not fake_calls:
-            logger.warning("Found <function_calls> marker but failed to parse any calls")
-            return {"continue_": True}
-
-        # Create a FRESH DB session for fake tool execution
-        # The parent agent's session (context.db) may be closed/stale by now
-        # since this hook fires after the background subagent completes
-        from database import async_session_maker
-
-        from sdk.tools.context import ToolContext
-
-        async with async_session_maker() as fresh_db:
-            tool_ctx = ToolContext(
-                agent_name=context.agent_name,
-                agent_id=context.agent_id,
-                room_id=context.room_id,
-                world_name=context.world_name,
-                world_id=context.world_id,
-                db=fresh_db,  # Use fresh session instead of context.db
-                group_name=context.group_name,
+        if matched_key is None:
+            logger.warning(
+                f"Could not match subagent stop to start. Keys available: {list(_subagent_start_times.keys())}"
             )
 
-            # Execute each fake tool call
-            for call in fake_calls:
-                try:
-                    result = await execute_fake_tool_call(call, tool_ctx)
-                    if result:
-                        logger.info(f"🔔 Fake tool executed: {call.tool_name} -> success={result.get('success')}")
-                except Exception as e:
-                    logger.error(f"🔔 Fake tool execution failed: {call.tool_name} -> {e}")
-
-            # Commit any changes made by fake tools
-            await fresh_db.commit()
-            logger.info("🔔 SubagentStop: Committed fake tool changes")
+        # Log subagent completion
+        await _perf.log_async(
+            "subagent_completed",
+            duration_ms,
+            subagent_type,
+            room_id,
+            parent=parent_agent,
+            success=True,
+        )
 
         return {"continue_": True}
 
     return handle_subagent_stop
+
+
+def create_pre_task_subagent_hook(
+    context: AgentResponseContext,
+) -> HookFunc:
+    """
+    Create a PreToolUse hook to track when any Task tool (subagent) is invoked.
+
+    This logs the subagent invocation for performance monitoring and stores
+    the start time for duration calculation when the subagent completes.
+
+    Args:
+        context: Agent response context for logging
+
+    Returns:
+        Async hook function
+    """
+
+    async def track_subagent_invocation(
+        input_data: PreToolUseHookInput,
+        tool_use_id: str | None,
+        _ctx: dict,
+    ) -> SyncHookJSONOutput:
+        """Track when any subagent Task is invoked."""
+        tool_name = input_data.get("tool_name", "")
+        if tool_name != "Task":
+            return {"continue_": True}
+
+        tool_input = input_data.get("tool_input", {})
+        subagent_type = tool_input.get("subagent_type", "")
+        run_in_background = tool_input.get("run_in_background", False)
+
+        if not subagent_type:
+            return {"continue_": True}
+
+        # Store start time for duration calculation
+        # Key priority: tool_use_id first (most reliable), then composite key
+        # The composite key helps match when tool_use_id isn't available in SubagentStop
+        start_time = time.perf_counter()
+        start_data = (start_time, context.agent_name, context.room_id, subagent_type)
+
+        # Store by tool_use_id (primary)
+        if tool_use_id:
+            _subagent_start_times[tool_use_id] = start_data
+            logger.debug(f"Stored subagent start time with tool_use_id: {tool_use_id}")
+
+        # Also store by composite key for fallback matching
+        composite_key = f"{context.room_id}:{subagent_type}"
+        _subagent_start_times[composite_key] = start_data
+        logger.debug(f"Stored subagent start time with composite key: {composite_key}")
+
+        # Log subagent invocation
+        _perf.log_sync(
+            "subagent_invoked",
+            0.0,  # No duration yet
+            context.agent_name,
+            context.room_id,
+            subagent=subagent_type,
+            background=run_in_background,
+            tool_use_id=tool_use_id or "none",
+        )
+
+        return {"continue_": True}
+
+    return track_subagent_invocation
 
 
 def create_pre_task_location_hook(
@@ -258,8 +290,8 @@ def create_pre_task_location_hook(
         if subagent_type != "location_designer":
             return {"continue_": True}
 
-        # Access context via closure
-        if not context.db or not context.world_id or not context.world_name:
+        # Check required context values (db not needed - we create fresh session)
+        if not context.world_id or not context.world_name:
             logger.warning("PreToolUse: Missing context for draft location creation")
             return {"continue_": True}
 
@@ -273,27 +305,24 @@ def create_pre_task_location_hook(
         logger.info(f"🏗️ PreToolUse: Creating draft location '{location_info.get('display_name')}'")
 
         try:
+            # Use a fresh DB session to avoid concurrent operation errors
+            # The parent agent's session (context.db) may be in use by other operations
+            from infrastructure.database.connection import async_session_maker
             from services.persistence_manager import PersistenceManager
 
-            pm = PersistenceManager(context.db, context.world_id, context.world_name)
-            await pm.create_draft_location(
-                name=location_info["name"],
-                display_name=location_info["display_name"],
-                description=location_info.get("description", "A newly discovered area."),
-                position=location_info.get("position", (0, 0)),
-                adjacent_hints=location_info.get("adjacent_to"),
-            )
+            async with async_session_maker() as fresh_db:
+                pm = PersistenceManager(fresh_db, context.world_id, context.world_name)
+                await pm.create_draft_location(
+                    name=location_info["name"],
+                    display_name=location_info["display_name"],
+                    description=location_info.get("description", "A newly discovered area."),
+                    position=location_info.get("position", (0, 0)),
+                    adjacent_hints=location_info.get("adjacent_to"),
+                )
+                await fresh_db.commit()
             logger.info(f"✅ Draft location created: {location_info['display_name']}")
         except Exception as e:
             logger.warning(f"Failed to create draft location: {e}")
-            # Rollback the session to clear the PendingRollbackError state
-            # This is critical when running in foreground mode, as the same
-            # session will be used by persist_location_design_tool later
-            try:
-                await context.db.rollback()
-                logger.info("Session rolled back after draft location creation failure")
-            except Exception as rollback_err:
-                logger.warning(f"Failed to rollback session: {rollback_err}")
 
         return {"continue_": True}
 
@@ -396,9 +425,19 @@ def build_hooks(
         )
     )
 
-    # Add PreToolUse hook for Task tool (location_designer)
+    # Add PreToolUse hooks for Task tool
     if "PreToolUse" not in hooks:
         hooks["PreToolUse"] = []
+
+    # Track subagent invocation for performance logging (all subagent types)
+    hooks["PreToolUse"].append(
+        HookMatcher(
+            matcher="Task",
+            hooks=[create_pre_task_subagent_hook(context)],
+        )
+    )
+
+    # Create draft location when location_designer is invoked
     hooks["PreToolUse"].append(
         HookMatcher(
             matcher="Task",

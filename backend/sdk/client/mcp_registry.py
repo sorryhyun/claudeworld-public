@@ -15,10 +15,13 @@ import hashlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from domain.entities.agent import is_action_manager, is_onboarding_manager
 from domain.value_objects.contexts import AgentResponseContext
+
+if TYPE_CHECKING:
+    from sdk.agent.agent_manager import AgentManager
 
 from sdk.loaders import (
     get_agent_tool_config,
@@ -28,6 +31,7 @@ from sdk.tools import (
     SUBAGENT_TOOL_NAMES,
     create_action_manager_mcp_server,
     create_action_mcp_server,
+    create_character_design_mcp_server,
     create_guidelines_mcp_server,
     create_onboarding_mcp_server,
     create_subagents_mcp_server,
@@ -98,9 +102,19 @@ class MCPRegistry:
             str(context.room_id) if context.room_id else "",
         ]
         hash_input = "|".join(hash_parts)
-        return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+        result = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+        logger.debug(
+            f"Config hash for {context.agent_name}: {result} | "
+            f"config_file={context.config.config_file}, "
+            f"memory_keys={list(context.config.long_term_memory_index.keys()) if context.config.long_term_memory_index else None}"
+        )
+        return result
 
-    def build_mcp_config(self, context: AgentResponseContext) -> MCPServerConfig:
+    def build_mcp_config(
+        self,
+        context: AgentResponseContext,
+        agent_manager: Optional["AgentManager"] = None,
+    ) -> MCPServerConfig:
         """
         Build MCP server configuration for an agent.
 
@@ -114,6 +128,7 @@ class MCPRegistry:
 
         Args:
             context: Agent response context
+            agent_manager: Optional AgentManager for pre-connection in tools
 
         Returns:
             MCPServerConfig with mcp_servers dict, allowed_tool_names list, and config_hash
@@ -149,7 +164,7 @@ class MCPRegistry:
             logger.debug(f"Removed 'action' from enabled groups for system agent: {context.agent_name}")
 
         # Create MCP servers for each enabled group
-        config.mcp_servers = self._create_mcp_servers(context, config.enabled_groups)
+        config.mcp_servers = self._create_mcp_servers(context, config.enabled_groups, agent_manager)
 
         # Build allowed tool names from enabled groups
         config.allowed_tool_names = self._build_allowed_tools(config.enabled_groups, agent_tool_config)
@@ -223,6 +238,7 @@ class MCPRegistry:
         self,
         context: AgentResponseContext,
         enabled_groups: set[str],
+        agent_manager: Optional["AgentManager"] = None,
     ) -> dict[str, Any]:
         """Create MCP servers for enabled tool groups."""
         mcp_servers = {}
@@ -236,6 +252,7 @@ class MCPRegistry:
                 config_file=Path(context.config.config_file) if context.config.config_file else None,
                 long_term_memory_index=context.config.long_term_memory_index,
                 group_name=context.group_name,
+                world_name=context.world_name,  # For game time in memorize tool
             )
             mcp_servers["action"] = create_action_mcp_server(action_ctx)
 
@@ -261,6 +278,28 @@ class MCPRegistry:
             )
             mcp_servers["onboarding"] = create_onboarding_mcp_server(onboarding_ctx)
 
+        # Character Design MCP server (for detailed character creation during onboarding)
+        if "character_design" in enabled_groups:
+            if context.db is not None and context.world_id is not None and context.world_name:
+                logger.debug(f"Adding character_design tools for agent: {context.agent_name}")
+                character_design_ctx = ToolContext(
+                    agent_name=context.agent_name,
+                    agent_id=context.agent_id,
+                    config_file=Path(context.config.config_file) if context.config.config_file else None,
+                    group_name=context.group_name,
+                    room_id=context.room_id,
+                    world_name=context.world_name,
+                    world_id=context.world_id,
+                    db=context.db,
+                )
+                mcp_servers["character_design"] = create_character_design_mcp_server(character_design_ctx)
+            else:
+                logger.warning(
+                    f"character_design tool group enabled but missing required context "
+                    f"(db={context.db is not None}, world_id={context.world_id}, "
+                    f"world_name={context.world_name})"
+                )
+
         # Action Manager MCP server (gameplay tools)
         # Sub-agent invocation now uses SDK native AgentDefinition + Task tool pattern
         if "action_manager" in enabled_groups:
@@ -274,6 +313,8 @@ class MCPRegistry:
                     world_name=context.world_name,
                     world_id=context.world_id,
                     db=context.db,
+                    npc_reactions=context.npc_reactions,  # Pass NPC reactions for narration tool
+                    agent_manager=agent_manager,  # For pre-connection in travel tool
                 )
                 mcp_servers["action_manager"] = create_action_manager_mcp_server(action_manager_ctx)
             else:
@@ -349,6 +390,15 @@ class MCPRegistry:
             ]
             allowed_tool_names.extend(onboarding_tools)
             logger.debug(f"Added onboarding tools: {onboarding_tools}")
+
+        if "character_design" in enabled_groups:
+            # Add character design tools (used by detailed_character_designer during onboarding)
+            character_design_tools = [
+                "mcp__character_design__create_comprehensive_character",
+                "mcp__character_design__implant_consolidated_memory",
+            ]
+            allowed_tool_names.extend(character_design_tools)
+            logger.debug(f"Added character_design tools: {character_design_tools}")
 
         # Apply specific tool filtering (disabled_tools)
         if agent_tool_config.get("disabled_tools"):

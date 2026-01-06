@@ -11,9 +11,12 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator
 
 from claude_agent_sdk import ClaudeSDKClient
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 from domain.value_objects.contexts import AgentResponseContext
 from domain.value_objects.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
@@ -161,8 +164,6 @@ class AgentManager:
         )
         logger.debug(f"System prompt (first 100 chars): {context.system_prompt[:100]}...")
         logger.debug(f"User message: {context.user_message}")
-        if context.conversation_history:
-            logger.debug(f"Conversation history (length): {len(context.conversation_history)} chars")
 
         try:
             # Yield stream_start event
@@ -179,15 +180,16 @@ class AgentManager:
             memory_entries: list[str] = []  # Track memory entries from memorize tool calls
             anthropic_calls: list[str] = []  # Track anthropic tool calls (via hook)
             structured_output = None  # Track structured output if using output_format
+            usage_data: dict | None = None  # Track token usage from API response
 
-            # Build the message with conversation history if provided
             message_to_send = context.user_message
-            if context.conversation_history:
-                message_to_send = f"{context.conversation_history}\n\n{context.user_message}"
 
             # Build agent options with hooks for anthropic calls
             # Returns (options, config_hash) - config_hash used by pool for change detection
-            options, config_hash = build_agent_options(context, context.system_prompt, anthropic_calls)
+            # Pass self as agent_manager for pre-connection in tools (e.g., travel tool)
+            options, config_hash = build_agent_options(
+                context, context.system_prompt, anthropic_calls, agent_manager=self
+            )
 
             # Get or create client from pool (reuses client for same room-agent pair)
             # This prevents creating hundreds of agent session files
@@ -326,9 +328,13 @@ class AgentManager:
                 logger.error(f"⏰ Timeout sending message to agent | Task: {context.task_id}")
                 raise Exception("Timeout sending message to agent")
 
-            # Track time to first token
+            # Track time to first token and chunk intervals
             streaming_start = time.perf_counter()
             first_token_logged = False
+            last_chunk_time = streaming_start  # For tracking inter-chunk latency
+            chunk_count = 0
+            total_thinking_chars = 0
+            total_content_chars = 0
 
             # Read from message queue (filled by pump task in client_pool)
             # The pump keeps SDK control channel healthy for background subagent MCP calls
@@ -385,6 +391,10 @@ class AgentManager:
                     structured_output = parsed.structured_output
                     logger.info(f"📊 Captured structured output for {context.agent_name}")
 
+                # Capture usage data if present (from ResultMessage)
+                if parsed.usage:
+                    usage_data = parsed.usage
+
                 # Update accumulated text
                 response_text = parsed.response_text
                 thinking_text = parsed.thinking_text
@@ -394,6 +404,8 @@ class AgentManager:
 
                 # Yield delta events for content and thinking
                 if content_delta:
+                    chunk_count += 1
+                    total_content_chars += len(content_delta)
                     logger.info(f"🔄 YIELDING content delta | Length: {len(content_delta)}")
                     yield {
                         "type": "content_delta",
@@ -402,6 +414,8 @@ class AgentManager:
                     }
 
                 if thinking_delta:
+                    chunk_count += 1
+                    total_thinking_chars += len(thinking_delta)
                     logger.info(f"🔄 YIELDING thinking delta | Length: {len(thinking_delta)}")
                     yield {
                         "type": "thinking_delta",
@@ -433,6 +447,18 @@ class AgentManager:
                     logger.debug(f"Received ResultMessage for task: {task_id}")
                     break
 
+            # Log streaming stats summary
+            streaming_duration_ms = (time.perf_counter() - streaming_start) * 1000
+            _perf.log_sync(
+                "streaming_complete",
+                streaming_duration_ms,
+                context.agent_name,
+                context.room_id,
+                chunks=chunk_count,
+                thinking_chars=total_thinking_chars,
+                content_chars=total_content_chars,
+            )
+
             # Update pooled client's session_id to match the new session from SDK response
             if new_session_id and pooled.session_id != new_session_id:
                 logger.debug(f"Updating pooled session_id: {pooled.session_id} -> {new_session_id}")
@@ -460,6 +486,38 @@ class AgentManager:
             if anthropic_calls:
                 logger.info(f"🔒 Agent called anthropic {len(anthropic_calls)} times: {anthropic_calls}")
 
+            # Log token usage from API response
+            if usage_data:
+                # Handle both dict and object-style usage data
+                if hasattr(usage_data, "__dict__"):
+                    # It's an object, convert to dict
+                    logger.info(f"📊 usage_data is object: {type(usage_data).__name__}, attrs: {dir(usage_data)}")
+                    input_tokens = getattr(usage_data, "input_tokens", 0)
+                    cache_creation = getattr(usage_data, "cache_creation_input_tokens", 0)
+                    cache_read = getattr(usage_data, "cache_read_input_tokens", 0)
+                    output_tokens = getattr(usage_data, "output_tokens", 0)
+                else:
+                    # It's a dict
+                    logger.info(
+                        f"📊 usage_data dict keys: {list(usage_data.keys()) if isinstance(usage_data, dict) else 'N/A'}"
+                    )
+                    input_tokens = usage_data.get("input_tokens", 0)
+                    cache_creation = usage_data.get("cache_creation_input_tokens", 0)
+                    cache_read = usage_data.get("cache_read_input_tokens", 0)
+                    output_tokens = usage_data.get("output_tokens", 0)
+                total_input = input_tokens + cache_creation + cache_read
+                _perf.log_sync(
+                    "api_usage",
+                    0,  # No duration, just logging usage data
+                    context.agent_name,
+                    context.room_id,
+                    input_tokens=input_tokens,
+                    cache_creation=cache_creation,
+                    cache_read=cache_read,
+                    total_input=total_input,
+                    output_tokens=output_tokens,
+                )
+
             # Append response to debug log
             append_response_to_debug_log(
                 agent_name=context.agent_name,
@@ -480,6 +538,7 @@ class AgentManager:
                 "anthropic_calls": anthropic_calls,
                 "skipped": skip_tool_called,
                 "structured_output": structured_output,
+                "usage": usage_data,
             }
 
         except asyncio.CancelledError:
@@ -503,6 +562,7 @@ class AgentManager:
                 "memory_entries": [],
                 "anthropic_calls": [],
                 "skipped": True,
+                "usage": None,
             }
 
         except Exception as e:
@@ -528,6 +588,7 @@ class AgentManager:
                     "memory_entries": [],
                     "anthropic_calls": [],
                     "skipped": True,
+                    "usage": None,
                 }
                 return
 
@@ -552,4 +613,97 @@ class AgentManager:
                 "memory_entries": [],
                 "anthropic_calls": [],
                 "skipped": False,
+                "usage": None,
             }
+
+    async def pre_connect(
+        self,
+        db: "AsyncSession",
+        room_id: int,
+        agent_id: int,
+        agent_name: str,
+        world_name: str,
+        world_id: int,
+        config_file: str | None = None,
+        group_name: str | None = None,
+    ) -> bool:
+        """
+        Pre-connect an agent client to reduce first-response latency.
+
+        This method establishes a client connection without sending queries,
+        warming up the pool for faster subsequent responses.
+
+        Args:
+            db: Database session
+            room_id: Target room ID
+            agent_id: Agent database ID
+            agent_name: Agent name (e.g., "Action_Manager")
+            world_name: World name for context
+            world_id: World database ID
+            config_file: Optional path to agent config folder
+            group_name: Optional agent group name
+
+        Returns:
+            True if connection established, False on error.
+            Errors are logged but don't raise - pre-connect is best-effort.
+        """
+        import crud
+        from domain.entities.agent_config import AgentConfigData
+        from domain.value_objects.contexts import AgentResponseContext
+        from domain.value_objects.task_identifier import TaskIdentifier
+        from services.agent_config_service import AgentConfigService
+        from services.prompt_builder import build_system_prompt
+
+        try:
+            logger.debug(f"Pre-connect starting for {agent_name} (room={room_id})")
+
+            # Fetch existing session_id for this agent in this room
+            # This is critical - without it, the pool will recreate the client on actual use
+            session_id = await crud.get_room_agent_session(db, room_id, agent_id)
+
+            # Load agent config from filesystem if config_file provided
+            config_data = AgentConfigData()
+            if config_file:
+                loaded_config = AgentConfigService.load_agent_config(config_file)
+                if loaded_config:
+                    config_data = loaded_config
+                # Ensure config_file is set (used in config hash computation)
+                config_data.config_file = config_file
+
+            # Build system prompt for the agent
+            system_prompt = build_system_prompt(agent_name, config_data)
+
+            # Build minimal context for options building
+            context = AgentResponseContext(
+                system_prompt=system_prompt,
+                user_message="",  # Empty - not sending actual query
+                agent_name=agent_name,
+                agent_id=agent_id,
+                room_id=room_id,
+                config=config_data,
+                world_name=world_name,
+                world_id=world_id,
+                db=db,
+                group_name=group_name,
+                session_id=session_id,  # Use existing session to avoid pool mismatch
+            )
+
+            # Build options (same logic as generate_sdk_response)
+            options, config_hash = build_agent_options(context, system_prompt, None)
+
+            # Create task identifier
+            task_id = TaskIdentifier(room_id=room_id, agent_id=agent_id)
+
+            # Get or create client (this establishes connection)
+            pooled, is_new, _ = await self.client_pool.get_or_create(task_id, options, config_hash)
+
+            if is_new:
+                logger.info(f"🔌 Pre-connect: NEW client for {agent_name} (room={room_id})")
+            else:
+                logger.info(f"🔌 Pre-connect: REUSED client for {agent_name} (room={room_id})")
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"Pre-connect failed for {agent_name}: {e}")
+            return False

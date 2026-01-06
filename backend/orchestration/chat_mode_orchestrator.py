@@ -15,8 +15,8 @@ import time
 from typing import Dict, List, Optional
 
 import crud
-import models
 from domain.value_objects.contexts import OrchestrationContext
+from infrastructure.database import models
 from sdk import AgentManager
 from sqlalchemy.ext.asyncio import AsyncSession
 

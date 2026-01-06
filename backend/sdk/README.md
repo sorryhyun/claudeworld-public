@@ -8,17 +8,16 @@ Claude Agent SDK integration layer for managing AI agent lifecycle, MCP tools, a
 sdk/
 ├── __init__.py          # Module exports
 │
-├── config/              # YAML configuration and input schemas (hot-reloaded)
-│   ├── action_tools.yaml        # Action tool definitions (skip, memorize, recall)
-│   ├── guideline_tools.yaml     # Guidelines tool definition
-│   ├── gameplay_tools.yaml      # TRPG gameplay tools (travel, narration, persist_*)
-│   ├── guidelines_3rd.yaml      # System prompt template
-│   ├── conversation_context.yaml # Context formatting
-│   ├── localization.yaml        # Localized messages (en, ko)
-│   ├── action_inputs.py         # Action tool input schemas
-│   ├── gameplay_inputs.py       # Gameplay tool input schemas
-│   ├── guideline_inputs.py      # Guideline tool input schemas
-│   └── onboarding_inputs.py     # Onboarding tool input schemas
+├── config/              # Tool definitions and system prompt (hot-reloaded)
+│   ├── tool_definitions.py          # Base ToolDefinition dataclass
+│   ├── action_tool_definitions.py   # Action tools (skip, memorize, recall)
+│   ├── guideline_tool_definitions.py # Guidelines tool definition
+│   ├── gameplay_tool_definitions.py  # TRPG gameplay tools (travel, narration, etc.)
+│   ├── onboarding_tool_definitions.py # Onboarding tools (draft_world, persist_world, complete)
+│   ├── subagent_tool_definitions.py  # Sub-agent persist tools
+│   ├── guidelines_3rd.yaml           # System prompt template
+│   ├── conversation_context.yaml     # Context formatting
+│   └── localization.yaml             # Localized messages (en, ko)
 │
 ├── loaders/             # Configuration loaders
 │   ├── tools.py         # Tool config loading with group overrides
@@ -42,16 +41,19 @@ sdk/
 ├── tools/               # MCP tool implementations
 │   ├── action_tools.py       # skip, memorize, recall
 │   ├── guidelines_tools.py   # guidelines reader
-│   ├── fake_tool_executor.py # Execute fake tool calls from subagents
 │   ├── common.py             # Shared tool utilities
 │   ├── context.py            # ToolContext for tool handlers
 │   ├── errors.py             # Tool-specific exceptions
 │   └── gameplay_tools/       # TRPG gameplay and onboarding tools
-│       ├── character_tools.py  # remove_character, move_character, list_characters, persist_character_design
-│       ├── location_tools.py   # travel, list_locations, persist_location_design
-│       ├── mechanics_tools.py  # inject_memory, narration, suggest_options, change_stat
-│       ├── onboarding_tools.py # draft_world, persist_world, complete (world initialization)
-│       └── common.py           # Shared gameplay utilities
+│       ├── character_tools.py   # remove_character, move_character, list_characters, persist_character_design
+│       ├── location_tools.py    # travel, list_locations, persist_location_design
+│       ├── mechanics_tools.py   # inject_memory, change_stat
+│       ├── narrative_tools.py   # narration, suggest_options
+│       ├── item_tools.py        # persist_item
+│       ├── equipment_tools.py   # Equipment handling
+│       ├── history_tools.py     # History compression
+│       ├── onboarding_tools.py  # draft_world, persist_world, complete (world initialization)
+│       └── common.py            # Shared gameplay utilities
 │
 └── parsing/             # Parsing utilities
     ├── agent_parser.py    # Parse agent config from markdown files
@@ -103,7 +105,7 @@ config = registry.build_mcp_config(agent_context)
 # Returns: MCPServerConfig(mcp_servers, allowed_tool_names, enabled_groups)
 ```
 
-### Sub-Agent Invocation (`agent/agent_definitions.py`)
+### Sub-Agent Invocation (`agent/task_subagent_definitions.py`)
 
 Sub-agents are invoked via the Task tool pattern (SDK native):
 - `item_designer`: Create new item templates with balanced stats and lore
@@ -153,29 +155,30 @@ Tools are organized into groups configured in YAML files:
 
 ## Adding New Tools
 
-1. **Define tool in YAML** (`config/gameplay_tools.yaml` or create new YAML):
-   ```yaml
-   my_tool:
-     name: my_tool
-     description: "What the tool does"
-     group: action_manager  # Tool group for filtering
-     input_schema:
-       type: object
-       properties:
-         param1:
-           type: string
-           description: "Parameter description"
-       required: ["param1"]
-   ```
-
-2. **Define input schema** (optional, in `config/*_inputs.py`):
+1. **Define tool in Python** (`config/gameplay_tool_definitions.py`):
    ```python
-   # config/gameplay_inputs.py
-   class MyToolInput(BaseModel):
-       param1: str = Field(..., description="Parameter description")
+   from .tool_definitions import ToolDefinition
+
+   MY_TOOL = ToolDefinition(
+       name="my_tool",
+       description="What the tool does",
+       group="action_manager",  # Tool group for filtering
+       input_schema={
+           "type": "object",
+           "properties": {
+               "param1": {
+                   "type": "string",
+                   "description": "Parameter description"
+               }
+           },
+           "required": ["param1"]
+       }
+   )
+
+   # Add to ALL_GAMEPLAY_TOOLS list
    ```
 
-3. **Implement handler** in appropriate tools module:
+2. **Implement handler** in appropriate tools module:
    ```python
    # sdk/tools/gameplay_tools/my_tools.py
    async def handle_my_tool(param1: str, context: ToolContext) -> str:
@@ -183,14 +186,14 @@ Tools are organized into groups configured in YAML files:
        return "Tool result"
    ```
 
-4. **Register in MCP server** (`sdk/tools/__init__.py` or relevant module):
+3. **Register in MCP server** (`sdk/tools/gameplay_tools/__init__.py`):
    ```python
    @mcp_server.tool()
    async def my_tool(param1: str) -> str:
        return await handle_my_tool(param1, context)
    ```
 
-5. **Enable for agents** via `group_config.yaml`:
+4. **Enable for agents** via `group_config.yaml`:
    ```yaml
    enabled_tool_groups:
      - action_manager  # Enables all tools in this group

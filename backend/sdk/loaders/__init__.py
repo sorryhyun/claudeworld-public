@@ -46,6 +46,7 @@ from .yaml_loaders import (
     get_guidelines_config_path,
     get_guidelines_file,
     get_localization_config,
+    get_lore_guidelines_config,
     get_tools_config,
     merge_tool_configs,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "get_debug_config",
     "get_conversation_context_config",
     "get_localization_config",
+    "get_lore_guidelines_config",
     "get_extreme_traits",
     "get_group_config",
     "get_agent_tool_config",

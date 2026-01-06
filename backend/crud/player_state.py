@@ -9,9 +9,7 @@ import json
 import logging
 from typing import List, Optional
 
-import models
 import schemas
-from database import serialized_write
 from domain.services.player_rules import (
     InventoryItem as DomainInventoryItem,
 )
@@ -24,6 +22,8 @@ from domain.services.player_rules import (
     remove_inventory_item as remove_item_from_list,
 )
 from domain.services.player_state_serializer import PlayerStateSerializer
+from infrastructure.database import models
+from infrastructure.database.connection import serialized_write
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload

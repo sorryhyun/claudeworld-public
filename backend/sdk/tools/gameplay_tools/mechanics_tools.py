@@ -18,16 +18,16 @@ Note:
 
 import logging
 import random
-from datetime import datetime
 from typing import Any
 
 import crud
 from claude_agent_sdk import tool
+from infrastructure.logging.perf_logger import track_perf
 from services.agent_config_service import AgentConfigService
 from services.facades import PlayerFacade
 from services.item_service import ItemService
 
-from sdk.config.gameplay_inputs import (
+from sdk.config.gameplay_tool_definitions import (
     AdvanceTimeInput,
     ChangeStatInput,
     InjectMemoryInput,
@@ -75,6 +75,12 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             inject_memory_description,
             InjectMemoryInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_inject_memory",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def inject_memory_tool(args: dict[str, Any]):
             """Inject a memory into a specific character's recent_events file."""
             # Validate input with Pydantic
@@ -113,12 +119,19 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 # Format memory entry with source if provided
                 formatted_memory = memory_entry
 
+                # Load game time from player state
+                from services.player_service import PlayerService
+
+                game_time = None
+                player_state = PlayerService.load_player_state(world_name)
+                if player_state:
+                    game_time = player_state.game_time
+
                 # Write to the agent's recent_events.md file
-                timestamp = datetime.utcnow()
                 success = AgentConfigService.append_to_recent_events(
                     config_file=agent.config_file,
                     memory_entry=formatted_memory,
-                    timestamp=timestamp,
+                    game_time=game_time,
                 )
 
                 if success:
@@ -160,6 +173,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             "roll_the_dice",
             roll_the_dice_description,
             {"type": "object", "properties": {}, "required": []},  # No input required
+        )
+        @track_perf(
+            "tool_roll_the_dice",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
         )
         async def roll_the_dice_tool(args: dict[str, Any]):
             """Roll the dice for a random outcome based on weighted probabilities."""
@@ -215,6 +233,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             "list_inventory",
             list_inventory_description,
             {"type": "object", "properties": {}, "required": []},  # No input required
+        )
+        @track_perf(
+            "tool_list_inventory",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
         )
         async def list_inventory_tool(_args: dict[str, Any]):
             """List all items in the player's inventory."""
@@ -278,6 +301,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             "list_world_item",
             list_world_item_description,
             ListWorldItemInput.model_json_schema(),
+        )
+        @track_perf(
+            "tool_list_world_item",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
         )
         async def list_world_item_tool(args: dict[str, Any]):
             """List all item templates in the world, with optional keyword filtering."""
@@ -346,10 +374,7 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
 
                     items_text.append(entry)
 
-                response_text = (
-                    f"**World Items ({len(items_to_show)}{filter_note}):**\n\n"
-                    + "\n\n".join(items_text)
-                )
+                response_text = f"**World Items ({len(items_to_show)}{filter_note}):**\n\n" + "\n\n".join(items_text)
 
                 return {"content": [{"type": "text", "text": response_text}]}
 
@@ -378,6 +403,12 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             change_stat_description,
             ChangeStatInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_change_stat",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+            include_result=True,
+        )
         async def change_stat_tool(args: dict[str, Any]):
             """Apply calculated stat and inventory changes to player state.
 
@@ -387,7 +418,7 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             validated = ChangeStatInput(**args)
 
             logger.info(
-                f"📊 change_stat: {len(validated.stat_changes)} stats, " f"{len(validated.inventory_changes)} inventory"
+                f"📊 change_stat: {len(validated.stat_changes)} stats, {len(validated.inventory_changes)} inventory"
             )
 
             try:
@@ -491,6 +522,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
             advance_time_description,
             AdvanceTimeInput.model_json_schema(),
         )
+        @track_perf(
+            "tool_advance_time",
+            room_id=lambda: ctx.room_id,
+            agent_name=lambda: ctx.agent_name,
+        )
         async def advance_time_tool(args: dict[str, Any]):
             """Advance in-game time.
 
@@ -512,11 +548,9 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                         f"- New time: {new_time['hour']:02d}:{new_time['minute']:02d} "
                         f"(Day {new_time['day']})"
                     )
-                    logger.info(
-                        f"⏰ Time now: {new_time['hour']:02d}:{new_time['minute']:02d} " f"Day {new_time['day']}"
-                    )
+                    logger.info(f"⏰ Time now: {new_time['hour']:02d}:{new_time['minute']:02d} Day {new_time['day']}")
                 else:
-                    response_text = f"**Time Advanced:** +{validated.minutes} minutes\n" f"- Reason: {validated.reason}"
+                    response_text = f"**Time Advanced:** +{validated.minutes} minutes\n- Reason: {validated.reason}"
 
                 return {"content": [{"type": "text", "text": response_text}]}
 

@@ -1,10 +1,15 @@
-import { memo, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { memo, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 // Icon components for different variants
 const icons = {
   inventory: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -14,7 +19,12 @@ const icons = {
     </svg>
   ),
   locations: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -24,7 +34,12 @@ const icons = {
     </svg>
   ),
   messages: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -34,7 +49,12 @@ const icons = {
     </svg>
   ),
   agents: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -44,7 +64,12 @@ const icons = {
     </svg>
   ),
   stats: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -54,7 +79,12 @@ const icons = {
     </svg>
   ),
   adventure: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -64,7 +94,12 @@ const icons = {
     </svg>
   ),
   search: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -74,7 +109,12 @@ const icons = {
     </svg>
   ),
   generic: (
-    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-12 h-12"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -97,113 +137,119 @@ interface EmptyStateProps {
   };
   icon?: ReactNode;
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
 }
 
 const sizeClasses = {
   sm: {
-    container: 'py-6 px-4',
-    icon: 'w-10 h-10',
-    title: 'text-sm',
-    description: 'text-xs',
-    button: 'px-3 py-1.5 text-xs',
+    container: "py-6 px-4",
+    icon: "w-10 h-10",
+    title: "text-sm",
+    description: "text-xs",
+    button: "px-3 py-1.5 text-xs",
   },
   md: {
-    container: 'py-8 px-4',
-    icon: 'w-12 h-12',
-    title: 'text-base',
-    description: 'text-sm',
-    button: 'px-4 py-2 text-sm',
+    container: "py-8 px-4",
+    icon: "w-12 h-12",
+    title: "text-base",
+    description: "text-sm",
+    button: "px-4 py-2 text-sm",
   },
   lg: {
-    container: 'py-12 px-6',
-    icon: 'w-16 h-16',
-    title: 'text-lg',
-    description: 'text-base',
-    button: 'px-5 py-2.5 text-sm',
+    container: "py-12 px-6",
+    icon: "w-16 h-16",
+    title: "text-lg",
+    description: "text-base",
+    button: "px-5 py-2.5 text-sm",
   },
 };
 
 // Default content for each variant
-const defaultContent: Record<EmptyStateVariant, { titleKey: string; descriptionKey: string }> = {
+const defaultContent: Record<
+  EmptyStateVariant,
+  { titleKey: string; descriptionKey: string }
+> = {
   inventory: {
-    titleKey: 'emptyState.inventory.title',
-    descriptionKey: 'emptyState.inventory.description',
+    titleKey: "emptyState.inventory.title",
+    descriptionKey: "emptyState.inventory.description",
   },
   locations: {
-    titleKey: 'emptyState.locations.title',
-    descriptionKey: 'emptyState.locations.description',
+    titleKey: "emptyState.locations.title",
+    descriptionKey: "emptyState.locations.description",
   },
   messages: {
-    titleKey: 'emptyState.messages.title',
-    descriptionKey: 'emptyState.messages.description',
+    titleKey: "emptyState.messages.title",
+    descriptionKey: "emptyState.messages.description",
   },
   agents: {
-    titleKey: 'emptyState.agents.title',
-    descriptionKey: 'emptyState.agents.description',
+    titleKey: "emptyState.agents.title",
+    descriptionKey: "emptyState.agents.description",
   },
   stats: {
-    titleKey: 'emptyState.stats.title',
-    descriptionKey: 'emptyState.stats.description',
+    titleKey: "emptyState.stats.title",
+    descriptionKey: "emptyState.stats.description",
   },
   adventure: {
-    titleKey: 'emptyState.adventure.title',
-    descriptionKey: 'emptyState.adventure.description',
+    titleKey: "emptyState.adventure.title",
+    descriptionKey: "emptyState.adventure.description",
   },
   search: {
-    titleKey: 'emptyState.search.title',
-    descriptionKey: 'emptyState.search.description',
+    titleKey: "emptyState.search.title",
+    descriptionKey: "emptyState.search.description",
   },
   generic: {
-    titleKey: 'emptyState.generic.title',
-    descriptionKey: 'emptyState.generic.description',
+    titleKey: "emptyState.generic.title",
+    descriptionKey: "emptyState.generic.description",
   },
 };
 
 // Fallback content when translation keys are missing
-const fallbackContent: Record<EmptyStateVariant, { title: string; description: string }> = {
+const fallbackContent: Record<
+  EmptyStateVariant,
+  { title: string; description: string }
+> = {
   inventory: {
-    title: 'Your inventory is empty',
-    description: 'Items you collect during your adventure will appear here',
+    title: "Your inventory is empty",
+    description: "Items you collect during your adventure will appear here",
   },
   locations: {
-    title: 'No locations discovered',
-    description: 'Explore the world to discover new places to visit',
+    title: "No locations discovered",
+    description: "Explore the world to discover new places to visit",
   },
   messages: {
-    title: 'No messages yet',
-    description: 'Start your adventure by describing what you want to do',
+    title: "No messages yet",
+    description: "Start your adventure by describing what you want to do",
   },
   agents: {
-    title: 'No characters nearby',
-    description: 'Characters will appear as you explore different locations',
+    title: "No characters nearby",
+    description: "Characters will appear as you explore different locations",
   },
   stats: {
-    title: 'No stats defined',
-    description: 'Your character stats will appear after world setup',
+    title: "No stats defined",
+    description: "Your character stats will appear after world setup",
   },
   adventure: {
-    title: 'Your adventure begins',
-    description: 'Describe your ideal world to get started',
+    title: "Your adventure begins",
+    description: "Describe your ideal world to get started",
   },
   search: {
-    title: 'No results found',
-    description: 'Try adjusting your search or explore other options',
+    title: "No results found",
+    description: "Try adjusting your search or explore other options",
   },
   generic: {
-    title: 'Nothing here yet',
-    description: 'Content will appear as you progress',
+    title: "Nothing here yet",
+    description: "Content will appear as you progress",
   },
 };
 
 export const EmptyState = memo(function EmptyState({
-  variant = 'generic',
+  variant = "generic",
   title,
   description,
   action,
   icon,
-  className = '',
-  size = 'md',
+  className = "",
+  size = "md",
 }: EmptyStateProps) {
   const { t } = useTranslation();
   const sizes = sizeClasses[size];
@@ -212,9 +258,12 @@ export const EmptyState = memo(function EmptyState({
 
   // Use provided values, or try translation, or fallback
   const displayTitle = title || t(defaults.titleKey, fallback.title);
-  const displayDescription = description || t(defaults.descriptionKey, fallback.description);
+  const displayDescription =
+    description || t(defaults.descriptionKey, fallback.description);
   const displayIcon = icon || (
-    <div className={`text-slate-300 ${size === 'sm' ? '[&>svg]:w-10 [&>svg]:h-10' : size === 'lg' ? '[&>svg]:w-16 [&>svg]:h-16' : ''}`}>
+    <div
+      className={`text-slate-300 ${size === "sm" ? "[&>svg]:w-10 [&>svg]:h-10" : size === "lg" ? "[&>svg]:w-16 [&>svg]:h-16" : ""}`}
+    >
       {icons[variant]}
     </div>
   );
@@ -226,9 +275,7 @@ export const EmptyState = memo(function EmptyState({
       aria-label={displayTitle}
     >
       {/* Icon */}
-      <div className="mb-4 opacity-60">
-        {displayIcon}
-      </div>
+      <div className="mb-4 opacity-60">{displayIcon}</div>
 
       {/* Title */}
       <h3 className={`font-medium text-slate-600 mb-1 ${sizes.title}`}>
@@ -284,7 +331,7 @@ export const EmptyMessages = memo(function EmptyMessages({
       action={
         onGetStarted
           ? {
-              label: t('emptyState.getStarted', 'Get Started'),
+              label: t("emptyState.getStarted", "Get Started"),
               onClick: onGetStarted,
             }
           : undefined

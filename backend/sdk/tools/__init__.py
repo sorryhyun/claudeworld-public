@@ -21,6 +21,8 @@ from sdk.tools.gameplay_tools import (
     SUBAGENT_TOOL_NAMES,
     create_action_manager_mcp_server,
     create_action_manager_tools,
+    create_character_design_mcp_server,
+    create_character_design_tools,
     create_onboarding_mcp_server,
     create_onboarding_tools,
     create_subagents_mcp_server,
@@ -39,6 +41,9 @@ __all__ = [
     # Onboarding tools (for TRPG)
     "create_onboarding_tools",
     "create_onboarding_mcp_server",
+    # Character design tools (for detailed character creation in onboarding)
+    "create_character_design_tools",
+    "create_character_design_mcp_server",
     # Gameplay tools (for TRPG gameplay)
     "create_action_manager_tools",
     "create_action_manager_mcp_server",

@@ -6,13 +6,30 @@
 
 // Initial consonants (초성) in Unicode order
 const CHOSUNG = [
-  'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
-  'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+  "ㄱ",
+  "ㄲ",
+  "ㄴ",
+  "ㄷ",
+  "ㄸ",
+  "ㄹ",
+  "ㅁ",
+  "ㅂ",
+  "ㅃ",
+  "ㅅ",
+  "ㅆ",
+  "ㅇ",
+  "ㅈ",
+  "ㅉ",
+  "ㅊ",
+  "ㅋ",
+  "ㅌ",
+  "ㅍ",
+  "ㅎ",
 ];
 
 // Unicode range for Korean syllables
-const HANGUL_START = 0xAC00; // 가
-const HANGUL_END = 0xD7A3;   // 힣
+const HANGUL_START = 0xac00; // 가
+const HANGUL_END = 0xd7a3; // 힣
 // Each syllable block = (medial vowel count) * (final consonant count) = 21 * 28 = 588
 const SYLLABLE_BLOCK = 588;
 
@@ -49,7 +66,7 @@ function getChosung(char: string): string {
  * Non-Korean characters are preserved as-is
  */
 function extractChosung(text: string): string {
-  return [...text].map(getChosung).join('');
+  return [...text].map(getChosung).join("");
 }
 
 /**
@@ -57,7 +74,7 @@ function extractChosung(text: string): string {
  */
 function isChosungOnly(query: string): boolean {
   if (query.length === 0) return false;
-  return [...query].every(char => isChosung(char));
+  return [...query].every((char) => isChosung(char));
 }
 
 /**
@@ -101,8 +118,8 @@ export function koreanSearch(text: string, query: string): boolean {
 export function filterByKoreanSearch<T>(
   items: T[],
   query: string,
-  getText: (item: T) => string
+  getText: (item: T) => string,
 ): T[] {
   if (!query.trim()) return items;
-  return items.filter(item => koreanSearch(getText(item), query));
+  return items.filter((item) => koreanSearch(getText(item), query));
 }

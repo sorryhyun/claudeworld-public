@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, DragEvent } from 'react';
-import { usePolling } from '../../hooks/usePolling';
-import { useFocusTrap } from '../../hooks/useFocusTrap';
-import { MessageList } from './message-list/MessageList';
-import { AgentManager } from '../AgentManager';
-import { ChatHeader } from './ChatHeader';
-import { MessageInput, MessageInputHandle } from './MessageInput';
-import { api } from '../../services';
-import type { Room, ParticipantType } from '../../types';
-import { useToast } from '../../contexts/ToastContext';
+import { useState, useEffect, useRef, DragEvent } from "react";
+import { usePolling } from "../../hooks/usePolling";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { MessageList } from "./message-list/MessageList";
+import { AgentManager } from "../AgentManager";
+import { ChatHeader } from "./ChatHeader";
+import { MessageInput, MessageInputHandle } from "./MessageInput";
+import { api } from "../../services";
+import type { Room, ParticipantType, ImageItem } from "../../types";
+import { useToast } from "../../contexts/ToastContext";
 
 interface ChatRoomProps {
   roomId: number | null;
@@ -15,7 +15,7 @@ interface ChatRoomProps {
 }
 
 export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
-  const [roomName, setRoomName] = useState('');
+  const [roomName, setRoomName] = useState("");
   const [roomData, setRoomData] = useState<Room | null>(null);
   const [showAgentManager, setShowAgentManager] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -24,10 +24,11 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
 
   // Desktop collapse state with localStorage persistence
   const [isAgentManagerCollapsed, setIsAgentManagerCollapsed] = useState(() => {
-    const saved = localStorage.getItem('agentManagerCollapsed');
-    return saved === 'true';
+    const saved = localStorage.getItem("agentManagerCollapsed");
+    return saved === "true";
   });
-  const { messages, sendMessage, isConnected, setMessages, resetMessages } = usePolling(roomId);
+  const { messages, sendMessage, isConnected, setMessages, resetMessages } =
+    usePolling(roomId);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const messageInputRef = useRef<MessageInputHandle>(null);
@@ -44,18 +45,21 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
 
   // Persist collapse state to localStorage
   useEffect(() => {
-    localStorage.setItem('agentManagerCollapsed', String(isAgentManagerCollapsed));
+    localStorage.setItem(
+      "agentManagerCollapsed",
+      String(isAgentManagerCollapsed),
+    );
   }, [isAgentManagerCollapsed]);
 
   // Handle Escape key to close agent manager drawer
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showAgentManager) {
+      if (e.key === "Escape" && showAgentManager) {
         setShowAgentManager(false);
       }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [showAgentManager]);
 
   const fetchRoomDetails = async () => {
@@ -68,7 +72,7 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
       // Note: Messages are now handled entirely by usePolling hook
       // No need to set messages here as it would conflict with polling
     } catch (err) {
-      console.error('Failed to fetch room details:', err);
+      console.error("Failed to fetch room details:", err);
     }
   };
 
@@ -81,7 +85,7 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
         : await api.pauseRoom(roomId);
       setRoomData(updatedRoom);
     } catch (err) {
-      console.error('Failed to toggle pause:', err);
+      console.error("Failed to toggle pause:", err);
     }
   };
 
@@ -89,10 +93,12 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
     if (!roomId) return;
 
     try {
-      const updatedRoom = await api.updateRoom(roomId, { max_interactions: limit });
+      const updatedRoom = await api.updateRoom(roomId, {
+        max_interactions: limit,
+      });
       setRoomData(updatedRoom);
     } catch (err) {
-      console.error('Failed to update interaction limit:', err);
+      console.error("Failed to update interaction limit:", err);
     }
   };
 
@@ -106,11 +112,11 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
       // Wait for reset to complete to avoid race conditions with polling
       await resetMessages();
       setShowClearConfirm(false);
-      addToast('Conversation reset', 'success');
+      addToast("Conversation reset", "success");
     } catch (err) {
-      console.error('Failed to reset conversation:', err);
-      setClearError('Failed to reset conversation. Please try again.');
-      addToast('Failed to reset conversation', 'error');
+      console.error("Failed to reset conversation:", err);
+      setClearError("Failed to reset conversation. Please try again.");
+      addToast("Failed to reset conversation", "error");
     }
   };
 
@@ -120,9 +126,11 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
     try {
       const updatedRoom = await onRenameRoom(roomId, name);
       setRoomName(updatedRoom.name);
-      setRoomData((prev) => (prev ? { ...prev, name: updatedRoom.name } : updatedRoom));
+      setRoomData((prev) =>
+        prev ? { ...prev, name: updatedRoom.name } : updatedRoom,
+      );
     } catch (err) {
-      console.error('Failed to rename room:', err);
+      console.error("Failed to rename room:", err);
       throw err;
     }
   };
@@ -134,14 +142,20 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
       setIsRefreshing(true);
       setMessages([]);
       await resetMessages();
-      addToast('Messages refreshed', 'success');
+      addToast("Messages refreshed", "success");
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string, imageData?: string, imageMediaType?: string, mentionedAgentIds?: number[]) => {
-    sendMessage(message, participantType, characterName, imageData, imageMediaType, mentionedAgentIds);
+  const handleSendMessage = (
+    message: string,
+    participantType: ParticipantType,
+    characterName?: string,
+    images?: ImageItem[],
+    mentionedAgentIds?: number[],
+  ) => {
+    sendMessage(message, participantType, characterName, images, mentionedAgentIds);
   };
 
   // Drag-and-drop handlers for the entire chatroom
@@ -149,7 +163,7 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current++;
-    if (e.dataTransfer.types.includes('Files')) {
+    if (e.dataTransfer.types.includes("Files")) {
       setIsDragging(true);
     }
   };
@@ -175,7 +189,7 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
     dragCounterRef.current = 0;
 
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file && file.type.startsWith("image/")) {
       messageInputRef.current?.handleFileSelect(file);
     }
   };
@@ -185,12 +199,26 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
       <div className="flex-1 flex items-center justify-center p-4 bg-white">
         <div className="text-center max-w-md">
           <div className="w-20 h-20 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-            <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            <svg
+              className="w-10 h-10 text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
             </svg>
           </div>
-          <h3 className="text-xl font-bold text-slate-700 mb-2">No Room Selected</h3>
-          <p className="text-slate-600 text-sm">Select a room from the sidebar or create a new one to start chatting</p>
+          <h3 className="text-xl font-bold text-slate-700 mb-2">
+            No Room Selected
+          </h3>
+          <p className="text-slate-600 text-sm">
+            Select a room from the sidebar or create a new one to start chatting
+          </p>
         </div>
       </div>
     );
@@ -214,7 +242,9 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
           onRenameRoom={handleRenameRoom}
           onShowAgentManager={() => setShowAgentManager(!showAgentManager)}
           isAgentManagerCollapsed={isAgentManagerCollapsed}
-          onToggleAgentManagerCollapse={() => setIsAgentManagerCollapsed(!isAgentManagerCollapsed)}
+          onToggleAgentManagerCollapse={() =>
+            setIsAgentManagerCollapsed(!isAgentManagerCollapsed)
+          }
         />
 
         {/* Message content area - drag-and-drop zone for images */}
@@ -229,8 +259,18 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
           {isDragging && (
             <div className="absolute inset-0 bg-blue-100/90 backdrop-blur-sm flex items-center justify-center z-40 pointer-events-none">
               <div className="text-blue-600 font-medium flex flex-col items-center gap-3">
-                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                <svg
+                  className="w-12 h-12"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
                 </svg>
                 <span className="text-lg">Drop image here</span>
               </div>
@@ -254,11 +294,11 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
       <div
         ref={agentManagerRef}
         className={`
-          ${isAgentManagerCollapsed ? 'lg:w-0 lg:border-0' : 'lg:w-96 lg:border-l lg:border-slate-200'}
+          ${isAgentManagerCollapsed ? "lg:w-0 lg:border-0" : "lg:w-96 lg:border-l lg:border-slate-200"}
           lg:bg-slate-50 lg:overflow-y-auto lg:static lg:block lg:h-full
           fixed inset-y-0 right-0 z-30 w-80 sm:w-96 bg-white border-l border-slate-200 overflow-y-auto
           transform transition-all duration-300 ease-in-out
-          ${showAgentManager ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+          ${showAgentManager ? "translate-x-0" : "translate-x-full lg:translate-x-0"}
         `}
       >
         <div className="lg:hidden flex justify-between items-center p-4 border-b border-slate-200 bg-white sticky top-0 z-10">
@@ -267,8 +307,18 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
             onClick={() => setShowAgentManager(false)}
             className="p-2 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
           >
-            <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5 text-slate-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -284,7 +334,7 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
           className="lg:hidden fixed inset-0 bg-black/40 z-20 transition-opacity duration-300 ease-in-out"
           onClick={() => setShowAgentManager(false)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
+            if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               setShowAgentManager(false);
             }
@@ -298,17 +348,32 @@ export const ChatRoom = ({ roomId, onRenameRoom }: ChatRoomProps) => {
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg
+                  className="w-6 h-6 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Reset Conversation?</h3>
-                <p className="text-sm text-slate-500">This action cannot be undone</p>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Reset Conversation?
+                </h3>
+                <p className="text-sm text-slate-500">
+                  This action cannot be undone
+                </p>
               </div>
             </div>
             <p className="text-slate-600 mb-6">
-              Are you sure you want to reset this room? This will permanently remove the entire conversation history.
+              Are you sure you want to reset this room? This will permanently
+              remove the entire conversation history.
             </p>
             {clearError && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">

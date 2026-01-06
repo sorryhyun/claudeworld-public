@@ -4,7 +4,7 @@ Unit tests for onboarding input models.
 
 import pytest
 from pydantic import ValidationError
-from sdk.config.onboarding_inputs import (
+from sdk.config.onboarding_tool_definitions import (
     CompleteOnboardingInput,
     DraftWorldInput,
     InventoryItem,

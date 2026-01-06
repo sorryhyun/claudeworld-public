@@ -9,10 +9,12 @@ Sub-agent invocation now uses SDK native Task tool + persist tools pattern.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from sdk.agent.agent_manager import AgentManager
 
 
 @dataclass
@@ -33,6 +35,7 @@ class ToolContext:
         world_id: Optional world ID for database operations
         long_term_memory_index: Optional mapping of memory subtitles to content
         db: Optional async database session
+        npc_reactions: Optional list of NPC reactions from the reaction cell
     """
 
     agent_name: str
@@ -46,6 +49,10 @@ class ToolContext:
 
     # Optional dependencies (set by factory functions that need them)
     db: Optional["AsyncSession"] = None
+    npc_reactions: Optional[List[Dict[str, Any]]] = None
+
+    # AgentManager for pre-connection in tools (e.g., travel tool pre-connects destination NPCs)
+    agent_manager: Optional["AgentManager"] = None
 
     def require_db(self) -> "AsyncSession":
         """Get database session, raising if not configured.
@@ -124,3 +131,28 @@ class ToolContext:
         if self.agent_id is None:
             raise RuntimeError("Agent ID not configured for this context")
         return self.agent_id
+
+    def require_player_facade(self) -> "PlayerFacade":
+        """Get PlayerFacade instance for this context's world.
+
+        Creates a PlayerFacade with the context's world_name, db, and world_id.
+
+        Returns:
+            PlayerFacade instance for FS-first player state management.
+
+        Raises:
+            RuntimeError: If world_name is not configured.
+        """
+        from services.facades.player_facade import PlayerFacade
+
+        world_name = self.require_world_name()
+        return PlayerFacade(
+            world_name=world_name,
+            db=self.db,
+            world_id=self.world_id,
+        )
+
+
+# For type hints
+if TYPE_CHECKING:
+    from services.facades.player_facade import PlayerFacade

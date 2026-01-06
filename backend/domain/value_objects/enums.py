@@ -69,6 +69,18 @@ class MessageRole(str, Enum):
         return self.value
 
 
+class ConversationMode(str, Enum):
+    """Mode of conversation context."""
+
+    NORMAL = "normal"  # Regular chat
+    ONBOARDING = "onboarding"  # TRPG onboarding interview
+    GAME = "game"  # TRPG active gameplay
+    CHAT = "chat"  # Direct NPC chat mode
+
+    def __str__(self) -> str:
+        return self.value
+
+
 class CharacterDisposition(str, Enum):
     """Character attitude toward player."""
 

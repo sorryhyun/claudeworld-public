@@ -150,11 +150,8 @@ class AgentFilesystemService:
             if profile_pic:
                 break
 
-        # Convert folder name to display name (replace underscores with spaces)
-        display_name = agent_name.replace("_", " ")
-
         return {
-            "name": display_name,
+            "name": agent_name,
             "folder_name": agent_name,
             "in_a_nutshell": in_a_nutshell,
             "profile_pic": profile_pic,

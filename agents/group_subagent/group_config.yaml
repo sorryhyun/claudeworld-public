@@ -58,3 +58,12 @@ agents:
       - subagent
     enabled_tools:
       - persist_location_design
+
+  detailed_character_designer:
+    # Creates comprehensive characters with rich backstories and consolidated memories
+    # Invoked via Task tool during onboarding when user wants detailed characters
+    enabled_tool_groups:
+      - character_design
+    enabled_tools:
+      - create_comprehensive_character
+      - implant_consolidated_memory

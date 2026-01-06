@@ -7,7 +7,7 @@ including context building, API calls, and message broadcasting.
 
 import logging
 import time
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import crud
 import schemas
@@ -15,24 +15,22 @@ from core.settings import SKIP_MESSAGE_TEXT
 from domain import Agent
 from domain.entities.agent import is_action_manager
 from domain.value_objects.contexts import (
-    AgentMessageData,
     AgentResponseContext,
+    ConversationContextParams,
     ImageAttachment,
     MessageContext,
     OrchestrationContext,
 )
-from domain.value_objects.enums import MessageRole, WorldPhase
+from domain.value_objects.enums import ConversationMode, MessageRole, WorldPhase
 from i18n.timezone import format_kst_timestamp
 from infrastructure.logging.perf_logger import get_perf_logger
+from services.player_service import PlayerService
 from services.prompt_builder import build_runtime_system_prompt
 from services.world_service import WorldService
 from utils.helpers import get_pool_key
 
-from orchestration.conversation import detect_conversation_type
-
 from .context import build_conversation_context
 from .gameplay_context import GameplayContextBuilder
-from .handlers import save_agent_message
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +65,8 @@ class ResponseGenerator:
         agent: Agent,
         user_message_content: Optional[str] = None,
         hidden: bool = False,
+        npc_reactions: Optional[List[Dict[str, Any]]] = None,
+        skip_context: bool = False,
     ) -> bool | tuple[bool, str]:
         """
         Generate a response from a single agent.
@@ -79,6 +79,9 @@ class ResponseGenerator:
             user_message_content: The user's message (for initial responses), or None for follow-ups
             hidden: If True, don't save message to DB and return (responded, response_text) tuple.
                     For TRPG gameplay, hidden agents create visible messages via tools (narration tool).
+            npc_reactions: Optional list of NPC reactions to inject into Action Manager context.
+            skip_context: If True, use user_message_content directly without building conversation context.
+                          Used for memory rounds where SDK already has the conversation in its session.
 
         Returns:
             If hidden=False: True if agent responded, False if agent skipped
@@ -132,39 +135,63 @@ class ResponseGenerator:
         # Get number of agents in the room
         agent_count = len(room.agents) if room else 0
 
-        # Determine conversation type and participants using shared utility
-        _, user_name = detect_conversation_type(room_messages, agent_count)
-
         # Check if this is a game room and get world settings for context building
-        is_onboarding = room and room.world and room.world.phase == WorldPhase.ONBOARDING
-        is_game = room and room.world and room.world.phase == WorldPhase.ACTIVE
-        world_user_name = room.world.user_name if room and room.world else None
-        world_language = room.world.language if room and room.world else None
+        # Use room.world if available, otherwise fallback to filesystem via orch_context.world_name
+        is_onboarding = False
+        is_game = False
+        world_user_name = None
+        world_language = None
 
-        # Determine if in chat mode (before building context)
+        if room and room.world:
+            # Room has world loaded (from DB/cache)
+            is_onboarding = room.world.phase == WorldPhase.ONBOARDING
+            is_game = room.world.phase == WorldPhase.ACTIVE
+            world_user_name = room.world.user_name
+            world_language = room.world.language
+        elif orch_context.world_name:
+            # Fallback: load world config from filesystem
+            world_config = WorldService.load_world_config(orch_context.world_name)
+            if world_config:
+                is_onboarding = world_config.phase == "onboarding"
+                is_game = world_config.phase == "active"
+                world_user_name = world_config.user_name
+                world_language = world_config.language
+
+        # Determine conversation mode
         is_chat_mode = orch_context.chat_session_id is not None
+        if is_chat_mode:
+            mode = ConversationMode.CHAT
+        elif is_onboarding:
+            mode = ConversationMode.ONBOARDING
+        elif is_game:
+            mode = ConversationMode.GAME
+        else:
+            mode = ConversationMode.NORMAL
 
         # Check if the latest message has an image (will be sent natively, not embedded in context)
         has_latest_image = room_messages and hasattr(room_messages[-1], "image_data") and room_messages[-1].image_data
 
         # Build conversation context from room messages (only new messages since agent's last response)
         conv_ctx_start = time.perf_counter()
-        conversation_context = build_conversation_context(
-            room_messages,
-            limit=25,
-            agent_id=agent.id,
-            agent_name=agent.name,
-            agent_group=agent.group,
+
+        # For TRPG mode: NPCs should only see the most recent Action Manager narration
+        # and user message, not all accumulated messages from previous turns.
+        # Claude Agent SDK maintains its own conversation context natively.
+        is_action_mgr = self._is_action_manager(agent.name)
+        keep_latest_only = is_game and not is_action_mgr
+
+        context_params = ConversationContextParams(
+            messages=room_messages,
+            agent=agent,
             agent_count=agent_count,
-            user_name=user_name,
-            is_onboarding=is_onboarding,
-            is_game=is_game,
-            is_chat_mode=is_chat_mode,
+            mode=mode,
             world_user_name=world_user_name,
             world_language=world_language,
-            recent_events=agent_config.recent_events,
             skip_latest_image=has_latest_image,
+            keep_only_latest_action_manager=keep_latest_only,
+            keep_only_latest_user=keep_latest_only,
         )
+        conversation_context = build_conversation_context(context_params)
         conv_ctx_ms = (time.perf_counter() - conv_ctx_start) * 1000
         perf.log_sync("build_conv_context", conv_ctx_ms, agent.name, orch_context.room_id, msg_count=len(room_messages))
 
@@ -173,26 +200,33 @@ class ResponseGenerator:
             if not self._has_new_messages(conversation_context):
                 return False
 
+        # Get this agent's session for this specific room
+        session_id = await crud.get_room_agent_session(orch_context.db, orch_context.room_id, agent.id)
+
+        # For active gameplay, use specialized context for Action Manager
+        # Use orch_context.world_name as primary source, fallback to room.world.name
+        world_name = orch_context.world_name or (room.world.name if room and room.world else None)
+
+        # Load game_time for active gameplay (will be included in messages)
+        game_time_snapshot = None
+        if is_game and world_name:
+            fs_player_state = PlayerService.load_player_state(world_name)
+            if fs_player_state and fs_player_state.game_time:
+                game_time_snapshot = fs_player_state.game_time
+
         # Create message context for handlers (include chat_session_id if in chat mode)
         msg_context = MessageContext(
             db=orch_context.db,
             room_id=orch_context.room_id,
             agent=agent,
             chat_session_id=orch_context.chat_session_id,
+            game_time_snapshot=game_time_snapshot,
         )
-
-        # Get this agent's session for this specific room
-        session_id = await crud.get_room_agent_session(orch_context.db, orch_context.room_id, agent.id)
-
-        # For active gameplay, use specialized context for Action Manager
-        world_name = room.world.name if room and room.world else None
         message_to_agent = None
         gameplay_system_prompt_suffix = ""
 
-        # Check if this is Action Manager gameplay context
-        is_action_mgr = self._is_action_manager(agent.name)
-
         # Action Manager needs: is_game AND user_message_content
+        # Note: is_action_mgr is computed earlier for context building
         should_build_am_context = is_game and world_name and is_action_mgr and user_message_content
 
         if should_build_am_context:
@@ -202,7 +236,9 @@ class ResponseGenerator:
             # Action Manager: system prompt gets lore + location + present characters (loaded from world)
             am_context = context_builder.build_action_manager_context()
             gameplay_system_prompt_suffix = context_builder.build_action_manager_system_prompt(am_context)
-            message_to_agent = context_builder.build_action_manager_user_message(user_message_content, agent.name)
+            message_to_agent = context_builder.build_action_manager_user_message(
+                user_message_content, agent.name, npc_reactions=npc_reactions
+            )
             gameplay_ctx_ms = (time.perf_counter() - gameplay_ctx_start) * 1000
             perf.log_sync(
                 "build_gameplay_ctx",
@@ -210,12 +246,23 @@ class ResponseGenerator:
                 agent.name,
                 orch_context.room_id,
                 type="action_manager",
+                npc_reaction_count=len(npc_reactions) if npc_reactions else 0,
             )
-            logger.info(f"[Gameplay] Built Action Manager context for world '{world_name}'")
+            logger.info(
+                f"[Gameplay] Built Action Manager context for world '{world_name}' "
+                f"(npc_reactions: {len(npc_reactions) if npc_reactions else 0})"
+            )
 
-        # Fall back to conversation context if not using gameplay context
+        # Fall back to user message or conversation context
         if message_to_agent is None:
-            message_to_agent = conversation_context if conversation_context else "Continue the conversation naturally."
+            # For skip_context calls (e.g., memory round), use the provided user_message_content directly
+            # The SDK already has the conversation in its session, so we don't need to send it again
+            if skip_context and user_message_content:
+                message_to_agent = user_message_content
+            else:
+                message_to_agent = (
+                    conversation_context if conversation_context else "Continue the conversation naturally."
+                )
 
         # Format conversation start timestamp
         conversation_started = None
@@ -305,13 +352,13 @@ class ResponseGenerator:
             agent_id=agent.id,
             group_name=agent.group,
             session_id=session_id,
-            conversation_history=None,  # Not needed - already in message_to_agent
             task_id=task_id,
             conversation_started=conversation_started,
             image=image,  # Native SDK image support
             world_name=world_name,
             db=orch_context.db,  # Pass db for TRPG game tools
             world_id=orch_context.world_id,  # Pass world_id for TRPG game tools
+            npc_reactions=npc_reactions,  # Pass NPC reactions for narration tool
         )
 
         # Handle streaming response events
@@ -408,12 +455,16 @@ class ResponseGenerator:
             return (True, response_text)
 
         # Save message to database
-        message_data = AgentMessageData(
+        agent_message = schemas.MessageCreate(
             content=response_text,
-            thinking=thinking_text,
+            role=MessageRole.ASSISTANT,
+            agent_id=msg_context.agent.id,
+            thinking=thinking_text if thinking_text else None,
             anthropic_calls=anthropic_calls if anthropic_calls else None,
+            chat_session_id=msg_context.chat_session_id,
+            game_time_snapshot=msg_context.game_time_snapshot,
         )
-        await save_agent_message(msg_context, message_data)
+        await crud.create_message(msg_context.db, msg_context.room_id, agent_message, update_room_activity=True)
 
         return True
 

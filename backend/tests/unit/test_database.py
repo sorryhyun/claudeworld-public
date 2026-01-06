@@ -7,7 +7,7 @@ we now use PostgreSQL which handles concurrency natively.
 """
 
 import pytest
-from database import get_db, retry_on_db_lock
+from infrastructure.database.connection import get_db, retry_on_db_lock
 
 
 class TestRetryOnDbLock:

@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Message } from '../types';
-import { getApiKey } from '../services';
+import { useEffect, useRef, useState, useCallback } from "react";
+import type { Message, ImageItem } from "../types";
+import { getApiKey } from "../services";
 
 interface UsePollingReturn {
   messages: Message[];
-  sendMessage: (content: string, participant_type?: string, participant_name?: string, image_data?: string, image_media_type?: string, mentioned_agent_ids?: number[]) => void;
+  sendMessage: (
+    content: string,
+    participant_type?: string,
+    participant_name?: string,
+    images?: ImageItem[],
+    mentioned_agent_ids?: number[],
+  ) => void;
   isConnected: boolean;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   resetMessages: () => Promise<void>;
@@ -12,14 +18,19 @@ interface UsePollingReturn {
 
 const POLL_INTERVAL = 5000; // Poll every 5 seconds
 const STATUS_POLL_INTERVAL = 3000; // Poll agent status every 3 seconds (faster for typing indicators)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export const usePolling = (roomId: number | null): UsePollingReturn => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const pollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const statusPollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const immediatePollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusPollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const immediatePollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const lastMessageIdRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
 
@@ -30,12 +41,12 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     try {
       const apiKey = getApiKey();
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
       };
 
       if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+        headers["X-API-Key"] = apiKey;
       }
 
       const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, {
@@ -53,11 +64,11 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
         setIsConnected(true);
       } else {
-        console.error('Failed to fetch messages:', response.statusText);
+        console.error("Failed to fetch messages:", response.statusText);
         setIsConnected(false);
       }
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
       setIsConnected(false);
     }
   }, [roomId]);
@@ -69,17 +80,18 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     try {
       const apiKey = getApiKey();
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
       };
 
       if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+        headers["X-API-Key"] = apiKey;
       }
 
-      const url = lastMessageIdRef.current > 0
-        ? `${API_BASE_URL}/rooms/${roomId}/messages/poll?since_id=${lastMessageIdRef.current}`
-        : `${API_BASE_URL}/rooms/${roomId}/messages/poll`;
+      const url =
+        lastMessageIdRef.current > 0
+          ? `${API_BASE_URL}/rooms/${roomId}/messages/poll?since_id=${lastMessageIdRef.current}`
+          : `${API_BASE_URL}/rooms/${roomId}/messages/poll`;
 
       const response = await fetch(url, { headers });
 
@@ -96,11 +108,11 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
         setIsConnected(true);
       } else {
-        console.error('Failed to poll messages:', response.statusText);
+        console.error("Failed to poll messages:", response.statusText);
         setIsConnected(false);
       }
     } catch (error) {
-      console.error('Error polling messages:', error);
+      console.error("Error polling messages:", error);
       setIsConnected(false);
     }
   }, [roomId]);
@@ -112,15 +124,18 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     try {
       const apiKey = getApiKey();
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
       };
 
       if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+        headers["X-API-Key"] = apiKey;
       }
 
-      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/chatting-agents`, { headers });
+      const response = await fetch(
+        `${API_BASE_URL}/rooms/${roomId}/chatting-agents`,
+        { headers },
+      );
 
       if (response.ok) {
         const data = await response.json();
@@ -128,7 +143,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
         // Add/update chatting indicators in messages
         setMessages((prev) => {
-          const prevChatting = prev.filter(m => m.is_chatting);
+          const prevChatting = prev.filter((m) => m.is_chatting);
 
           // If nothing is chatting now and nothing was chatting before, avoid rewriting state
           if (chattingAgents.length === 0 && prevChatting.length === 0) {
@@ -136,32 +151,41 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
           }
 
           // Remove old chatting indicators
-          const withoutChatting = prev.filter(m => !m.is_chatting);
+          const withoutChatting = prev.filter((m) => !m.is_chatting);
 
           // Add new chatting indicators for agents that are chatting
-          const chattingMessages = chattingAgents.map((agent: { id: number; name: string; profile_pic?: string | null; response_text?: string; thinking_text?: string }) => ({
-            id: `chatting_${agent.id}` as string,
-            agent_id: agent.id,
-            agent_name: agent.name,
-            agent_profile_pic: agent.profile_pic,
-            content: agent.response_text || '',
-            role: 'assistant' as const,
-            timestamp: new Date().toISOString(),
-            is_chatting: true,
-            thinking: agent.thinking_text || null,
-          }));
+          const chattingMessages = chattingAgents.map(
+            (agent: {
+              id: number;
+              name: string;
+              profile_pic?: string | null;
+              response_text?: string;
+              thinking_text?: string;
+            }) => ({
+              id: `chatting_${agent.id}` as string,
+              agent_id: agent.id,
+              agent_name: agent.name,
+              agent_profile_pic: agent.profile_pic,
+              content: agent.response_text || "",
+              role: "assistant" as const,
+              timestamp: new Date().toISOString(),
+              is_chatting: true,
+              thinking: agent.thinking_text || null,
+            }),
+          );
 
           // If the chatting state hasn't changed (same agents with same thinking/content), avoid state churn
           const hasSameChattingState =
             chattingMessages.length === prevChatting.length &&
-            chattingMessages.every((msg: typeof chattingMessages[number]) =>
-              prevChatting.some((prevMsg) =>
-                prevMsg.agent_id === msg.agent_id &&
-                prevMsg.agent_name === msg.agent_name &&
-                prevMsg.agent_profile_pic === msg.agent_profile_pic &&
-                prevMsg.thinking === msg.thinking &&
-                prevMsg.content === msg.content
-              )
+            chattingMessages.every((msg: (typeof chattingMessages)[number]) =>
+              prevChatting.some(
+                (prevMsg) =>
+                  prevMsg.agent_id === msg.agent_id &&
+                  prevMsg.agent_name === msg.agent_name &&
+                  prevMsg.agent_profile_pic === msg.agent_profile_pic &&
+                  prevMsg.thinking === msg.thinking &&
+                  prevMsg.content === msg.content,
+              ),
             );
 
           if (hasSameChattingState) {
@@ -172,7 +196,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
         });
       }
     } catch (error) {
-      console.error('Error polling chatting agents:', error);
+      console.error("Error polling chatting agents:", error);
     }
   }, [roomId]);
 
@@ -229,7 +253,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // Start both polling cycles
     scheduleNextPoll();
@@ -238,7 +262,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     return () => {
       // Cleanup on unmount or room change
       isActive = false;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (pollIntervalRef.current) {
         clearTimeout(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -255,23 +279,36 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     };
   }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents]);
 
-  const sendMessage = async (content: string, participant_type?: string, participant_name?: string, image_data?: string, image_media_type?: string, mentioned_agent_ids?: number[]) => {
+  const sendMessage = async (
+    content: string,
+    participant_type?: string,
+    participant_name?: string,
+    images?: ImageItem[],
+    mentioned_agent_ids?: number[],
+  ) => {
     if (!roomId) return;
 
     try {
       const apiKey = getApiKey();
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
       };
 
       if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+        headers["X-API-Key"] = apiKey;
       }
 
-      const messageData: { content: string; role: string; participant_type?: string; participant_name?: string; image_data?: string; image_media_type?: string; mentioned_agent_ids?: number[] } = {
+      const messageData: {
+        content: string;
+        role: string;
+        participant_type?: string;
+        participant_name?: string;
+        images?: ImageItem[];
+        mentioned_agent_ids?: number[];
+      } = {
         content,
-        role: 'user',  // Required by MessageCreate schema
+        role: "user", // Required by MessageCreate schema
       };
       if (participant_type) {
         messageData.participant_type = participant_type;
@@ -279,21 +316,21 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       if (participant_name) {
         messageData.participant_name = participant_name;
       }
-      if (image_data) {
-        messageData.image_data = image_data;
-      }
-      if (image_media_type) {
-        messageData.image_media_type = image_media_type;
+      if (images && images.length > 0) {
+        messageData.images = images;
       }
       if (mentioned_agent_ids && mentioned_agent_ids.length > 0) {
         messageData.mentioned_agent_ids = mentioned_agent_ids;
       }
 
-      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages/send`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(messageData),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/rooms/${roomId}/messages/send`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(messageData),
+        },
+      );
 
       if (response.ok) {
         // The new message will be picked up by the next poll
@@ -306,10 +343,10 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
           immediatePollTimeoutRef.current = null;
         }, 100);
       } else {
-        console.error('Failed to send message:', response.statusText);
+        console.error("Failed to send message:", response.statusText);
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
     }
   };
 

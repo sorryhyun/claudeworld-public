@@ -112,12 +112,65 @@ frontend-build = { shell = "cd frontend && npm run build", help = "Build fronten
 frontend-lint = { shell = "cd frontend && npm run lint", help = "Lint frontend code" }
 frontend-preview = { shell = "cd frontend && npm run preview", help = "Preview frontend production build" }
 
-# Testing
-test = { shell = "cd backend && pytest --cov=backend --cov-report=term-missing", help = "Run tests with coverage" }
-test-verbose = { shell = "cd backend && pytest -v --cov=backend --cov-report=term-missing", help = "Run tests with verbose output" }
+# Testing (default: unit tests without SDK to save memory)
+test = { shell = "cd backend && pytest", help = "Run unit tests (excludes SDK tests)" }
+test-sdk = { shell = "cd backend && pytest -m 'unit and sdk' --tb=short", help = "Run SDK tests (high memory)" }
+test-unit-all = { shell = "cd backend && pytest -m unit --tb=short", help = "Run all unit tests including SDK" }
+test-integration = { shell = "cd backend && pytest -m integration --tb=short", help = "Run integration tests" }
+test-all = { shell = "cd backend && pytest -m 'unit or integration' --tb=short", help = "Run ALL tests (high memory)" }
+test-cov = { shell = "cd backend && pytest --cov=backend --cov-report=term-missing", help = "Run tests with coverage" }
+test-verbose = { shell = "cd backend && pytest -v", help = "Run tests verbose" }
 
 # Installation
 install-all = { shell = "uv sync && cd frontend && npm install", help = "Install all dependencies (backend + frontend)" }
 
 # Build
 build-exe = { shell = "cd frontend && npm run build && cd .. && pyinstaller ClaudeWorld.spec --noconfirm", help = "Build Windows executable" }
+
+[tool.pyright]
+# Configuration in pyrightconfig.json (IDE/Pylance compatibility)
+# See pyrightconfig.json for full settings
+typeCheckingMode = "basic"
+pythonVersion = "3.11"
+include = ["backend"]
+exclude = ["**/__pycache__", ".venv", "venv", "frontend", "dist", "build"]
+
+# Disable SQLAlchemy ORM false positives (Column[T] coerces to T at runtime)
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportReturnType = "none"
+reportGeneralTypeIssues = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportUnknownMemberType = false
+reportCallIssue = "none"
+
+[tool.pytest.ini_options]
+# Use auto mode for pytest-asyncio (no need for @pytest.mark.asyncio on every test)
+asyncio_mode = "auto"
+# Default asyncio fixture loop scope
+asyncio_default_fixture_loop_scope = "function"
+# Test discovery
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+# Default options: run unit tests (skip sdk tests which are memory intensive)
+# Use `uv run pytest -m "unit and not sdk"` for unit tests (default)
+# Use `uv run pytest -m unit` for all unit tests including SDK
+# Use `uv run pytest -m integration` for integration tests
+addopts = "-m 'unit and not sdk' --tb=short"
+# Custom markers
+markers = [
+    "unit: Unit tests (fast, no external dependencies)",
+    "integration: Integration tests (may use database, more memory)",
+    "db: Tests that use database fixtures (memory intensive)",
+    "sdk: Tests that use Claude Agent SDK (very memory intensive)",
+    "api: API endpoint tests",
+    "crud: CRUD operation tests",
+    "auth: Authentication tests",
+]
+# Suppress common warnings
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]

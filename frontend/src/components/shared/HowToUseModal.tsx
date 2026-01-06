@@ -1,15 +1,15 @@
-import { useEffect, useState, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
+import { useEffect, useState, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { useGame } from '@/contexts/GameContext';
-import { API_BASE_URL, getFetchOptions } from '@/services/apiClient';
+} from "@/components/ui/dialog";
+import { useGame } from "@/contexts/GameContext";
+import { API_BASE_URL, getFetchOptions } from "@/services/apiClient";
 
 interface HowToUseModalProps {
   open: boolean;
@@ -18,7 +18,7 @@ interface HowToUseModalProps {
 
 export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
   const { language } = useGame();
-  const [content, setContent] = useState<string>('');
+  const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +31,7 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
     try {
       const response = await fetch(
         `${API_BASE_URL}/readme?lang=${language}`,
-        getFetchOptions()
+        getFetchOptions(),
       );
 
       if (!response.ok) {
@@ -41,8 +41,12 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
       const text = await response.text();
       setContent(text);
     } catch (err) {
-      console.error('Error fetching readme:', err);
-      setError(language === 'ko' ? '문서를 불러오는데 실패했습니다.' : 'Failed to load documentation.');
+      console.error("Error fetching readme:", err);
+      setError(
+        language === "ko"
+          ? "문서를 불러오는데 실패했습니다."
+          : "Failed to load documentation.",
+      );
     } finally {
       setLoading(false);
     }
@@ -52,7 +56,7 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
     fetchReadme();
   }, [fetchReadme]);
 
-  const title = language === 'ko' ? '사용 방법' : 'How to Use';
+  const title = language === "ko" ? "사용 방법" : "How to Use";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,9 +73,7 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
               <div className="animate-spin h-8 w-8 border-2 border-slate-600 border-t-transparent rounded-full" />
             </div>
           ) : error ? (
-            <div className="text-center py-12 text-red-600">
-              {error}
-            </div>
+            <div className="text-center py-12 text-red-600">{error}</div>
           ) : (
             <div className="prose prose-slate prose-sm max-w-none">
               <ReactMarkdown
@@ -115,15 +117,27 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
                       {children}
                     </blockquote>
                   ),
-                  code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>) => {
+                  code: ({
+                    className,
+                    children,
+                    ...props
+                  }: {
+                    className?: string;
+                    children?: React.ReactNode;
+                  } & React.HTMLAttributes<HTMLElement>) => {
                     const isInline = !className;
                     return isInline ? (
-                      <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                      <code
+                        className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono"
+                        {...props}
+                      >
                         {children}
                       </code>
                     ) : (
                       <pre className="bg-slate-800 text-slate-100 p-4 rounded-lg overflow-x-auto my-3">
-                        <code className="text-sm font-mono" {...props}>{children}</code>
+                        <code className="text-sm font-mono" {...props}>
+                          {children}
+                        </code>
                       </pre>
                     );
                   },
@@ -156,7 +170,9 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
                     </a>
                   ),
                   strong: ({ children }) => (
-                    <strong className="font-semibold text-slate-800">{children}</strong>
+                    <strong className="font-semibold text-slate-800">
+                      {children}
+                    </strong>
                   ),
                 }}
               >

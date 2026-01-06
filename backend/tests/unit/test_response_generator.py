@@ -74,7 +74,6 @@ class TestGenerateResponse:
                 new=AsyncMock(return_value=Mock(id=1, timestamp=datetime.utcnow())),
             ),
             patch("orchestration.response_generator.build_conversation_context", return_value="Context"),
-            patch("orchestration.response_generator.save_agent_message", new=AsyncMock(return_value=1)),
         ):
             responded = await generator.generate_response(
                 orch_context=orch_context, agent=mock_agent, user_message_content="Hello"
@@ -242,7 +241,9 @@ class TestGenerateResponse:
 
         mock_db = AsyncMock()
         mock_agent_manager = AsyncMock()
-        mock_agent = Mock(id=1, name="Alice")
+        mock_agent = Mock()
+        mock_agent.configure_mock(id=1, group=None)
+        mock_agent.name = "Alice"  # name is special in Mock, set separately
         mock_agent.get_config_data.return_value = Mock()
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)

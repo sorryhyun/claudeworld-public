@@ -22,10 +22,16 @@ backend/
 ├── infrastructure/         # Cross-cutting concerns
 │   ├── database/           # SQLAlchemy setup, migrations
 │   ├── logging/            # PerfLogger, debug logging
+│   ├── auth.py             # Authentication middleware, JWT utilities
 │   ├── cache.py            # In-memory caching
 │   └── locking.py          # File locking
 ├── crud/                   # Database operations
 ├── core/                   # Settings, constants, logging setup
+│   ├── dependencies.py     # FastAPI dependency injection
+│   └── app_factory.py      # Application factory
+├── tests/                  # Test suite
+│   ├── conftest.py         # Pytest configuration and fixtures
+│   └── testing.py          # Test utilities
 └── utils/                  # General utilities
 ```
 
@@ -33,15 +39,16 @@ backend/
 
 Layers should only import from layers below them:
 
-- `routers` -> `orchestration`, `services`, `crud`, `domain`, `schemas`
+- `routers` -> `orchestration`, `services`, `crud`, `domain`, `schemas`, `core`, `infrastructure`
 - `orchestration` -> `sdk`, `services`, `crud`, `domain`, `infrastructure`
 - `sdk` -> `infrastructure`, `domain`, `core`
 - `services` -> `domain`, `crud`, `infrastructure`
 - `crud` -> `models`, `domain`
 - `infrastructure` -> (external libs only)
 - `domain` -> (no internal deps)
-- `core` -> (no internal deps)
+- `core` -> (no internal deps, except `core.dependencies` which imports from `services`, `crud`)
 - `utils` -> `core`, `infrastructure`
+- `tests` -> (can import from any layer)
 
 ## Logger Naming Convention
 
@@ -83,16 +90,10 @@ Enable with `PERF_LOG=true` environment variable. Output: `latency.log` in proje
 
 ## Debug Logging
 
-Agent debug logging is controlled via `backend/sdk/config/debug.yaml`:
+Enable agent debug logging via `DEBUG_AGENTS=true` environment variable.
 
-```yaml
-debug:
-  enabled: true  # Enable/disable agent prompt/response logging
-  logging:
-    system_prompt: true
-    tools: true
-    messages: true
-    responses: true
-```
-
-Debug logs are written to agent-specific files when enabled.
+Debug logs include:
+- System prompts
+- Tool configurations
+- Messages sent to agents
+- Agent responses

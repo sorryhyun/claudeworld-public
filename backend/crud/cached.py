@@ -17,8 +17,8 @@ using make_transient() to prevent DetachedInstanceError when accessed later.
 import logging
 from typing import List, Optional
 
-import models
 from infrastructure.cache import agent_object_key, get_cache, room_agents_key, room_messages_key, room_object_key
+from infrastructure.database import models
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import make_transient
 

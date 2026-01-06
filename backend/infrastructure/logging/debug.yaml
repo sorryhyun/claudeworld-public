@@ -27,6 +27,19 @@ debug:
       # Skip tool description messages
       skip_tool_descriptions: false
 
+    # Log raw Claude Agent SDK transport traffic (JSONL).
+    # WARNING: Can include large payloads (prompts/tool I/O). Keep disabled unless debugging.
+    transport:
+      enabled: false
+      # Directory relative to backend/ (created if missing)
+      output_dir: "transport_logs"
+      # Log data written to stdin (JSON lines)
+      include_writes: true
+      # Log messages read from stdout (parsed JSON dicts)
+      include_reads: false
+      # Truncate large payloads to keep files manageable
+      max_payload_chars: 5000
+
     # Log the agent's response
     output:
       response_text: true

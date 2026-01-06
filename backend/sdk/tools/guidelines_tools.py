@@ -10,7 +10,7 @@ from typing import Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from sdk.config.guideline_inputs import GuidelinesAnthropicInput, GuidelinesReadInput
+from sdk.config.guideline_tool_definitions import GuidelinesAnthropicInput, GuidelinesReadInput
 from sdk.loaders import (
     get_extreme_traits,
     get_tool_description,

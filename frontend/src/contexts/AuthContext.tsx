@@ -1,14 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { setApiKey as setGlobalApiKey } from '../services';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { setApiKey as setGlobalApiKey } from "../services";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-const API_KEY_STORAGE_KEY = 'chitchats_api_key';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_KEY_STORAGE_KEY = "chitchats_api_key";
 
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   apiKey: string | null;
-  role: 'admin' | 'guest' | null;
+  role: "admin" | "guest" | null;
   userId: string | null;
   isGuest: boolean;
   isAdmin: boolean;
@@ -22,7 +29,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };
@@ -33,7 +40,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [role, setRole] = useState<'admin' | 'guest' | null>(null);
+  const [role, setRole] = useState<"admin" | "guest" | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,14 +55,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
           const response = await fetch(`${API_BASE_URL}/auth/verify`, {
             headers: {
-              'X-API-Key': storedKey,
+              "X-API-Key": storedKey,
             },
           });
 
           if (response.ok) {
             const data = await response.json();
             setApiKey(storedKey);
-            setRole(data.role || 'admin'); // Default to admin for backward compatibility
+            setRole(data.role || "admin"); // Default to admin for backward compatibility
             setUserId(data.user_id || null);
             setGlobalApiKey(storedKey);
           } else if (response.status === 401) {
@@ -66,14 +73,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // Server error (5xx) or other issue - keep token and assume valid
             // User can still try to use the app; if token is truly invalid,
             // subsequent API calls will fail with 401
-            console.warn('Auth verification returned non-OK status:', response.status);
+            console.warn(
+              "Auth verification returned non-OK status:",
+              response.status,
+            );
             setApiKey(storedKey);
             setGlobalApiKey(storedKey);
           }
         } catch (err) {
           // Network error (server not running, offline, etc.)
           // Keep the token - don't log user out just because server is temporarily unavailable
-          console.warn('Auth verification failed (network error), keeping stored token:', err);
+          console.warn(
+            "Auth verification failed (network error), keeping stored token:",
+            err,
+          );
           setApiKey(storedKey);
           setGlobalApiKey(storedKey);
         }
@@ -91,21 +104,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ password }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Login failed' }));
-        throw new Error(errorData.detail || 'Invalid password');
+        const errorData = await response
+          .json()
+          .catch(() => ({ detail: "Login failed" }));
+        throw new Error(errorData.detail || "Invalid password");
       }
 
       const data = await response.json();
       const key = data.api_key;
-      const userRole = data.role || 'admin'; // Default to admin for backward compatibility
+      const userRole = data.role || "admin"; // Default to admin for backward compatibility
       const userIdFromApi = data.user_id || null;
 
       // Store the API key
@@ -116,7 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setGlobalApiKey(key);
       setError(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed';
+      const message = err instanceof Error ? err.message : "Login failed";
       setError(message);
       throw err;
     } finally {
@@ -139,8 +154,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     apiKey,
     role,
     userId,
-    isGuest: role === 'guest',
-    isAdmin: role === 'admin',
+    isGuest: role === "guest",
+    isAdmin: role === "admin",
     login,
     logout,
     error,

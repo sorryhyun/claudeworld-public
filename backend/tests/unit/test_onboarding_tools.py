@@ -57,9 +57,10 @@ class TestCreateOnboardingTools:
         ctx = ToolContext(agent_name="TestAgent")
         tools = create_onboarding_tools(ctx)
 
-        # 3 tools: draft_world + persist_world + complete
-        assert len(tools) == 3
+        # 4 tools: read_lore_guidelines + draft_world + persist_world + complete
+        assert len(tools) == 4
         tool_names = [t.name for t in tools]
+        assert "read_lore_guidelines" in tool_names
         assert "draft_world" in tool_names
         assert "persist_world" in tool_names
         assert "complete" in tool_names
@@ -150,8 +151,8 @@ class TestCompleteTool:
         ctx = ToolContext(agent_name="TestAgent", world_name="MyWorld")
         tools = create_onboarding_tools(ctx)
 
-        # 3 tools: draft_world + persist_world + complete
-        assert len(tools) == 3
+        # 4 tools: read_lore_guidelines + draft_world + persist_world + complete
+        assert len(tools) == 4
         complete_tool = next(t for t in tools if t.name == "complete")
 
         # Verify schema has required fields in properties
@@ -182,8 +183,8 @@ class TestCompleteTool:
         ctx = ToolContext(agent_name="TestAgent", world_name=None)
         tools = create_onboarding_tools(ctx)
 
-        # 3 tools: draft_world + persist_world + complete
-        assert len(tools) == 3
+        # 4 tools: read_lore_guidelines + draft_world + persist_world + complete
+        assert len(tools) == 4
         tool_names = [t.name for t in tools]
         assert "complete" in tool_names
 

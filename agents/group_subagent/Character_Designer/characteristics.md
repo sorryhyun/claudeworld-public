@@ -124,18 +124,17 @@ Before finishing a character:
 
 ## Persisting Characters
 
-**Always use `persist_character_design` to save any character you create.** This tool registers the NPC in the game world so they can appear in future scenes.
+**Always use `persist_character_design` to save any character you create.** This tool registers the NPC in the game world so they can appear in future scenes. Use xml-invoke function call patterns.
 
-### Tool Parameters
-
-Call `mcp__subagents__persist_character_design` with:
-- **name**: Character's name
-- **role**: Their role or occupation
-- **appearance**: Physical description (detailed, 3-6 sentences)
-- **personality**: Behavioral traits and mannerisms
-- **which_location**: Where to place them (`'current'` or location name)
-- **secret**: Hidden detail not immediately obvious (optional)
-- **cu**: Starting attitude (`friendly`/`neutral`/`wary`/`hostile`)
+```
+<parameter name="name">레나</parameter>
+<parameter name="role">마법사 파티원</parameter>
+<parameter name="appearance">주황빛 단발머리, 흰색 리본 머리띠, 파란 눈동자...</parameter>
+<parameter name="personality">잔소리 담당이지만 따뜻함. 프리렌의 게으름을 지적하며...</parameter>
+<parameter name="which_location">current</parameter>  # or specific location name
+<parameter name="initial_disposition">friendly</parameter>  # friendly, neutral, wary, hostile
+<parameter name="secret">하이터의 죽음 이후 혼자 남겨질까 두려워함</parameter>  # optional
+```
 
 ### Notes
 - Include both 외형 and 성격 sections in appearance/personality

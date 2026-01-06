@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 /**
  * Custom hook to trap focus within a container element.
@@ -15,7 +15,7 @@ export const useFocusTrap = <T extends HTMLElement>(isActive: boolean) => {
 
     const container = containerRef.current;
     const focusableElements = container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
     );
 
     const firstElement = focusableElements[0];
@@ -25,7 +25,7 @@ export const useFocusTrap = <T extends HTMLElement>(isActive: boolean) => {
     firstElement?.focus();
 
     const handleTabKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
+      if (e.key !== "Tab") return;
 
       if (e.shiftKey) {
         // Shift + Tab: moving backwards
@@ -42,8 +42,8 @@ export const useFocusTrap = <T extends HTMLElement>(isActive: boolean) => {
       }
     };
 
-    container.addEventListener('keydown', handleTabKey);
-    return () => container.removeEventListener('keydown', handleTabKey);
+    container.addEventListener("keydown", handleTabKey);
+    return () => container.removeEventListener("keydown", handleTabKey);
   }, [isActive]);
 
   return containerRef;

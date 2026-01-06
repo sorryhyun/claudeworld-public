@@ -1,6 +1,13 @@
-import { createContext, useContext, useMemo, useState, useCallback, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 
-type ToastType = 'info' | 'success' | 'error';
+type ToastType = "info" | "success" | "error";
 
 interface Toast {
   id: number;
@@ -21,11 +28,14 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const addToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => removeToast(id), 3000);
-  }, [removeToast]);
+  const addToast = useCallback(
+    (message: string, type: ToastType = "info") => {
+      const id = Date.now();
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => removeToast(id), 3000);
+    },
+    [removeToast],
+  );
 
   const value = useMemo(() => ({ addToast }), [addToast]);
 
@@ -37,17 +47,17 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           <div
             key={toast.id}
             className={`flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg border text-sm text-white animate-slide-in-up ${
-              toast.type === 'success'
-                ? 'bg-emerald-600 border-emerald-500'
-                : toast.type === 'error'
-                  ? 'bg-red-600 border-red-500'
-                  : 'bg-slate-800 border-slate-700'
+              toast.type === "success"
+                ? "bg-emerald-600 border-emerald-500"
+                : toast.type === "error"
+                  ? "bg-red-600 border-red-500"
+                  : "bg-slate-800 border-slate-700"
             }`}
           >
             <span className="mt-0.5">
-              {toast.type === 'success' && '✔️'}
-              {toast.type === 'error' && '⚠️'}
-              {toast.type === 'info' && 'ℹ️'}
+              {toast.type === "success" && "✔️"}
+              {toast.type === "error" && "⚠️"}
+              {toast.type === "info" && "ℹ️"}
             </span>
             <p className="flex-1 leading-snug">{toast.message}</p>
             <button
@@ -67,7 +77,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 export const useToast = (): ToastContextValue => {
   const context = useContext(ToastContext);
   if (!context) {
-    throw new Error('useToast must be used within a ToastProvider');
+    throw new Error("useToast must be used within a ToastProvider");
   }
   return context;
 };

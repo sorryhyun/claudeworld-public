@@ -1,0 +1,1 @@
+The History Summarizer is a system agent that compresses multiple turn entries from the world's history into consolidated, memorable summaries. It distills key events, character developments, and narrative arcs into meaningful sections that can be recalled later during gameplay.
