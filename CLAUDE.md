@@ -42,10 +42,6 @@ uv run ruff check backend/ --fix                   # Auto-fix linting issues
 # Performance profiling
 make dev-perf                                      # Run with performance logging to ./latency.log
 
-# Agent evaluation
-make test-agents                                   # Test agent capabilities
-make evaluate-agents ARGS='--target-agent "프리렌" --evaluator "페른" --questions 3'
-
 # Windows executable deployment
 make build-exe                                     # Build standalone Windows .exe
 ```

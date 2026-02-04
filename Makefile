@@ -1,4 +1,4 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-hash build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -24,13 +24,6 @@ help:
 	@echo "Setup:"
 	@echo "  make setup             - Run .env setup wizard (or re-run with --force)"
 	@echo "  make generate-hash     - Generate password hash for authentication"
-	@echo ""
-	@echo "Testing & Simulation:"
-	@echo "  make simulate          - Run chatroom simulation (requires args)"
-	@echo "  make test-agents       - Test agent capabilities (THINKING=1 to show thinking, CHECK_ANT=1 to show model)"
-	@echo "  make evaluate-agents   - Evaluate agent authenticity (sequential)"
-	@echo "  make evaluate-agents-cross - Cross-evaluate two agents (SLOWER=1, SPEAKER=user|{char})"
-	@echo "  make load-test         - Run network load test (requires args)"
 	@echo ""
 	@echo "Deployment (Cloudflare tunnels for remote access):"
 	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
@@ -205,69 +198,6 @@ clean:
 generate-hash:
 	@echo "Generating password hash..."
 	uv run python scripts/setup/generate_hash.py
-
-simulate:
-	@echo "Running chatroom simulation..."
-	@echo "Usage: make simulate ARGS='--password \"yourpass\" --scenario \"text\" --agents \"agent1,agent2\"'"
-	@if [ -z "$(ARGS)" ]; then \
-		./scripts/simulation/simulate_chatroom.sh --help; \
-	else \
-		./scripts/simulation/simulate_chatroom.sh $(ARGS); \
-	fi
-
-test-agents:
-	@echo "Testing agent capabilities..."
-	@if [ -n "$(THINKING)" ]; then \
-		CHECK_ANT=$(CHECK_ANT) ./scripts/testing/test_agent_questions.sh --quiet --thinking; \
-	else \
-		CHECK_ANT=$(CHECK_ANT) ./scripts/testing/test_agent_questions.sh --quiet; \
-	fi
-
-evaluate-agents:
-	@echo "Evaluating agent authenticity..."
-	@echo "Usage: make evaluate-agents ARGS='--target-agent \"프리렌\" --evaluator \"페른\" --questions 3'"
-	@if [ -z "$(ARGS)" ]; then \
-		./scripts/evaluation/evaluate_authenticity.sh --help; \
-	else \
-		./scripts/evaluation/evaluate_authenticity.sh $(ARGS); \
-	fi
-
-evaluate-agents-cross:
-	@echo "Cross-evaluating agents (both directions)..."
-	@echo "Usage: make evaluate-agents-cross AGENT1=\"프리렌\" AGENT2=\"페른\" QUESTIONS=7 [SLOWER=1] [PARALLEL=5] [SPEAKER=user|{character}]"
-	@if [ -z "$(AGENT1)" ] || [ -z "$(AGENT2)" ]; then \
-		echo "Error: Both AGENT1 and AGENT2 must be specified."; \
-		echo "Example: make evaluate-agents-cross AGENT1=\"프리렌\" AGENT2=\"페른\" QUESTIONS=7"; \
-		exit 1; \
-	fi; \
-	QUESTIONS=$${QUESTIONS:-7}; \
-	PARALLEL_LIMIT=$${PARALLEL:-7}; \
-	SPEAKER_ARG=""; \
-	if [ -n "$(SPEAKER)" ]; then \
-		SPEAKER_ARG="--speaker $(SPEAKER)"; \
-	fi; \
-	if [ -n "$(SLOWER)" ]; then \
-		echo "Running $(AGENT1) → $(AGENT2) and $(AGENT2) → $(AGENT1) evaluations sequentially..."; \
-		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT2)" --evaluator "$(AGENT1)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG; \
-		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT1)" --evaluator "$(AGENT2)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG; \
-	else \
-		echo "Running $(AGENT1) → $(AGENT2) and $(AGENT2) → $(AGENT1) evaluations in parallel..."; \
-		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT2)" --evaluator "$(AGENT1)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG & \
-		PID1=$$!; \
-		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT1)" --evaluator "$(AGENT2)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG & \
-		PID2=$$!; \
-		wait $$PID1 $$PID2; \
-	fi; \
-	echo "Both evaluations completed!"
-
-load-test:
-	@echo "Running network load test..."
-	@echo "Usage: make load-test ARGS='--password \"yourpass\" --users 10 --rooms 2 --duration 60'"
-	@if [ -z "$(ARGS)" ]; then \
-		uv run python scripts/testing/load_test_network.py --help; \
-	else \
-		uv run python scripts/testing/load_test_network.py $(ARGS); \
-	fi
 
 build-exe:
 	@echo "Building executable..."

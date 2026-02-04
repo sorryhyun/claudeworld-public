@@ -38,16 +38,6 @@ Thumbs.db
 logs/
 debug.txt
 
-# Simulation outputs
-chatroom_*.txt
-
-# Evaluation outputs
-test_res/
-checklists_*.yaml
-answers_*.yaml
-evaluation_*.yaml
-report_*.md
-
 key.pem
 /backend/.coverage
 .coverage
@@ -55,7 +45,6 @@ coverage.json
 htmlcov/
 .vercel
 .env*.local
-backend/chitchats.db
 claudeworld.db
 
 # PyInstaller build artifacts
