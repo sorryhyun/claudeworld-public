@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import tempfile
 from typing import TYPE_CHECKING
 
@@ -106,17 +105,9 @@ def build_agent_options(
         )
         logger.info("CLI tracing enabled - traces will be written to stderr")
 
-    # Only use custom cli_path in development mode; packaged .exe uses native Claude Code CLI
-    cli_path = (
-        None
-        if getattr(sys, "frozen", False)
-        else os.path.join(os.path.dirname(__file__), "..", "cli.js")
-    )
-
     options = ClaudeAgentOptions(
         model="claude-opus-4-5-20251101" if not USE_SONNET else "claude-sonnet-4-5-20250929",
         system_prompt=system_prompt,
-        cli_path=cli_path,
         permission_mode="bypassPermissions",
         max_thinking_tokens=32768,
         mcp_servers=mcp_config.mcp_servers,
