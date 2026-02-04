@@ -5,9 +5,9 @@ from pathlib import Path
 
 import crud
 import schemas
-from infrastructure.auth import require_admin
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from infrastructure.auth import require_admin
 from infrastructure.database.connection import get_db
 from sdk.parsing import list_available_configs
 from services import AgentFactory

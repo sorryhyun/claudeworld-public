@@ -58,7 +58,7 @@ class StreamParser:
         """Parse a streaming message from Claude SDK.
 
         Args:
-            message: SDK message object (AssistantMessage, SystemMessage, etc.)
+            message: SDK message object (AssistantMessage, SystemMessage, StreamEvent, etc.)
             current_response: Accumulated response text so far
             current_thinking: Accumulated thinking text so far
 
@@ -66,10 +66,19 @@ class StreamParser:
             ParsedStreamMessage with extracted fields and updated accumulated text
 
         SDK Message Types:
+            - StreamEvent: Raw API streaming events (content_block_delta, etc.)
+              Only emitted when include_partial_messages=True and max_thinking_tokens is NOT set.
             - AssistantMessage: content=[TextBlock, ThinkingBlock, ToolUseBlock, ...]
             - SystemMessage: subtype='sessionStarted', data={'session_id': ...}
             - ResultMessage: Final result with session_id, duration_ms, is_error
         """
+        msg_class = message.__class__.__name__
+
+        # Handle StreamEvent (raw API streaming events)
+        # These are emitted when include_partial_messages=True
+        if msg_class == "StreamEvent":
+            return StreamParser._parse_stream_event(message, current_response, current_thinking)
+
         content_delta = ""
         thinking_delta = ""
         new_session_id = None
@@ -80,10 +89,9 @@ class StreamParser:
         usage = None
 
         # Extract usage data from ResultMessage
-        if message.__class__.__name__ == "ResultMessage":
+        if msg_class == "ResultMessage":
             if hasattr(message, "usage") and message.usage:
                 usage = message.usage
-                # Log raw usage structure for debugging
                 logger.info(f"📊 ResultMessage.usage raw: {type(usage).__name__} = {usage}")
 
         # Check for structured output (from output_format queries)
@@ -92,7 +100,7 @@ class StreamParser:
             logger.debug(f"📊 Extracted structured_output: {type(structured_output)}")
 
         # Extract session_id from SystemMessage
-        if hasattr(message, "__class__") and message.__class__.__name__ == "SystemMessage":
+        if msg_class == "SystemMessage":
             if hasattr(message, "data") and isinstance(message.data, dict):
                 if "session_id" in message.data:
                     new_session_id = message.data["session_id"]
@@ -164,4 +172,50 @@ class StreamParser:
             anthropic_calls=anthropic_calls,
             structured_output=structured_output,
             usage=usage,
+        )
+
+    @staticmethod
+    def _parse_stream_event(message, current_response: str, current_thinking: str) -> ParsedStreamMessage:
+        """Parse a StreamEvent containing raw Claude API streaming events.
+
+        StreamEvent structure:
+            - uuid: str
+            - session_id: str
+            - event: dict (raw Claude API stream event)
+            - parent_tool_use_id: str | None
+
+        Relevant event types:
+            - content_block_delta with delta.type="text_delta" -> text chunk
+            - content_block_delta with delta.type="thinking_delta" -> thinking chunk
+
+        Other event types (message_start, content_block_start, content_block_stop,
+        message_delta, message_stop) are ignored as they carry no text content.
+        """
+        event = getattr(message, "event", None)
+        if not isinstance(event, dict):
+            return ParsedStreamMessage(
+                response_text=current_response,
+                thinking_text=current_thinking,
+            )
+
+        content_delta = ""
+        thinking_delta = ""
+        event_type = event.get("type", "")
+
+        if event_type == "content_block_delta":
+            delta = event.get("delta", {})
+            delta_type = delta.get("type", "")
+
+            if delta_type == "text_delta":
+                content_delta = delta.get("text", "")
+            elif delta_type == "thinking_delta":
+                thinking_delta = delta.get("thinking", "")
+
+        # Extract session_id from the StreamEvent envelope if present
+        session_id = getattr(message, "session_id", None)
+
+        return ParsedStreamMessage(
+            response_text=current_response + content_delta,
+            thinking_text=current_thinking + thinking_delta,
+            session_id=session_id if session_id and not current_response else None,
         )

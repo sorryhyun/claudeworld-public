@@ -9,7 +9,8 @@ from core import get_settings
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.entities.agent import is_action_manager
 from domain.value_objects.contexts import ConversationContextParams
-from domain.value_objects.enums import ParticipantType
+from domain.value_objects.enums import ConversationMode, ParticipantType
+from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config, get_group_config
 
 from orchestration.whiteboard import process_messages_for_whiteboard
@@ -213,7 +214,27 @@ def build_conversation_context(params: ConversationContextParams) -> str:
         if recall_reminder:
             context_lines.append(f"\n{recall_reminder}\n")
 
-    # NOTE: Response instructions (response_OM, response_agent, response_AM) now handled via
-    # assistant message injection in agent_manager.py using sdk/config/alternatives.py
+    # Append response instruction after </conversation_so_far>
+    # response_AM is handled separately in gameplay_context.py for Action Manager
+    if params.include_response_instruction and agent_name:
+        # Determine language key
+        lang = params.world_language
+        if lang == "jp":
+            lang_key = "jp"
+        elif lang == "ko":
+            lang_key = "ko"
+        else:
+            lang_key = "en"
+
+        # Select instruction based on mode
+        if params.mode == ConversationMode.ONBOARDING:
+            response_config = config.get("response_OM", {})
+        else:
+            response_config = config.get("response_agent", {})
+
+        instruction = response_config.get(lang_key, "")
+        if instruction:
+            formatted = format_with_particles(instruction.strip(), agent_name=agent_name)
+            context_lines.append(formatted)
 
     return "\n".join(context_lines)

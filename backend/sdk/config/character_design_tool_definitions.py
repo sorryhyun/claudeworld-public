@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from .tool_definitions import ToolDefinition, ToolDict
 
-
 # =============================================================================
 # Input Models
 # =============================================================================

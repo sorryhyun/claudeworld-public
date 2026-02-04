@@ -368,7 +368,7 @@ export function WorldListPanel({
 
       {/* Importable Worlds Section - shown at bottom */}
       {showImportSection && importableWorlds.length > 0 && (
-        <div className="border-t border-slate-300 bg-amber-50 shrink-0">
+        <div className="border-t border-slate-300 bg-amber-50 shrink-0 max-h-[40%] overflow-y-auto">
           <div className="p-3">
             <div className="flex items-center gap-2 mb-2">
               <svg

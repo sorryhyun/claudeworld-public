@@ -202,8 +202,8 @@ async def client(test_db: "AsyncSession") -> "AsyncGenerator[AsyncClient, None]"
 @pytest.fixture(scope="function")
 async def authenticated_client(test_db: "AsyncSession") -> "AsyncGenerator[tuple[AsyncClient, str], None]":
     """Create a test client with a valid JWT token."""
-    from infrastructure.auth import generate_jwt_token
     from httpx import ASGITransport, AsyncClient
+    from infrastructure.auth import generate_jwt_token
     from infrastructure.database.connection import get_db
 
     app = _get_app()
@@ -226,8 +226,8 @@ async def authenticated_client(test_db: "AsyncSession") -> "AsyncGenerator[tuple
 @pytest.fixture(scope="function")
 async def guest_client(test_db: "AsyncSession") -> "AsyncGenerator[tuple[AsyncClient, str], None]":
     """Create a test client with a valid guest JWT token."""
-    from infrastructure.auth import generate_jwt_token
     from httpx import ASGITransport, AsyncClient
+    from infrastructure.auth import generate_jwt_token
     from infrastructure.database.connection import get_db
 
     app = _get_app()

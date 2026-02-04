@@ -14,6 +14,8 @@ from fastapi_mcp import FastApiMCP
 from infrastructure.database.connection import get_db, init_db
 from infrastructure.database.write_queue import start_writer, stop_writer
 from infrastructure.scheduler import BackgroundScheduler
+from infrastructure.sse import EventBroadcaster
+from infrastructure.sse_ticket import SSETicketManager
 from orchestration import ChatOrchestrator
 from sdk import AgentManager
 from services import AgentFactory
@@ -30,9 +32,21 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    from infrastructure.auth import AuthMiddleware
     from fastapi.middleware.cors import CORSMiddleware
-    from routers import agent_management, agents, auth, debug, game, mcp_tools, messages, readme, room_agents, rooms
+    from infrastructure.auth import AuthMiddleware
+    from routers import (
+        agent_management,
+        agents,
+        auth,
+        debug,
+        game,
+        mcp_tools,
+        messages,
+        readme,
+        room_agents,
+        rooms,
+        sse,
+    )
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
     from slowapi.util import get_remote_address
@@ -58,7 +72,9 @@ def create_app() -> FastAPI:
         await init_db()
 
         # Create singleton instances
-        agent_manager = AgentManager()
+        event_broadcaster = EventBroadcaster()
+        sse_ticket_manager = SSETicketManager()
+        agent_manager = AgentManager(broadcaster=event_broadcaster)
         priority_agent_names = settings.get_priority_agent_names()
         chat_orchestrator = ChatOrchestrator(priority_agent_names=priority_agent_names)
         background_scheduler = BackgroundScheduler(
@@ -79,6 +95,8 @@ def create_app() -> FastAPI:
         app.state.agent_manager = agent_manager
         app.state.chat_orchestrator = chat_orchestrator
         app.state.background_scheduler = background_scheduler
+        app.state.event_broadcaster = event_broadcaster
+        app.state.sse_ticket_manager = sse_ticket_manager
 
         # Seed agents from config files
         async for db in get_db():
@@ -94,6 +112,7 @@ def create_app() -> FastAPI:
 
         # Shutdown
         logger.info("🛑 Application shutdown...")
+        event_broadcaster.shutdown()  # Signal SSE connections to close first
         background_scheduler.stop()
         await agent_manager.shutdown()
 
@@ -134,6 +153,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/agents", tags=["Agents"])
     app.include_router(room_agents.router, prefix="/rooms", tags=["Room-Agents"])
     app.include_router(messages.router, prefix="/rooms", tags=["Messages"])
+    app.include_router(sse.router, prefix="/rooms", tags=["SSE"])
     app.include_router(game.router, tags=["Game"])  # TRPG game routes
     app.include_router(readme.router, tags=["Documentation"])  # Readme/help content
     app.include_router(debug.router, prefix="/debug", tags=["Debug"])

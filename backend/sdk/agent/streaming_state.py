@@ -30,15 +30,16 @@ class StreamingStateManager:
         self._state: dict[TaskIdentifier, dict] = {}
         self._lock = asyncio.Lock()
 
-    async def init(self, task_id: TaskIdentifier) -> None:
+    async def init(self, task_id: TaskIdentifier, agent_name: str = "") -> None:
         """
         Initialize streaming state for a task.
 
         Args:
             task_id: Task identifier to initialize state for
+            agent_name: Agent name for catch-up events
         """
         async with self._lock:
-            self._state[task_id] = {"thinking_text": "", "response_text": ""}
+            self._state[task_id] = {"thinking_text": "", "response_text": "", "agent_name": agent_name}
 
     async def update(self, task_id: TaskIdentifier, thinking_text: str, response_text: str) -> None:
         """
@@ -84,6 +85,7 @@ class StreamingStateManager:
                     result[task_id.agent_id] = {
                         "thinking_text": state.get("thinking_text", ""),
                         "response_text": state.get("response_text", ""),
+                        "agent_name": state.get("agent_name", ""),
                     }
             return result
 

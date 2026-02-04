@@ -10,6 +10,7 @@ import {
 } from "react";
 import * as gameService from "../services/gameService";
 import { api } from "../services";
+import { useSSE } from "../hooks/useSSE";
 import type {
   World,
   Location,
@@ -96,6 +97,106 @@ export function SessionProvider({
   // Stores the suggestions that were visible when action was submitted
   // Polling will only update suggestions if they're different from these
   const suppressedSuggestionsRef = useRef<string[] | null>(null);
+
+  // Resolve the room ID for SSE connection based on game phase
+  const resolvedRoomId = useMemo(() => {
+    if (!world) return null;
+    if (world.phase === "onboarding") return world.onboarding_room_id;
+    return currentLocation?.room_id ?? null;
+  }, [world, currentLocation]);
+
+  // SSE connection for real-time streaming
+  const {
+    isConnected: sseConnected,
+    streamingAgents,
+    lastNewMessage,
+    newMessageSeq,
+  } = useSSE(resolvedRoomId);
+
+  // Track SSE connected state in a ref for use in polling callbacks
+  const sseConnectedRef = useRef(sseConnected);
+  sseConnectedRef.current = sseConnected;
+
+  // Handle new_message from SSE - append to game messages
+  useEffect(() => {
+    if (!lastNewMessage || !lastNewMessage.id) return;
+
+    setMessages((prev) => {
+      // Skip if we already have this message
+      if (prev.some((m) => m.id === lastNewMessage.id)) return prev;
+
+      const newMsg: GameMessage = {
+        id: lastNewMessage.id,
+        content: lastNewMessage.content,
+        role: lastNewMessage.role as "user" | "assistant",
+        agent_id: lastNewMessage.agent_id,
+        agent_name: lastNewMessage.agent_name || null,
+        thinking: lastNewMessage.thinking || null,
+        timestamp: lastNewMessage.timestamp,
+        game_time_snapshot: lastNewMessage.game_time_snapshot,
+      };
+      return [...prev, newMsg];
+    });
+
+    // Update last message ID for polling sync
+    if (
+      typeof lastNewMessage.id === "number" &&
+      (lastMessageId === null || lastNewMessage.id > lastMessageId)
+    ) {
+      setLastMessageId(lastNewMessage.id);
+    }
+  }, [newMessageSeq, lastNewMessage, lastMessageId]);
+
+  // Build chatting indicators from SSE streaming agents
+  useEffect(() => {
+    if (!sseConnected) return; // Let polling handle it when SSE is down
+
+    setMessages((prev) => {
+      const prevChatting = prev.filter((m) => m.is_chatting);
+
+      if (streamingAgents.size === 0 && prevChatting.length === 0) {
+        return prev;
+      }
+
+      const withoutChatting = prev.filter((m) => !m.is_chatting);
+
+      if (streamingAgents.size === 0) {
+        return withoutChatting;
+      }
+
+      const chattingMessages: GameMessage[] = [];
+      streamingAgents.forEach((state, agentId) => {
+        // For Action_Manager, don't show raw response_text (contains tool discussions)
+        const isActionManager = state.agent_name === "Action_Manager";
+        chattingMessages.push({
+          id: -agentId,
+          content: isActionManager ? "" : state.response_text || "",
+          role: "assistant",
+          agent_id: agentId,
+          agent_name: state.agent_name || null,
+          thinking: state.thinking_text || null,
+          timestamp: new Date().toISOString(),
+          is_chatting: true,
+          has_narrated: state.has_narrated,
+        });
+      });
+
+      const hasSameState =
+        chattingMessages.length === prevChatting.length &&
+        chattingMessages.every((msg) =>
+          prevChatting.some(
+            (prev) =>
+              prev.agent_id === msg.agent_id &&
+              prev.thinking === msg.thinking &&
+              prev.content === msg.content &&
+              prev.has_narrated === msg.has_narrated,
+          ),
+        );
+
+      if (hasSameState) return prev;
+      return [...withoutChatting, ...chattingMessages];
+    });
+  }, [sseConnected, streamingAgents]);
 
   // Derived phase
   const phase: GamePhase = loading
@@ -370,6 +471,7 @@ export function SessionProvider({
 
       if (updates.messages.length > 0) {
         setMessages((prev) => {
+          // Remove optimistic (negative ID) messages that now have real counterparts
           const filtered = prev.filter(
             (m) =>
               m.id > 0 ||
@@ -378,7 +480,13 @@ export function SessionProvider({
                   nm.content === m.content && nm.role === m.role,
               ),
           );
-          return [...filtered, ...updates.messages];
+          // Deduplicate: SSE may have already delivered some messages
+          const existingIds = new Set(filtered.map((m) => m.id));
+          const trulyNew = updates.messages.filter(
+            (m: GameMessage) => !existingIds.has(m.id),
+          );
+          if (trulyNew.length === 0) return filtered;
+          return [...filtered, ...trulyNew];
         });
         setLastMessageId(updates.messages[updates.messages.length - 1].id);
       }
@@ -489,6 +597,8 @@ export function SessionProvider({
 
   const pollChattingAgents = useCallback(async () => {
     if (!world) return;
+    // Skip chatting agent polling when SSE provides real-time streaming state
+    if (sseConnectedRef.current) return;
 
     try {
       // Use world.phase directly instead of mode prop to ensure polling
@@ -549,12 +659,16 @@ export function SessionProvider({
   }, [world]);
 
   const startPolling = useCallback(() => {
+    // When SSE is connected, use longer intervals as safety net
+    const updateInterval = sseConnectedRef.current ? 15000 : 2000;
+    const chattingInterval = sseConnectedRef.current ? 10000 : 1500;
+
     if (!pollingInterval) {
-      const interval = window.setInterval(pollForUpdates, 2000);
+      const interval = window.setInterval(pollForUpdates, updateInterval);
       setPollingInterval(interval);
     }
     if (!chattingPollInterval) {
-      const interval = window.setInterval(pollChattingAgents, 1500);
+      const interval = window.setInterval(pollChattingAgents, chattingInterval);
       setChattingPollInterval(interval);
     }
   }, [

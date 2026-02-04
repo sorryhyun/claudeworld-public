@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Message, ImageItem } from "../types";
 import { getApiKey } from "../services";
+import { useSSE } from "./useSSE";
 
 interface UsePollingReturn {
   messages: Message[];
@@ -17,7 +18,8 @@ interface UsePollingReturn {
 }
 
 const POLL_INTERVAL = 5000; // Poll every 5 seconds
-const STATUS_POLL_INTERVAL = 3000; // Poll agent status every 3 seconds (faster for typing indicators)
+const POLL_INTERVAL_SSE = 30000; // Safety-net polling when SSE connected
+const STATUS_POLL_INTERVAL = 3000; // Poll agent status every 3 seconds
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -33,6 +35,101 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
   );
   const lastMessageIdRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
+
+  // SSE connection for real-time streaming
+  const {
+    isConnected: sseConnected,
+    streamingAgents,
+    lastNewMessage,
+    newMessageSeq,
+  } = useSSE(roomId);
+
+  // Track SSE connected state in a ref for use in polling intervals
+  const sseConnectedRef = useRef(sseConnected);
+  sseConnectedRef.current = sseConnected;
+
+  // Handle new_message from SSE - append to messages
+  useEffect(() => {
+    if (!lastNewMessage || !lastNewMessage.id) return;
+
+    setMessages((prev) => {
+      // Skip if we already have this message
+      if (prev.some((m) => m.id === lastNewMessage.id)) return prev;
+
+      const newMsg: Message = {
+        id: lastNewMessage.id,
+        content: lastNewMessage.content,
+        role: lastNewMessage.role,
+        agent_id: lastNewMessage.agent_id,
+        agent_name: lastNewMessage.agent_name || undefined,
+        agent_profile_pic: lastNewMessage.agent_profile_pic,
+        thinking: lastNewMessage.thinking,
+        timestamp: lastNewMessage.timestamp,
+        game_time_snapshot: lastNewMessage.game_time_snapshot,
+      };
+      return [...prev, newMsg];
+    });
+
+    // Update last message ID for polling sync
+    if (
+      typeof lastNewMessage.id === "number" &&
+      lastNewMessage.id > lastMessageIdRef.current
+    ) {
+      lastMessageIdRef.current = lastNewMessage.id;
+    }
+  }, [newMessageSeq, lastNewMessage]);
+
+  // Build chatting indicators from SSE streaming agents
+  useEffect(() => {
+    setMessages((prev) => {
+      const prevChatting = prev.filter((m) => m.is_chatting);
+
+      // When SSE is connected, derive chatting state from streamingAgents map
+      if (sseConnected) {
+        if (streamingAgents.size === 0 && prevChatting.length === 0) {
+          return prev;
+        }
+
+        const withoutChatting = prev.filter((m) => !m.is_chatting);
+
+        if (streamingAgents.size === 0) {
+          return withoutChatting;
+        }
+
+        const chattingMessages: Message[] = [];
+        streamingAgents.forEach((state, agentId) => {
+          chattingMessages.push({
+            id: `chatting_${agentId}`,
+            agent_id: agentId,
+            agent_name: state.agent_name,
+            content: state.response_text || "",
+            role: "assistant",
+            timestamp: new Date().toISOString(),
+            is_chatting: true,
+            thinking: state.thinking_text || null,
+          });
+        });
+
+        // Check if chatting state actually changed
+        const hasSameState =
+          chattingMessages.length === prevChatting.length &&
+          chattingMessages.every((msg) =>
+            prevChatting.some(
+              (prev) =>
+                prev.agent_id === msg.agent_id &&
+                prev.thinking === msg.thinking &&
+                prev.content === msg.content,
+            ),
+          );
+
+        if (hasSameState) return prev;
+        return [...withoutChatting, ...chattingMessages];
+      }
+
+      // SSE not connected - polling handles chatting state (no change here)
+      return prev;
+    });
+  }, [sseConnected, streamingAgents]);
 
   // Fetch all messages (initial load)
   const fetchAllMessages = useCallback(async () => {
@@ -100,7 +197,13 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
         if (newMessages.length > 0) {
           setMessages((prev) => {
-            return [...prev, ...newMessages];
+            // Deduplicate: SSE may have already delivered some messages
+            const existingIds = new Set(prev.map((m) => m.id));
+            const truly_new = newMessages.filter(
+              (m: Message) => !existingIds.has(m.id),
+            );
+            if (truly_new.length === 0) return prev;
+            return [...prev, ...truly_new];
           });
           // Update last message ID
           lastMessageIdRef.current = newMessages[newMessages.length - 1].id;
@@ -117,9 +220,11 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     }
   }, [roomId]);
 
-  // Poll for chatting agent status
+  // Poll for chatting agent status (only used when SSE is NOT connected)
   const pollChattingAgents = useCallback(async () => {
     if (!roomId) return;
+    // Skip polling when SSE provides real-time streaming state
+    if (sseConnectedRef.current) return;
 
     try {
       const apiKey = getApiKey();
@@ -218,19 +323,23 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     fetchAllMessages();
 
     // Start polling for new messages using setTimeout to prevent stacking
+    // When SSE is connected, use longer interval as safety net
     const scheduleNextPoll = () => {
       if (!isActive) return;
 
-      pollIntervalRef.current = setTimeout(async () => {
-        // Only poll if tab is visible
-        if (isTabVisible) {
-          await pollNewMessages();
-        }
-        scheduleNextPoll(); // Schedule next poll after this one completes
-      }, POLL_INTERVAL);
+      pollIntervalRef.current = setTimeout(
+        async () => {
+          // Only poll if tab is visible
+          if (isTabVisible) {
+            await pollNewMessages();
+          }
+          scheduleNextPoll(); // Schedule next poll after this one completes
+        },
+        sseConnectedRef.current ? POLL_INTERVAL_SSE : POLL_INTERVAL,
+      );
     };
 
-    // Start polling for chatting agent status (faster polling)
+    // Start polling for chatting agent status (skipped internally when SSE connected)
     const scheduleNextStatusPoll = () => {
       if (!isActive) return;
 
@@ -249,7 +358,9 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       if (isTabVisible) {
         // Tab became visible - fetch immediately to catch up
         pollNewMessages();
-        pollChattingAgents();
+        if (!sseConnectedRef.current) {
+          pollChattingAgents();
+        }
       }
     };
 
@@ -333,7 +444,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       );
 
       if (response.ok) {
-        // The new message will be picked up by the next poll
+        // The new message will be picked up by SSE or the next poll
         // Cancel any pending immediate poll and schedule a new one
         if (immediatePollTimeoutRef.current) {
           clearTimeout(immediatePollTimeoutRef.current);

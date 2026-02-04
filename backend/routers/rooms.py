@@ -12,8 +12,8 @@ from core.dependencies import (
     get_request_identity,
 )
 from domain.exceptions import RoomAlreadyExistsError
-from infrastructure.auth import require_admin
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.auth import require_admin
 from infrastructure.database.connection import get_db
 from orchestration import ChatOrchestrator
 from sdk import AgentManager

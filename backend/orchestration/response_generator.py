@@ -464,7 +464,37 @@ class ResponseGenerator:
             chat_session_id=msg_context.chat_session_id,
             game_time_snapshot=msg_context.game_time_snapshot,
         )
-        await crud.create_message(msg_context.db, msg_context.room_id, agent_message, update_room_activity=True)
+        saved_message = await crud.create_message(
+            msg_context.db, msg_context.room_id, agent_message, update_room_activity=True
+        )
+
+        # Broadcast new_message via SSE for real-time delivery
+        if saved_message and orch_context.agent_manager.broadcaster:
+            import json as _json
+
+            # game_time_snapshot is stored as JSON text in DB
+            gts = saved_message.game_time_snapshot
+            if isinstance(gts, str):
+                try:
+                    gts = _json.loads(gts)
+                except (ValueError, TypeError):
+                    gts = None
+
+            orch_context.agent_manager.broadcaster.broadcast(orch_context.room_id, {
+                "type": "new_message",
+                "message": {
+                    "id": saved_message.id,
+                    "content": saved_message.content,
+                    "role": saved_message.role.value if hasattr(saved_message.role, "value") else saved_message.role,
+                    "agent_id": saved_message.agent_id,
+                    "agent_name": agent.name,
+                    "agent_profile_pic": agent.profile_pic,
+                    "thinking": saved_message.thinking,
+                    "timestamp": saved_message.timestamp.isoformat() if saved_message.timestamp else None,
+                    "chat_session_id": saved_message.chat_session_id,
+                    "game_time_snapshot": gts,
+                },
+            })
 
         return True
 

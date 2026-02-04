@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, AsyncIterator
 from claude_agent_sdk import ClaudeSDKClient
 
 if TYPE_CHECKING:
+    from infrastructure.sse import EventBroadcaster
     from sqlalchemy.ext.asyncio import AsyncSession
 from domain.value_objects.contexts import AgentResponseContext
 from domain.value_objects.task_identifier import TaskIdentifier
@@ -46,7 +47,7 @@ _perf = get_perf_logger()
 class AgentManager:
     """Manages Claude SDK clients for agent response generation and interruption."""
 
-    def __init__(self):
+    def __init__(self, broadcaster: EventBroadcaster | None = None):
         self.active_clients: dict[TaskIdentifier, ClaudeSDKClient] = {}
         # Client pool for managing SDK client lifecycle
         self.client_pool = ClientPool()
@@ -54,6 +55,13 @@ class AgentManager:
         self.stream_parser = StreamParser()
         # Streaming state manager for tracking partial responses
         self.streaming_state = StreamingStateManager()
+        # SSE event broadcaster (optional, set by app factory)
+        self.broadcaster = broadcaster
+
+    def _broadcast(self, room_id: int, event: dict) -> None:
+        """Broadcast an event to SSE subscribers if broadcaster is available."""
+        if self.broadcaster:
+            self.broadcaster.broadcast(room_id, event)
 
     async def interrupt_all(self):
         """Interrupt all currently active agent responses."""
@@ -171,6 +179,12 @@ class AgentManager:
                 "type": "stream_start",
                 "temp_id": temp_id,
             }
+            self._broadcast(context.room_id, {
+                "type": "stream_start",
+                "agent_id": context.agent_id,
+                "agent_name": context.agent_name,
+                "temp_id": temp_id,
+            })
 
             # Build final system prompt
             response_text = ""
@@ -216,7 +230,7 @@ class AgentManager:
             logger.debug(f"Registered client for task: {task_id}")
 
             # Initialize streaming state for this task
-            await self.streaming_state.init(task_id)
+            await self.streaming_state.init(task_id, agent_name=context.agent_name)
 
             # Write debug log with complete agent input
             await write_debug_log(
@@ -406,22 +420,32 @@ class AgentManager:
                 if content_delta:
                     chunk_count += 1
                     total_content_chars += len(content_delta)
-                    logger.info(f"🔄 YIELDING content delta | Length: {len(content_delta)}")
                     yield {
                         "type": "content_delta",
                         "delta": content_delta,
                         "temp_id": temp_id,
                     }
+                    self._broadcast(context.room_id, {
+                        "type": "content_delta",
+                        "agent_id": context.agent_id,
+                        "delta": content_delta,
+                        "temp_id": temp_id,
+                    })
 
                 if thinking_delta:
                     chunk_count += 1
                     total_thinking_chars += len(thinking_delta)
-                    logger.info(f"🔄 YIELDING thinking delta | Length: {len(thinking_delta)}")
                     yield {
                         "type": "thinking_delta",
                         "delta": thinking_delta,
                         "temp_id": temp_id,
                     }
+                    self._broadcast(context.room_id, {
+                        "type": "thinking_delta",
+                        "agent_id": context.agent_id,
+                        "delta": thinking_delta,
+                        "temp_id": temp_id,
+                    })
 
                 # Debug log each message received from the SDK
                 # Configuration loaded from debug.yaml
@@ -540,6 +564,12 @@ class AgentManager:
                 "structured_output": structured_output,
                 "usage": usage_data,
             }
+            self._broadcast(context.room_id, {
+                "type": "stream_end",
+                "agent_id": context.agent_id,
+                "temp_id": temp_id,
+                "skipped": skip_tool_called,
+            })
 
         except asyncio.CancelledError:
             # Task was cancelled due to interruption - this is expected
@@ -564,6 +594,12 @@ class AgentManager:
                 "skipped": True,
                 "usage": None,
             }
+            self._broadcast(context.room_id, {
+                "type": "stream_end",
+                "agent_id": context.agent_id,
+                "temp_id": temp_id,
+                "skipped": True,
+            })
 
         except Exception as e:
             # Clean up client on error
@@ -590,6 +626,12 @@ class AgentManager:
                     "skipped": True,
                     "usage": None,
                 }
+                self._broadcast(context.room_id, {
+                    "type": "stream_end",
+                    "agent_id": context.agent_id,
+                    "temp_id": temp_id,
+                    "skipped": True,
+                })
                 return
 
             # Remove client from pool on any error to ensure fresh client next time
@@ -615,6 +657,12 @@ class AgentManager:
                 "skipped": False,
                 "usage": None,
             }
+            self._broadcast(context.room_id, {
+                "type": "stream_end",
+                "agent_id": context.agent_id,
+                "temp_id": temp_id,
+                "skipped": False,
+            })
 
     async def pre_connect(
         self,

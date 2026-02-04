@@ -8,15 +8,15 @@ Used by detailed_character_designer agent during onboarding.
 import logging
 from typing import Any
 
+from services.agent_filesystem_service import AgentFilesystemService
+from services.world_service import WorldService
+
 from sdk.config.character_design_tool_definitions import (
-    CHARACTER_DESIGN_TOOLS,
     CreateComprehensiveCharacterInput,
     ImplantConsolidatedMemoryInput,
 )
 from sdk.loaders import is_tool_enabled
 from sdk.tools.context import ToolContext
-from services.agent_filesystem_service import AgentFilesystemService
-from services.world_service import WorldService
 
 logger = logging.getLogger("CharacterDesignTools")
 
@@ -264,7 +264,7 @@ def create_character_design_tools(ctx: ToolContext) -> list:
                 for i, memory in enumerate(validated.memories, 1):
                     response_text += f"{i}. [{memory.subtitle}]\n"
 
-                response_text += f"""
+                response_text += """
 **File:** `consolidated_memory.md`
 **Format:** Memories stored with `## [subtitle]` headers
 

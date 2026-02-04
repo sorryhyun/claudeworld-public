@@ -5,8 +5,8 @@ from typing import List
 import crud
 import schemas
 from core.dependencies import RequestIdentity, ensure_room_access, get_agent_manager, get_request_identity
-from infrastructure.auth import require_admin
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.auth import require_admin
 from infrastructure.database.connection import get_db
 from sdk import AgentManager
 from services.agent_service import remove_agent_from_room_with_cleanup

@@ -306,6 +306,11 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # SSE stream endpoint uses ticket auth (EventSource can't send custom headers)
+        if "/stream" in path and path.startswith("/rooms/") and method == "GET":
+            await self.app(scope, receive, send)
+            return
+
         if method == "OPTIONS":
             await self.app(scope, receive, send)
             return
