@@ -76,21 +76,6 @@ class LocationService:
         return LocationStorage.update_location(world_name, location_name, is_discovered, label)
 
     @classmethod
-    def update_location_description(
-        cls,
-        world_name: str,
-        location_name: str,
-        description: str,
-    ) -> bool:
-        """Update a location's description."""
-        return LocationStorage.update_location_description(world_name, location_name, description)
-
-    @classmethod
-    def mark_location_finalized(cls, world_name: str, location_name: str) -> bool:
-        """Mark a location as no longer a draft."""
-        return LocationStorage.mark_location_finalized(world_name, location_name)
-
-    @classmethod
     def cleanup_stale_entries(cls, world_name: str) -> List[str]:
         """Remove stale entries from _index.yaml."""
         return LocationStorage.cleanup_stale_entries(world_name)

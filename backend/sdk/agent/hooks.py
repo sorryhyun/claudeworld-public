@@ -20,8 +20,6 @@ from claude_agent_sdk.types import (
 )
 from infrastructure.logging.perf_logger import get_perf_logger
 
-from sdk.parsing.location_parser import parse_location_from_task_prompt
-
 if TYPE_CHECKING:
     from domain.value_objects.contexts import AgentResponseContext
 
@@ -260,116 +258,6 @@ def create_pre_task_subagent_hook(
     return track_subagent_invocation
 
 
-def create_pre_task_location_hook(
-    context: AgentResponseContext,
-) -> HookFunc:
-    """
-    Create a PreToolUse hook to create draft locations when location_designer is invoked.
-
-    This allows travel to proceed immediately while design runs in background.
-
-    Args:
-        context: Agent response context for location creation
-
-    Returns:
-        Async hook function
-    """
-
-    async def handle_pre_task_location(
-        input_data: PreToolUseHookInput,
-        _tool_use_id: str | None,
-        _ctx: dict,
-    ) -> SyncHookJSONOutput:
-        """Create draft location when location_designer Task is invoked."""
-        tool_name = input_data.get("tool_name", "")
-        if tool_name != "Task":
-            return {"continue_": True}
-
-        tool_input = input_data.get("tool_input", {})
-        subagent_type = tool_input.get("subagent_type", "")
-        if subagent_type != "location_designer":
-            return {"continue_": True}
-
-        # Check required context values (db not needed - we create fresh session)
-        if not context.world_id or not context.world_name:
-            logger.warning("PreToolUse: Missing context for draft location creation")
-            return {"continue_": True}
-
-        prompt = tool_input.get("prompt", "")
-        location_info = parse_location_from_task_prompt(prompt)
-
-        if not location_info:
-            logger.warning("PreToolUse: Could not parse location info from prompt")
-            return {"continue_": True}
-
-        logger.info(f"🏗️ PreToolUse: Creating draft location '{location_info.get('display_name')}'")
-
-        try:
-            # Use a fresh DB session to avoid concurrent operation errors
-            # The parent agent's session (context.db) may be in use by other operations
-            from infrastructure.database.connection import async_session_maker
-            from services.persistence_manager import PersistenceManager
-
-            async with async_session_maker() as fresh_db:
-                pm = PersistenceManager(fresh_db, context.world_id, context.world_name)
-                await pm.create_draft_location(
-                    name=location_info["name"],
-                    display_name=location_info["display_name"],
-                    description=location_info.get("description", "A newly discovered area."),
-                    position=location_info.get("position", (0, 0)),
-                    adjacent_hints=location_info.get("adjacent_to"),
-                )
-                await fresh_db.commit()
-            logger.info(f"✅ Draft location created: {location_info['display_name']}")
-        except Exception as e:
-            logger.warning(f"Failed to create draft location: {e}")
-
-        return {"continue_": True}
-
-    return handle_pre_task_location
-
-
-def create_post_task_location_hook() -> HookFunc:
-    """
-    Create a PostToolUse hook to add context message when location_designer completes.
-
-    This informs the user that the location is now accessible.
-
-    Returns:
-        Async hook function
-    """
-
-    async def handle_post_task_location(
-        input_data: PostToolUseHookInput,
-        _tool_use_id: str | None,
-        _ctx: dict,
-    ) -> SyncHookJSONOutput:
-        """Add context message when location_designer Task is launched."""
-        tool_name = input_data.get("tool_name", "")
-        if tool_name != "Task":
-            return {"continue_": True}
-
-        tool_input = input_data.get("tool_input", {})
-        subagent_type = tool_input.get("subagent_type", "")
-        if subagent_type != "location_designer":
-            return {"continue_": True}
-
-        logger.info("🏗️ PostToolUse: location_designer task launched, adding context message")
-
-        return {
-            "continue_": True,
-            "hookSpecificOutput": {
-                "hookEventName": input_data.get("hook_event_name", "PostToolUse"),
-                "additionalContext": (
-                    "The location has been created and is now accessible. "
-                    "Players can travel to this location immediately."
-                ),
-            },
-        }
-
-    return handle_post_task_location
-
-
 def build_hooks(
     context: AgentResponseContext,
     anthropic_calls_capture: list[str] | None = None,
@@ -407,14 +295,6 @@ def build_hooks(
             )
         )
 
-    # Add context message when location_designer Task is launched
-    hooks["PostToolUse"].append(
-        HookMatcher(
-            matcher="Task",
-            hooks=[create_post_task_location_hook()],
-        )
-    )
-
     # Add SubagentStop hook
     if "SubagentStop" not in hooks:
         hooks["SubagentStop"] = []
@@ -434,14 +314,6 @@ def build_hooks(
         HookMatcher(
             matcher="Task",
             hooks=[create_pre_task_subagent_hook(context)],
-        )
-    )
-
-    # Create draft location when location_designer is invoked
-    hooks["PreToolUse"].append(
-        HookMatcher(
-            matcher="Task",
-            hooks=[create_pre_task_location_hook(context)],
         )
     )
 

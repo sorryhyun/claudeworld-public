@@ -423,12 +423,9 @@ def create_location_tools(ctx: ToolContext) -> list:
         async def persist_location_design_tool(args: dict[str, Any]):
             """Persist a designed location to filesystem and database.
 
-            Supports two modes:
-            - CREATE: If location doesn't exist, create it (original behavior)
-            - UPSERT: If location exists and is_draft=True, update with rich details
-
             Used by Location Designer sub-agent after designing a location.
             Creates the location files and connects to adjacent locations.
+            Returns an error if the location already exists.
             """
             validated = PersistLocationDesignInput(**args)
 
@@ -448,90 +445,57 @@ def create_location_tools(ctx: ToolContext) -> list:
                         break
 
                 if existing:
-                    # UPSERT MODE: Update existing location
-                    if not getattr(existing, "is_draft", False):
-                        return {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Location '{validated.name}' already exists and is finalized. Cannot overwrite.",
-                                }
-                            ],
-                            "is_error": True,
-                        }
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Location '{validated.name}' already exists. Cannot overwrite.",
+                            }
+                        ],
+                        "is_error": True,
+                    }
 
-                    logger.info(f"Updating draft location: {validated.display_name}")
+                # Build adjacent hints from adjacent_to (already a list or None)
+                adjacent_hints = validated.adjacent_to or []
 
-                    # Update filesystem description
-                    LocationService.update_location_description(
-                        world_name,
-                        existing.name,
-                        validated.description,
-                    )
+                # Use PersistenceManager for coordinated FS + DB creation
+                pm = PersistenceManager(db, world_id, world_name)
+                new_location_id = await pm.create_location(
+                    name=validated.name,
+                    display_name=validated.display_name,
+                    description=validated.description,
+                    position=(validated.position_x, validated.position_y),
+                    adjacent_hints=adjacent_hints,
+                    is_starting=validated.is_starting,
+                )
 
-                    # Mark as finalized in filesystem
-                    LocationService.mark_location_finalized(world_name, existing.name)
+                # Connect to adjacent locations in DB
+                if adjacent_hints:
+                    for adj_name in adjacent_hints:
+                        adj_loc = next((loc for loc in db_locations if loc.name == adj_name), None)
+                        if adj_loc:
+                            await crud.add_adjacent_location(db, new_location_id, adj_loc.id)
+                            await crud.add_adjacent_location(db, adj_loc.id, new_location_id)
 
-                    # Update database
-                    await crud.update_location(
-                        db,
-                        existing.id,
-                        schemas.LocationUpdate(
-                            description=validated.description,
-                            is_draft=False,
-                        ),
-                    )
+                # Note: is_starting is informational only during onboarding.
+                # The actual starting_location is set by OM's complete tool.
+                if validated.is_starting:
+                    logger.info(f"Location '{validated.name}' marked as starting location candidate")
 
-                    response_text = f"""**Location Enriched (Draft → Finalized):**
-- Name: {validated.display_name}
-- Position: ({existing.position_x}, {existing.position_y})
-- Description updated with rich details"""
+                logger.info(f"Created location: {validated.display_name} (id={new_location_id})")
 
-                    return {"content": [{"type": "text", "text": response_text}]}
-
-                else:
-                    # CREATE MODE: Original behavior
-                    # Build adjacent hints from adjacent_to (already a list or None)
-                    adjacent_hints = validated.adjacent_to or []
-
-                    # Use PersistenceManager for coordinated FS + DB creation
-                    pm = PersistenceManager(db, world_id, world_name)
-                    new_location_id = await pm.create_location(
-                        name=validated.name,
-                        display_name=validated.display_name,
-                        description=validated.description,
-                        position=(validated.position_x, validated.position_y),
-                        adjacent_hints=adjacent_hints,
-                        is_starting=validated.is_starting,
-                    )
-
-                    # Connect to adjacent locations in DB
-                    if adjacent_hints:
-                        for adj_name in adjacent_hints:
-                            adj_loc = next((loc for loc in db_locations if loc.name == adj_name), None)
-                            if adj_loc:
-                                await crud.add_adjacent_location(db, new_location_id, adj_loc.id)
-                                await crud.add_adjacent_location(db, adj_loc.id, new_location_id)
-
-                    # Note: is_starting is informational only during onboarding.
-                    # The actual starting_location is set by OM's complete tool.
-                    if validated.is_starting:
-                        logger.info(f"Location '{validated.name}' marked as starting location candidate")
-
-                    logger.info(f"Created location: {validated.display_name} (id={new_location_id})")
-
-                    response_text = f"""**Location Created:**
+                response_text = f"""**Location Created:**
 - Name: {validated.display_name}
 - Position: ({validated.position_x}, {validated.position_y})
 - Is Starting: {validated.is_starting}
 - Description: {validated.description[:200]}..."""
 
-                    return {"content": [{"type": "text", "text": response_text}]}
+                return {"content": [{"type": "text", "text": response_text}]}
 
             except Exception as e:
                 logger.error(f"persist_location_design error: {e}", exc_info=True)
                 return {
-                    "content": [{"type": "text", "text": f"Error creating/updating location: {e}"}],
+                    "content": [{"type": "text", "text": f"Error creating location: {e}"}],
                     "is_error": True,
                 }
 
