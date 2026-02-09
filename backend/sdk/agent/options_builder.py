@@ -90,6 +90,7 @@ def build_agent_options(
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "true",
         "DISABLE_TELEMETRY": "true",
         "CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK": "true",
+        "CLAUDE_CODE_DISABLE_BUILTIN_AGENTS": "true",
     }
 
     # Add tracing environment variables if enabled (requires patched CLI with observability)
@@ -106,7 +107,7 @@ def build_agent_options(
         logger.info("CLI tracing enabled - traces will be written to stderr")
 
     options = ClaudeAgentOptions(
-        model="claude-opus-4-5-20251101" if not USE_SONNET else "claude-sonnet-4-5-20250929",
+        model="claude-opus-4-6" if not USE_SONNET else "claude-sonnet-4-5-20250929",
         system_prompt=system_prompt,
         permission_mode="bypassPermissions",
         max_thinking_tokens=32768,
