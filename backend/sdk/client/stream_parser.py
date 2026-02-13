@@ -107,9 +107,15 @@ class StreamParser:
                             anthropic_calls.append(situation)
                             logger.info(f"Agent called anthropic tool: {situation}")
                 elif isinstance(block, ThinkingBlock):
-                    thinking_delta = block.thinking
+                    # Skip if already accumulated from StreamEvent deltas
+                    if not current_thinking:
+                        thinking_delta = block.thinking
                 elif isinstance(block, TextBlock):
-                    content_delta += block.text
+                    # Skip if already accumulated from StreamEvent deltas.
+                    # AssistantMessage/ResultMessage TextBlocks contain the complete
+                    # turn text, not an incremental delta - appending would duplicate.
+                    if not current_response:
+                        content_delta += block.text
 
         return ParsedStreamMessage(
             response_text=current_response + content_delta,
