@@ -378,6 +378,6 @@ The system prompt (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders to
 
 ## Further Reading
 
-- **[CLAUDE.md](CLAUDE.md)** - Development commands, agent configuration, environment variables
-- **[README.md](README.md)** - Quick start, API endpoints, deployment
-- **[backend/README.md](backend/README.md)** - Backend architecture, debugging
+- **[CLAUDE.md](../CLAUDE.md)** - Development commands, agent configuration, environment variables
+- **[README.md](../README.md)** - Quick start, API endpoints, deployment
+- **[backend/README.md](../backend/README.md)** - Backend architecture, debugging

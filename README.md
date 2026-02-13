@@ -33,8 +33,6 @@ python -c "import secrets; print(secrets.token_hex(32))"  # Generate JWT secret
 cp .env.example .env  # Add API_KEY_HASH and JWT_SECRET to .env
 ```
 
-See [SETUP.md](SETUP.md) for details.
-
 ### 3. Run & Access
 
 ```bash
@@ -127,7 +125,7 @@ agents/
 
 All agents use **third-person perspective** (e.g., "Action_Manager is..." not "You are...").
 
-See [how_it_works.md](how_it_works.md) for details.
+See [docs/how_it_works.md](docs/how_it_works.md) for details.
 
 ## Commands
 
@@ -149,15 +147,13 @@ make build-exe
 
 Creates `dist/ClaudeWorld.exe` with bundled frontend, backend, and first-time setup wizard.
 
-**Automated builds:** GitHub Actions automatically builds and attaches executables when you create a release. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
+**Automated builds:** GitHub Actions automatically builds and attaches executables when you create a release. See [docs/deployment.md](docs/deployment.md) for details.
 
 ### Web Deployment
 
 **Backend:** Local machine with ngrok tunnel (or cloud hosting)
 **Frontend:** Vercel (or other static hosting)
 **CORS:** Configure via `FRONTEND_URL` in backend `.env`
-
-See [SETUP.md](SETUP.md) for deployment details.
 
 ## Configuration
 
@@ -176,8 +172,8 @@ See [SETUP.md](SETUP.md) for deployment details.
 
 ## Documentation
 
-- [SETUP.md](SETUP.md) - Setup, authentication, deployment
-- [how_it_works.md](how_it_works.md) - System architecture
+- [docs/how_it_works.md](docs/how_it_works.md) - System architecture
+- [docs/deployment.md](docs/deployment.md) - Windows executable deployment
 - [backend/README.md](backend/README.md) - Backend API documentation
 - [frontend/README.md](frontend/README.md) - Frontend documentation
 

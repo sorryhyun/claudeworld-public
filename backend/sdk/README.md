@@ -14,7 +14,10 @@ sdk/
 │   ├── guideline_tool_definitions.py # Guidelines tool definition
 │   ├── gameplay_tool_definitions.py  # TRPG gameplay tools (travel, narration, etc.)
 │   ├── onboarding_tool_definitions.py # Onboarding tools (draft_world, persist_world, complete)
-│   ├── subagent_tool_definitions.py  # Sub-agent persist tools
+│   ├── subagent_tool_definitions.py  # Shared sub-agent persist tools
+│   ├── character_design_tool_definitions.py # Character creation tools
+│   ├── item_tool_definitions.py      # Item persist tool
+│   ├── location_tool_definitions.py  # Location persist tool
 │   ├── guidelines_3rd.yaml           # System prompt template
 │   ├── conversation_context.yaml     # Context formatting
 │   └── localization.yaml             # Localized messages (en, ko)
@@ -36,7 +39,8 @@ sdk/
 ├── client/              # Claude SDK client infrastructure
 │   ├── client_pool.py   # Claude SDK client pooling
 │   ├── mcp_registry.py  # MCP server registry (tool routing per agent)
-│   └── stream_parser.py # Response stream parsing
+│   ├── stream_parser.py # Response stream parsing
+│   └── transports.py    # Custom transport implementations
 │
 ├── tools/               # MCP tool implementations
 │   ├── action_tools.py       # skip, memorize, recall
@@ -44,8 +48,8 @@ sdk/
 │   ├── common.py             # Shared tool utilities (build_action_context)
 │   ├── context.py            # ToolContext for tool handlers
 │   ├── servers.py            # MCP server factories (action manager, onboarding, subagents)
-│   ├── character_tools.py    # remove_character, move_character, list_characters, persist_character_design
-│   ├── character_design_tools.py # Comprehensive character creation for onboarding
+│   ├── character_tools.py    # remove_character, move_character, list_characters
+│   ├── character_design_tools.py # Comprehensive character creation
 │   ├── location_tools.py     # travel, list_locations, persist_location_design
 │   ├── mechanics_tools.py    # inject_memory, change_stat
 │   ├── narrative_tools.py    # narration, suggest_options
@@ -56,7 +60,6 @@ sdk/
 │
 └── parsing/             # Parsing utilities
     ├── agent_parser.py    # Parse agent config from markdown files
-    ├── location_parser.py # Parse location info from Task prompts
     └── memory_parser.py   # Parse long-term memory files with subtitles
 ```
 
@@ -123,18 +126,13 @@ Note: Onboarding_Manager handles world generation via `draft_world` and `persist
 | Module | Purpose |
 |--------|---------|
 | `agent_parser.py` | Parse agent config from markdown folder structure |
-| `location_parser.py` | Extract location info from location_designer Task prompts |
 | `memory_parser.py` | Parse long-term memory files with `## [subtitle]` format |
 
 ```python
-from sdk.parsing import parse_agent_config, parse_location_from_task_prompt, parse_long_term_memory
+from sdk.parsing import parse_agent_config, parse_long_term_memory
 
 # Parse agent config
 config = parse_agent_config("/path/to/agent/folder")
-
-# Parse location from Task prompt
-location_info = parse_location_from_task_prompt("Create 연남동 골목길 (Yeonnam-dong Alley), ...")
-# Returns: {"name": "yeonnam_dong_alley", "display_name": "연남동 골목길 (Yeonnam-dong Alley)", ...}
 
 # Parse memory file
 memories = parse_long_term_memory(Path("agent/consolidated_memory.md"))

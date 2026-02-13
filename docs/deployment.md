@@ -324,6 +324,6 @@ The artifact will be available for download in the workflow run.
 ## Support
 
 For issues or questions:
-- Check the [main README](README.md) for general ClaudeWorld documentation
-- Review [CLAUDE.md](CLAUDE.md) for project architecture
+- Check the [main README](../README.md) for general ClaudeWorld documentation
+- Review [CLAUDE.md](../CLAUDE.md) for project architecture
 - Open an issue on the GitHub repository

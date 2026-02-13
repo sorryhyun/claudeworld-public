@@ -87,8 +87,6 @@ backend/
 
 **For detailed backend documentation**, see [backend/README.md](backend/README.md).
 
-**For caching system details**, see [backend/CACHING.md](backend/CACHING.md).
-
 ### Frontend
 - **React + TypeScript + Vite** with Tailwind CSS
 - **Key components:**
@@ -107,7 +105,7 @@ backend/
 
 Seven specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (1-agent tape where Action Manager coordinates sub-agents via SDK Task tool and handles narration directly).
 
-**See [how_it_works.md](how_it_works.md) for detailed architecture:** agent roles, turn flow diagrams, sub-agent invocation, data storage, and API endpoints.
+**See [docs/how_it_works.md](docs/how_it_works.md) for detailed architecture:** agent roles, turn flow diagrams, sub-agent invocation, data storage, and API endpoints.
 
 ## Agent Configuration
 
@@ -193,7 +191,7 @@ See `agents/group_config.yaml.example` for more examples.
 
 Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법사로...") because Claude Agent SDK inherits an immutable "You are Claude Code" prompt. Third-person avoids conflicting "You are..." statements.
 
-**See [how_it_works.md](how_it_works.md#why-third-person-perspective) for technical details.**
+**See [docs/how_it_works.md](docs/how_it_works.md#why-third-person-perspective) for technical details.**
 
 ## Quick Start
 
@@ -220,8 +218,6 @@ Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법
    # Edit .env and add API_KEY_HASH and JWT_SECRET
    ```
 
-   See [SETUP.md](SETUP.md) for detailed instructions.
-
 3. **Run development servers:**
    ```bash
    make dev
@@ -244,7 +240,7 @@ make build-exe
 
 Creates `dist/ClaudeWorld.exe` with bundled backend/frontend, setup wizard, and SQLite database support.
 
-**For detailed deployment instructions**, see [DEPLOYMENT.md](DEPLOYMENT.md).
+**For detailed deployment instructions**, see [docs/deployment.md](docs/deployment.md).
 
 ## Configuration
 

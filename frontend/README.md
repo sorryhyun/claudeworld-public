@@ -269,6 +269,5 @@ npm run lint      # Run ESLint
 ## Related Documentation
 
 - [Main README](../README.md) - Project overview
-- [SETUP.md](../SETUP.md) - Setup and authentication
 - [Backend README](../backend/README.md) - Backend API documentation
-- [how_it_works.md](../how_it_works.md) - TRPG system architecture
+- [How It Works](../docs/how_it_works.md) - TRPG system architecture

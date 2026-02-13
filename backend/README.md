@@ -1,6 +1,6 @@
 # Backend Documentation
 
-ClaudeWorld backend: FastAPI application with SQLAlchemy (async) + SQLite/PostgreSQL for TRPG game orchestration using the Anthropic Claude Agent SDK.
+ClaudeWorld backend: FastAPI application with SQLAlchemy (async) + SQLite for TRPG game orchestration using the Anthropic Claude Agent SDK.
 
 ## Quick Start
 
@@ -10,20 +10,18 @@ make install  # Install dependencies with uv
 make dev      # Run both backend and frontend
 
 # Backend only
-cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd backend && DATABASE_URL=sqlite+aiosqlite:///../claudeworld.db uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Run tests
-uv run pytest --cov=backend --cov-report=term-missing
+uv run poe test
 ```
-
-See [../SETUP.md](../SETUP.md) for authentication setup.
 
 ## Architecture Overview
 
 **Core Stack:**
-- FastAPI + SQLAlchemy (async) + PostgreSQL (asyncpg)
+- FastAPI + SQLAlchemy (async) + SQLite (aiosqlite)
 - Claude Agent SDK for AI interactions
-- HTTP polling for real-time updates
+- HTTP polling + SSE for real-time updates
 
 **Key Features:**
 - Turn-based TRPG with sequential agent execution
@@ -31,29 +29,38 @@ See [../SETUP.md](../SETUP.md) for authentication setup.
 - World/Location/PlayerState management
 - In-memory caching (70-90% performance improvement)
 
-**For caching details**, see [CACHING.md](CACHING.md).
+**For detailed architecture**, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Directory Structure
 
 ```
 backend/
 ├── main.py                # FastAPI entry point
-├── auth.py                # JWT authentication
-│
-├── core/                  # Settings, constants
+├── core/                  # Settings, app factory, dependencies
 ├── crud/                  # Database operations (pure CRUD, no business logic)
-├── domain/                # Domain models and enums
+│   ├── agents.py, rooms.py, messages.py
+│   ├── worlds.py, locations.py, player_state.py
+│   └── cached.py, helpers.py
+├── domain/                # Domain models, entities, value objects, services
+│   ├── entities/          # Agent, World, PlayerState models
+│   ├── services/          # Pure domain logic (rules, validation)
+│   └── value_objects/     # Enums, contexts, identifiers
 ├── infrastructure/        # Cross-cutting infrastructure
-│   ├── database/          # SQLAlchemy setup, models, migrations
+│   ├── database/          # SQLAlchemy setup, models, migrations, write_queue
 │   ├── logging/           # PerfLogger, debug logging
+│   ├── auth.py            # JWT authentication
 │   ├── cache.py           # In-memory caching
 │   ├── locking.py         # File locking
-│   └── scheduler.py       # Background scheduler
+│   ├── scheduler.py       # Background scheduler
+│   ├── sse.py             # Server-Sent Events
+│   └── sse_ticket.py      # SSE ticket auth
 ├── orchestration/         # Multi-agent orchestration and tape execution
-├── routers/               # REST API endpoints (auth, rooms, agents, game/)
+├── routers/               # REST API endpoints (auth, rooms, agents, sse, game/)
 ├── schemas/               # Pydantic request/response models
 ├── sdk/                   # Claude SDK integration (see sdk/README.md)
-├── services/              # Business logic (agent factory, persistence, world/location/player)
+├── services/              # Business logic
+│   ├── facades/           # FS↔DB sync (player_facade, world_facade)
+│   └── ...                # agent_factory, world_service, player_service, etc.
 ├── i18n/                  # Internationalization
 ├── utils/                 # Utilities
 └── tests/                 # Test suite
@@ -63,36 +70,13 @@ backend/
 
 ### Layered Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        API Layer                             │
-│  routers/agents.py, routers/game/locations.py, etc.         │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-        ┌──────────────────┼──────────────────┐
-        ▼                  ▼                  ▼
-┌───────────────┐  ┌───────────────────┐  ┌───────────────────┐
-│ AgentFactory  │  │ActionManagerTools │  │PersistenceManager │
-│ (orchestrator)│  │ (gameplay tools)  │  │ (init + export)   │
-└───────┬───────┘  └────────┬──────────┘  └────────┬──────────┘
-        │                   │                      │
-        ▼                   ▼                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       crud/ Layer                            │
-│  agents.py, game.py, rooms.py, messages.py (pure DB ops)    │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │  Database   │
-                    └─────────────┘
-```
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full layer diagram and dependency rules.
 
 **Key Design Principles:**
 
 - **`crud/`**: Pure database operations only (no business logic, no file I/O)
 - **`AgentFactory`**: Orchestrates config loading → prompt building → CRUD
-- **`ActionManagerTools`**: Gameplay tools for sub-agent invocation and state changes
+- **`services/facades/`**: FS↔DB sync for player state and world data
 - **`PersistenceManager`**: Initialization (FS→DB) and export (DB→FS) only
 
 ### 1. FastAPI Application (`main.py`)
@@ -108,7 +92,7 @@ backend/
 
 ### 2. Database Layer
 
-**Database:** SQLite (default) or PostgreSQL with asyncpg, async sessions, connection pooling
+**Database:** SQLite with aiosqlite, async sessions, single-writer queue
 
 **Automatic Migrations:** Schema changes handled automatically via `infrastructure/database/migrations.py`
 
@@ -191,7 +175,7 @@ User Action → Action_Manager (hidden) → narration + suggest_options
 **AgentManager (`sdk/agent/agent_manager.py`):**
 - Client management via ClientPool with TaskIdentifier keys
 - Response generation with stream parsing
-- Model: `claude-opus-4-5-20251101` (or Sonnet with `USE_SONNET=true`)
+- Model: `claude-opus-4-6` (or Sonnet with `USE_SONNET=true`)
 
 **MCP Tools:**
 - **Action Tools:** `skip`, `memorize`, `recall`
@@ -255,7 +239,7 @@ DELETE /rooms/{id}/messages        # Clear room messages
 - `JWT_SECRET` - Secret for JWT signing
 
 **Optional:**
-- `DATABASE_URL` - Database connection (default: PostgreSQL; `make dev` uses SQLite at project root)
+- `DATABASE_URL` - Database connection (default: SQLite at project root)
 - `CLAUDE_API_KEY` - Direct API key for production (uses Claude Code auth if not set)
 - `USER_NAME` - Display name for user messages (default: "User")
 - `DEBUG_AGENTS` - "true" for verbose logging
@@ -267,14 +251,9 @@ DELETE /rooms/{id}/messages        # Clear room messages
 
 **Connection:** Configure via `DATABASE_URL` environment variable
 
-**Formats:**
-- SQLite: `sqlite+aiosqlite:///../claudeworld.db` (relative to backend/)
-- PostgreSQL: `postgresql+asyncpg://user:password@host:port/database`
+**Format:** `sqlite+aiosqlite:///../claudeworld.db` (relative to backend/)
 
-**Complete Reset:**
-- SQLite: Delete `claudeworld.db` file and restart
-- PostgreSQL: `dropdb claudeworld && createdb claudeworld`, restart backend
-- Agents re-seeded from `agents/` directory on startup
+**Complete Reset:** Delete `claudeworld.db` file and restart. Agents re-seeded from `agents/` directory on startup.
 
 ## Development Patterns
 
@@ -288,12 +267,12 @@ DELETE /rooms/{id}/messages        # Clear room messages
 **Add game state field:**
 1. Update `infrastructure/database/models.py` (World, Location, or PlayerState)
 2. Add migration in `infrastructure/database/migrations.py`
-3. Update `schemas/` and `crud/game.py`
+3. Update `schemas/` and relevant `crud/` module (`worlds.py`, `locations.py`, or `player_state.py`)
 4. Restart
 
 **Add TRPG endpoint:**
 1. Define schema in `schemas/`
-2. Add CRUD to `crud/game.py`
+2. Add CRUD to relevant `crud/` module
 3. Add endpoint to `routers/game/`
 
 ### Architecture Patterns
@@ -338,7 +317,7 @@ DELETE /rooms/{id}/messages        # Clear room messages
 
 **Package Manager:** uv (Python 3.11+)
 
-**Core:** FastAPI, uvicorn, SQLAlchemy, asyncpg
+**Core:** FastAPI, uvicorn, SQLAlchemy, aiosqlite
 
 **AI:** claude-agent-sdk
 
