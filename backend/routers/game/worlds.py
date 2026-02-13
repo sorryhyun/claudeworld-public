@@ -23,7 +23,7 @@ from domain.services.localization import Localization
 from domain.value_objects.enums import Language, MessageRole, WorldPhase
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from infrastructure.database import models
-from infrastructure.database.connection import async_session_maker, get_db
+from infrastructure.database.connection import async_session_maker, get_db, serialized_write
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
 from services.facades import WorldFacade
@@ -47,10 +47,8 @@ router = APIRouter()
 @router.post("/", response_model=schemas.WorldSummary)
 async def create_world(
     world: schemas.WorldCreate,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     identity: RequestIdentity = Depends(get_request_identity),
-    agent_manager: AgentManager = Depends(get_agent_manager),
 ):
     """
     Create a new game world and start onboarding.
@@ -106,30 +104,56 @@ async def create_world(
             participant_type="system",
             participant_name="System",
         )
-        saved_msg = await crud.create_message(
+        await crud.create_message(
             db, db_world.onboarding_room_id, system_message, update_room_activity=True
         )
 
-        # Trigger agent response in background using TRPGOrchestrator
-        async def trigger_onboarding():
-            async with async_session_maker() as session:
-                trpg_orchestrator = get_trpg_orchestrator()
-                # Re-fetch world in this session
-                task_world = await crud.get_world(session, db_world.id)
-                if task_world:
-                    await trpg_orchestrator.handle_player_action(
-                        db=session,
-                        room_id=db_world.onboarding_room_id,
-                        action_text=onboarding_content,
-                        agent_manager=agent_manager,
-                        world=task_world,
-                    )
-
-        background_tasks.add_task(trigger_onboarding)
-        logger.info(f"Triggered onboarding for world '{world.name}'")
+        logger.info(f"Onboarding room ready for world '{world.name}' (trigger via /start-onboarding)")
 
     logger.info(f"Created world '{world.name}' for user '{identity.user_id}'")
     return db_world
+
+
+@router.post("/{world_id}/start-onboarding")
+async def start_onboarding(
+    world_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+    agent_manager: AgentManager = Depends(get_agent_manager),
+):
+    """
+    Trigger the Onboarding Manager to send its first message.
+
+    Called by frontend after SSE connection is established, so that
+    thinking stream is visible from the very first message.
+    """
+    import asyncio
+
+    world = await crud.get_world(db, world_id)
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+    if world.phase != WorldPhase.ONBOARDING:
+        raise HTTPException(status_code=400, detail="World is not in onboarding phase")
+    if not world.onboarding_room_id:
+        raise HTTPException(status_code=400, detail="World has no onboarding room")
+
+    onboarding_content = Localization.get_onboarding_message(world.language)
+
+    async def trigger():
+        async with async_session_maker() as session:
+            trpg_orchestrator = get_trpg_orchestrator()
+            task_world = await crud.get_world(session, world_id)
+            if task_world:
+                await trpg_orchestrator.handle_player_action(
+                    db=session,
+                    room_id=task_world.onboarding_room_id,
+                    action_text=onboarding_content,
+                    agent_manager=agent_manager,
+                    world=task_world,
+                )
+
+    asyncio.create_task(trigger())
+    return {"status": "started"}
 
 
 @router.get("/", response_model=list[schemas.WorldSummary])
@@ -463,7 +487,8 @@ async def _perform_world_reset(
         player_state.action_history = "[]"
         player_state.is_chat_mode = False
         player_state.chat_mode_start_message_id = None
-        await db.commit()
+        async with serialized_write():
+            await db.commit()
         logger.info("Reset player state in database")
 
     # Reset player.yaml in filesystem
@@ -510,7 +535,8 @@ async def _perform_world_reset(
             # Reset other locations to undiscovered
             if loc.is_discovered:
                 loc.is_discovered = False
-    await db.commit()
+    async with serialized_write():
+        await db.commit()
     logger.info(f"Reset is_discovered for {len(all_locations)} locations (starting location: {starting_location.name})")
 
     # Clear events.md files in all locations

@@ -153,35 +153,47 @@ class TestCreateGuidelinesMCPServer:
 
     @patch("sdk.tools.guidelines_tools.is_tool_enabled")
     @patch("sdk.tools.guidelines_tools.get_tool_description")
+    @patch("sdk.tools.guidelines_tools.get_tool_response")
     @patch("sdk.tools.guidelines_tools.create_sdk_mcp_server")
-    def test_create_guidelines_mcp_server_description_mode(
-        self, mock_create_mcp, mock_get_description, mock_is_enabled
+    def test_create_guidelines_mcp_server_anthropic_only(
+        self, mock_create_mcp, mock_get_response, mock_get_description, mock_is_enabled
     ):
-        """Test creating guidelines MCP server."""
+        """Test creating guidelines MCP server with only anthropic tool."""
         mock_is_enabled.return_value = True
-        mock_get_description.return_value = "Guidelines content"
+        mock_get_description.return_value = "Anthropic tool description"
+        mock_get_response.return_value = "Allowed"
         mock_create_mcp.return_value = Mock()
 
         server = create_guidelines_mcp_server(agent_name="TestAgent")
 
-        # Should create MCP server
+        # Should create MCP server with only anthropic tool (no read tool)
         assert server is not None
         mock_create_mcp.assert_called_once()
+        tools = mock_create_mcp.call_args.kwargs["tools"]
+        assert len(tools) == 1
 
+    @patch("sdk.tools.guidelines_tools.get_extreme_traits")
     @patch("sdk.tools.guidelines_tools.is_tool_enabled")
     @patch("sdk.tools.guidelines_tools.get_tool_description")
+    @patch("sdk.tools.guidelines_tools.get_tool_response")
     @patch("sdk.tools.guidelines_tools.create_sdk_mcp_server")
-    def test_create_guidelines_mcp_server_with_group_name(self, mock_create_mcp, mock_get_description, mock_is_enabled):
+    def test_create_guidelines_mcp_server_with_group_name(
+        self, mock_create_mcp, mock_get_response, mock_get_description, mock_is_enabled, mock_get_extreme_traits
+    ):
         """Test creating guidelines MCP server with group name."""
         mock_is_enabled.return_value = True
-        mock_get_description.return_value = "Read tool description"
+        mock_get_description.return_value = "Anthropic tool description"
+        mock_get_response.return_value = "Allowed"
+        mock_get_extreme_traits.return_value = {}
         mock_create_mcp.return_value = Mock()
 
         server = create_guidelines_mcp_server(agent_name="TestAgent", group_name="test_group")
 
-        # Should create MCP server with read tool
+        # Should create MCP server with only anthropic tool
         assert server is not None
         mock_create_mcp.assert_called_once()
+        tools = mock_create_mcp.call_args.kwargs["tools"]
+        assert len(tools) == 1
 
 
 class TestCreateActionMCPServer:

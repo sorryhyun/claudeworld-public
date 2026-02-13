@@ -46,7 +46,6 @@ AGENT_TOOL_NAMES_BY_GROUP: Dict[str, Dict[str, str]] = {
         "memory_select": "mcp__character__character_identity",
     },
     "guidelines": {
-        "read": "mcp__guidelines__read",
         "anthropic": "mcp__guidelines__anthropic",
     },
 }

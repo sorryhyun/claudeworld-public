@@ -118,6 +118,29 @@ export function SessionProvider({
   const sseConnectedRef = useRef(sseConnected);
   sseConnectedRef.current = sseConnected;
 
+  // Track whether we've already triggered the initial onboarding for this world
+  const onboardingTriggeredRef = useRef<number | null>(null);
+
+  // Trigger onboarding start after SSE connects (ensures thinking stream is visible)
+  useEffect(() => {
+    if (
+      sseConnected &&
+      world?.phase === "onboarding" &&
+      world.id !== onboardingTriggeredRef.current
+    ) {
+      // Only trigger if there are no assistant messages yet (first-time trigger)
+      const hasAssistantMessages = messages.some(
+        (m) => m.role === "assistant" && !m.is_chatting,
+      );
+      if (!hasAssistantMessages) {
+        onboardingTriggeredRef.current = world.id;
+        gameService.startOnboarding(world.id).catch((err) => {
+          console.error("Failed to start onboarding:", err);
+        });
+      }
+    }
+  }, [sseConnected, world?.phase, world?.id, messages]);
+
   // Handle new_message from SSE - append to game messages
   useEffect(() => {
     if (!lastNewMessage || !lastNewMessage.id) return;
@@ -167,11 +190,12 @@ export function SessionProvider({
 
       const chattingMessages: GameMessage[] = [];
       streamingAgents.forEach((state, agentId) => {
-        // For Action_Manager, don't show raw response_text (contains tool discussions)
+        // For Action_Manager, show narration_text (streamed from narration tool)
+        // instead of raw response_text (which contains tool discussions)
         const isActionManager = state.agent_name === "Action_Manager";
         chattingMessages.push({
           id: -agentId,
-          content: isActionManager ? "" : state.response_text || "",
+          content: isActionManager ? (state.narration_text || "") : (state.response_text || ""),
           role: "assistant",
           agent_id: agentId,
           agent_name: state.agent_name || null,

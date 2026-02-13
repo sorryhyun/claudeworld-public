@@ -129,6 +129,18 @@ export interface EnterWorldResponse {
   arrival_message_sent: boolean;
 }
 
+export async function startOnboarding(
+  worldId: number,
+): Promise<{ status: string }> {
+  const response = await fetch(`${API_BASE}/${worldId}/start-onboarding`, {
+    ...getFetchOptions({ method: "POST" }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to start onboarding");
+  }
+  return response.json();
+}
+
 export async function enterWorld(worldId: number): Promise<EnterWorldResponse> {
   const response = await fetch(`${API_BASE}/${worldId}/enter`, {
     ...getFetchOptions({ method: "POST" }),

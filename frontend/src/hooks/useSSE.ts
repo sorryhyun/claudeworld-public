@@ -8,6 +8,7 @@ export interface AgentStreamState {
   agent_name?: string;
   temp_id: string;
   has_narrated?: boolean;
+  narration_text?: string;
 }
 
 /** SSE event received from the server */
@@ -154,6 +155,7 @@ export function useSSE(roomId: number | null): UseSSEReturn {
               response_text: data.response_text || "",
               agent_name: data.agent_name,
               temp_id: `catch_up_${agentId}`,
+              narration_text: data.narration_text || "",
             });
             return next;
           });
@@ -219,6 +221,28 @@ export function useSSE(roomId: number | null): UseSSEReturn {
             next.set(agentId, {
               ...existing,
               thinking_text: existing.thinking_text + (data.delta || ""),
+            });
+            return next;
+          });
+        } catch {
+          /* ignore */
+        }
+      });
+
+      es.addEventListener("narration_delta", (e: MessageEvent) => {
+        try {
+          const data: SSEEvent = JSON.parse(e.data);
+          const agentId =
+            data.agent_id ?? tempIdMapRef.current.get(data.temp_id || "");
+          if (agentId == null) return;
+
+          setStreamingAgents((prev) => {
+            const existing = prev.get(agentId);
+            if (!existing) return prev;
+            const next = new Map(prev);
+            next.set(agentId, {
+              ...existing,
+              narration_text: (existing.narration_text || "") + (data.delta || ""),
             });
             return next;
           });

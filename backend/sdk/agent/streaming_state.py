@@ -39,7 +39,7 @@ class StreamingStateManager:
             agent_name: Agent name for catch-up events
         """
         async with self._lock:
-            self._state[task_id] = {"thinking_text": "", "response_text": "", "agent_name": agent_name}
+            self._state[task_id] = {"thinking_text": "", "response_text": "", "narration_text": "", "agent_name": agent_name}
 
     async def update(self, task_id: TaskIdentifier, thinking_text: str, response_text: str) -> None:
         """
@@ -54,6 +54,18 @@ class StreamingStateManager:
             if task_id in self._state:
                 self._state[task_id]["thinking_text"] = thinking_text
                 self._state[task_id]["response_text"] = response_text
+
+    async def update_narration(self, task_id: TaskIdentifier, narration_text: str) -> None:
+        """
+        Update narration text for a task if it still exists.
+
+        Args:
+            task_id: Task identifier to update
+            narration_text: Current accumulated narration text
+        """
+        async with self._lock:
+            if task_id in self._state:
+                self._state[task_id]["narration_text"] = narration_text
 
     async def clear(self, task_id: TaskIdentifier) -> None:
         """
@@ -85,6 +97,7 @@ class StreamingStateManager:
                     result[task_id.agent_id] = {
                         "thinking_text": state.get("thinking_text", ""),
                         "response_text": state.get("response_text", ""),
+                        "narration_text": state.get("narration_text", ""),
                         "agent_name": state.get("agent_name", ""),
                     }
             return result

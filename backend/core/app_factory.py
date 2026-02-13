@@ -12,7 +12,6 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from infrastructure.database.connection import get_db, init_db
-from infrastructure.database.write_queue import start_writer, stop_writer
 from infrastructure.scheduler import BackgroundScheduler
 from infrastructure.sse import EventBroadcaster
 from infrastructure.sse_ticket import SSETicketManager
@@ -59,9 +58,6 @@ def create_app() -> FastAPI:
         """Lifespan context manager for application startup and shutdown."""
         # Startup
         logger.info("🚀 Application startup...")
-
-        # Start write queue for SQLite (serializes writes to prevent lock contention)
-        await start_writer()
 
         # Validate configuration files
         from sdk.loaders import log_config_validation
@@ -116,7 +112,6 @@ def create_app() -> FastAPI:
         background_scheduler.stop()
         await agent_manager.shutdown()
 
-        await stop_writer()
         logger.info("✅ Application shutdown complete")
 
     # Initialize rate limiter

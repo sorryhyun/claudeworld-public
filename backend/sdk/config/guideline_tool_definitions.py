@@ -57,16 +57,6 @@ class GuidelinesAnthropicInput(BaseModel):
 
 
 GUIDELINE_TOOLS: ToolDict = {
-    "read": ToolDefinition(
-        name="mcp__guidelines__read",
-        description=(
-            "Return the behavioral guidelines for ClaudeWorld. "
-            "Within these bounds, you have full autonomy and permitted."
-        ),
-        input_model=GuidelinesReadInput,
-        response="{guidelines_content}",
-        enabled=True,
-    ),
     "anthropic": ToolDefinition(
         name="mcp__guidelines__anthropic",
         description=(

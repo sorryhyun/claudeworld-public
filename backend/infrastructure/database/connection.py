@@ -1,3 +1,5 @@
+import asyncio
+import functools
 import logging
 import os
 
@@ -52,7 +54,7 @@ if DATABASE_TYPE == "sqlite":
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-    logger.info("Database configured: SQLite (file-based)")
+    logger.info("Database configured: SQLite (file-based, serialized writes)")
 else:
     # PostgreSQL configuration: Connection pooling for concurrent access
     engine = create_async_engine(
@@ -101,40 +103,96 @@ async def init_db():
 
 
 # =============================================================================
-# PostgreSQL Compatibility Layer
+# SQLite Write Serialization
 # =============================================================================
-# These functions were originally needed for SQLite's limited concurrency.
-# PostgreSQL handles concurrent writes natively, so these are now no-ops.
-# Kept to avoid breaking existing code that imports them.
+# SQLite only supports one writer at a time. These primitives ensure all
+# concurrent async writes are serialized through a process-wide lock.
+# For PostgreSQL, these are transparent no-ops.
+
+# Process-wide async lock for SQLite writes. Lazily created per event loop.
+_sqlite_write_lock: asyncio.Lock | None = None
+
+
+def _get_write_lock() -> asyncio.Lock:
+    """Get or create the process-wide SQLite write lock (lazy, per event loop)."""
+    global _sqlite_write_lock
+    if _sqlite_write_lock is None:
+        _sqlite_write_lock = asyncio.Lock()
+    return _sqlite_write_lock
+
+
+def reset_write_lock() -> None:
+    """Reset the write lock. Used in tests when the event loop changes."""
+    global _sqlite_write_lock
+    _sqlite_write_lock = None
 
 
 def retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2):
-    """No-op decorator. PostgreSQL handles concurrency natively."""
+    """Retry on SQLite 'database is locked' errors with exponential backoff.
+
+    For PostgreSQL this is a no-op passthrough.
+    """
+    if DATABASE_TYPE != "sqlite":
+
+        def noop_decorator(func):
+            return func
+
+        return noop_decorator
 
     def decorator(func):
-        return func
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exc = None
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as exc:
+                    exc_msg = str(exc).lower()
+                    if "database is locked" in exc_msg or "locked" in exc_msg:
+                        last_exc = exc
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"SQLite locked (attempt {attempt + 1}/{max_retries}), "
+                                f"retrying in {delay:.2f}s"
+                            )
+                            await asyncio.sleep(delay)
+                            delay *= backoff_factor
+                        continue
+                    raise
+            raise last_exc  # type: ignore[misc]
+
+        return wrapper
 
     return decorator
 
 
 class SerializedWrite:
-    """No-op async context manager. PostgreSQL handles concurrency natively."""
+    """Async context manager that serializes writes for SQLite.
+
+    For PostgreSQL this is a transparent no-op.
+    """
 
     def __init__(self, lock_key=None):
-        pass
+        self._is_sqlite = DATABASE_TYPE == "sqlite"
 
     async def __aenter__(self):
+        if self._is_sqlite:
+            await _get_write_lock().acquire()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._is_sqlite:
+            _get_write_lock().release()
         return False
 
 
 def serialized_write(lock_key=None) -> SerializedWrite:
-    """No-op context manager. PostgreSQL handles concurrency natively."""
+    """Return a context manager that serializes writes for SQLite."""
     return SerializedWrite(lock_key)
 
 
 async def serialized_commit(db: AsyncSession, lock_key=None) -> None:
-    """Direct commit. PostgreSQL handles concurrency natively."""
-    await db.commit()
+    """Commit under the write lock (SQLite) or directly (PostgreSQL)."""
+    async with serialized_write(lock_key):
+        await db.commit()

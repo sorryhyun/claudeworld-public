@@ -28,7 +28,7 @@ from infrastructure.logging.perf_logger import get_perf_logger
 from sdk.agent.options_builder import build_agent_options
 from sdk.agent.streaming_state import StreamingStateManager
 from sdk.client.client_pool import ClientPool
-from sdk.client.stream_parser import StreamParser
+from sdk.client.stream_parser import NarrationStreamExtractor, StreamParser
 from sdk.loaders import get_debug_config
 
 # Streaming timeout configuration
@@ -196,6 +196,11 @@ class AgentManager:
             anthropic_calls: list[str] = []  # Track anthropic tool calls (via hook)
             structured_output = None  # Track structured output if using output_format
             usage_data: dict | None = None  # Track token usage from API response
+
+            # Narration streaming state
+            in_narration_block = False
+            narration_extractor: NarrationStreamExtractor | None = None
+            narration_text = ""
 
             message_to_send = context.user_message
 
@@ -409,6 +414,29 @@ class AgentManager:
                 # Capture usage data if present (from ResultMessage)
                 if parsed.usage:
                     usage_data = parsed.usage
+
+                # Narration tool streaming: track tool_use blocks for narration
+                if parsed.tool_start_name and (
+                    parsed.tool_start_name.endswith("narration") or parsed.tool_start_name.endswith("__narration")
+                ):
+                    in_narration_block = True
+                    narration_extractor = NarrationStreamExtractor()
+
+                if parsed.tool_input_delta is not None and in_narration_block and narration_extractor:
+                    narration_delta = narration_extractor.feed(parsed.tool_input_delta)
+                    if narration_delta:
+                        narration_text += narration_delta
+                        self._broadcast(context.room_id, {
+                            "type": "narration_delta",
+                            "agent_id": context.agent_id,
+                            "delta": narration_delta,
+                            "temp_id": temp_id,
+                        })
+                        await self.streaming_state.update_narration(task_id, narration_text)
+
+                if parsed.content_block_stopped and in_narration_block:
+                    in_narration_block = False
+                    narration_extractor = None
 
                 # Update accumulated text
                 response_text = parsed.response_text
