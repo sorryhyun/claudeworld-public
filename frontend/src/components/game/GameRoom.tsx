@@ -4,48 +4,10 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import type { Components } from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import { useGame, GameMessage } from "../../contexts/GameContext";
-
-// Memoized ReactMarkdown components to prevent object recreation on every render
-const MARKDOWN_COMPONENTS: Components = {
-  p: ({ children }) => (
-    <p className="mb-3 last:mb-0 leading-relaxed whitespace-pre-wrap">
-      {children}
-    </p>
-  ),
-  strong: ({ children }) => (
-    <strong className="font-semibold">{children}</strong>
-  ),
-  em: ({ children }) => <em className="italic">{children}</em>,
-  ul: ({ children }) => (
-    <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>
-  ),
-  ol: ({ children }) => (
-    <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>
-  ),
-  li: ({ children }) => <li>{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-700 my-3">
-      {children}
-    </blockquote>
-  ),
-  h1: ({ children }) => (
-    <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h3>
-  ),
-  hr: () => <hr className="my-4 border-slate-200" />,
-  code: ({ children }) => (
-    <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono">
-      {children}
-    </code>
-  ),
-};
+import { GAME_MARKDOWN_COMPONENTS } from "../../utils/markdown";
+import { parseAsUTC } from "../../utils/time";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { ActionInput } from "./ActionInput";
 import { SuggestedActions } from "./SuggestedActions";
@@ -72,20 +34,6 @@ function getLatestTurn(messages: GameMessage[]): GameMessage[] {
   // Return from the last user message to the end
   return messages.slice(lastUserIndex);
 }
-
-// Helper to parse timestamp ensuring UTC is handled correctly
-const parseTimestamp = (timestamp: string): Date => {
-  // Ensure timestamp is treated as UTC if no timezone info present
-  let isoString = timestamp;
-  if (
-    !timestamp.endsWith("Z") &&
-    !timestamp.includes("+") &&
-    !/T\d{2}:\d{2}:\d{2}.*-/.test(timestamp)
-  ) {
-    isoString = timestamp + "Z";
-  }
-  return new Date(isoString);
-};
 
 // Helper to format in-game time as "HH:MM (Day N)"
 const formatGameTime = (gameTime: {
@@ -168,8 +116,8 @@ const GameMessageRow = memo(
               <div className="prose prose-slate prose-sm max-w-none text-slate-800">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
-                  components={MARKDOWN_COMPONENTS}
+                  rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                  components={GAME_MARKDOWN_COMPONENTS}
                 >
                   {message.content}
                 </ReactMarkdown>
@@ -199,7 +147,7 @@ const GameMessageRow = memo(
             ) : (
               message.timestamp && (
                 <span className="text-xs text-slate-400">
-                  {parseTimestamp(message.timestamp).toLocaleTimeString([], {
+                  {parseAsUTC(message.timestamp).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
@@ -263,8 +211,8 @@ const GameMessageRow = memo(
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              components={MARKDOWN_COMPONENTS}
+              rehypePlugins={[rehypeRaw, rehypeSanitize]}
+              components={GAME_MARKDOWN_COMPONENTS}
             >
               {message.content}
             </ReactMarkdown>

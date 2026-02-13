@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 import type { Agent } from "../../types";
 import { AgentAvatar } from "../AgentAvatar";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 interface MentionDropdownProps {
   agents: Agent[];

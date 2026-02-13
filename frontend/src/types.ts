@@ -124,4 +124,4 @@ export type {
   GameMessage,
   StatDefinition,
   GamePhase,
-} from "../contexts/GameContext";
+} from "./contexts/GameContext";

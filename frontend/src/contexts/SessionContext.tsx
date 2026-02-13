@@ -11,6 +11,7 @@ import {
 import * as gameService from "../services/gameService";
 import { api } from "../services";
 import { useSSE } from "../hooks/useSSE";
+import { useToast } from "./ToastContext";
 import type {
   World,
   Location,
@@ -75,6 +76,8 @@ export function SessionProvider({
   children,
   mode: _mode,
 }: SessionProviderProps) {
+  const { addToast } = useToast();
+
   // Session state
   const [world, setWorld] = useState<World | null>(null);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
@@ -86,10 +89,8 @@ export function SessionProvider({
   // UI state
   const [loading, setLoading] = useState(false);
   const [actionInProgress, setActionInProgress] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<number | null>(null);
-  const [chattingPollInterval, setChattingPollInterval] = useState<
-    number | null
-  >(null);
+  const pollingIntervalRef = useRef<number | null>(null);
+  const chattingPollIntervalRef = useRef<number | null>(null);
   const [lastMessageId, setLastMessageId] = useState<number | null>(null);
   const [isChatMode, setIsChatMode] = useState(false);
 
@@ -247,37 +248,42 @@ export function SessionProvider({
   // ==========================================================================
 
   const loadWorldData = useCallback(async (worldId: number) => {
-    // Load player state
-    const state = await gameService.getPlayerState(worldId);
-    setPlayerState(state);
-
-    // Load locations
-    const locs = await gameService.getLocations(worldId);
-    setLocations(locs);
-
-    // Find current location
-    const current = locs.find((l) => l.is_current) || null;
-    setCurrentLocation(current);
-
-    // Load messages via poll endpoint
     try {
-      const pollData = await gameService.pollUpdates(worldId, null);
-      if (pollData.messages.length > 0) {
-        setMessages(pollData.messages);
-        setLastMessageId(pollData.messages[pollData.messages.length - 1].id);
-      } else {
+      // Load player state
+      const state = await gameService.getPlayerState(worldId);
+      setPlayerState(state);
+
+      // Load locations
+      const locs = await gameService.getLocations(worldId);
+      setLocations(locs);
+
+      // Find current location
+      const current = locs.find((l) => l.is_current) || null;
+      setCurrentLocation(current);
+
+      // Load messages via poll endpoint
+      try {
+        const pollData = await gameService.pollUpdates(worldId, null);
+        if (pollData.messages.length > 0) {
+          setMessages(pollData.messages);
+          setLastMessageId(pollData.messages[pollData.messages.length - 1].id);
+        } else {
+          setMessages([]);
+          setLastMessageId(null);
+        }
+      } catch {
         setMessages([]);
         setLastMessageId(null);
       }
-    } catch {
-      setMessages([]);
-      setLastMessageId(null);
-    }
 
-    // Load suggestions
-    const suggs = await gameService.getActionSuggestions(worldId);
-    setSuggestions(suggs);
-  }, []);
+      // Load suggestions
+      const suggs = await gameService.getActionSuggestions(worldId);
+      setSuggestions(suggs);
+    } catch (error) {
+      console.error("Failed to load world data:", error);
+      addToast("Failed to load world data", "error");
+    }
+  }, [addToast]);
 
   const loadWorld = useCallback(
     async (worldId: number): Promise<World> => {
@@ -663,39 +669,34 @@ export function SessionProvider({
     const updateInterval = sseConnectedRef.current ? 15000 : 2000;
     const chattingInterval = sseConnectedRef.current ? 10000 : 1500;
 
-    if (!pollingInterval) {
-      const interval = window.setInterval(pollForUpdates, updateInterval);
-      setPollingInterval(interval);
+    if (!pollingIntervalRef.current) {
+      pollingIntervalRef.current = window.setInterval(pollForUpdates, updateInterval);
     }
-    if (!chattingPollInterval) {
-      const interval = window.setInterval(pollChattingAgents, chattingInterval);
-      setChattingPollInterval(interval);
+    if (!chattingPollIntervalRef.current) {
+      chattingPollIntervalRef.current = window.setInterval(pollChattingAgents, chattingInterval);
     }
-  }, [
-    pollForUpdates,
-    pollChattingAgents,
-    pollingInterval,
-    chattingPollInterval,
-  ]);
+  }, [pollForUpdates, pollChattingAgents]);
 
   const stopPolling = useCallback(() => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
-    if (chattingPollInterval) {
-      clearInterval(chattingPollInterval);
-      setChattingPollInterval(null);
+    if (chattingPollIntervalRef.current) {
+      clearInterval(chattingPollIntervalRef.current);
+      chattingPollIntervalRef.current = null;
     }
-  }, [pollingInterval, chattingPollInterval]);
+  }, []);
 
   // Start/stop polling based on world
+  // When startPolling changes (due to new poll callbacks), restart intervals
   useEffect(() => {
-    if (world && !pollingInterval) {
+    if (world) {
+      stopPolling();
       startPolling();
     }
     return () => stopPolling();
-  }, [world, pollingInterval, startPolling, stopPolling]);
+  }, [world, startPolling, stopPolling]);
 
   // ==========================================================================
   // CONTEXT VALUE

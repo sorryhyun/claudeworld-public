@@ -1,14 +1,13 @@
 import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
-import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { Message } from "../../../types";
 import { getAgentProfilePicUrl } from "../../../services/agentService";
 import { ImageAttachment } from "./ImageAttachment";
 import { LoadingDots } from "../../shared/LoadingDots";
+import { CHAT_MARKDOWN_COMPONENTS } from "../../../utils/markdown";
+import { formatTimeShort } from "../../../utils/time";
 
 // Parse thinking field to extract NPC reactions and regular thinking content
 interface ParsedThinking {
@@ -55,60 +54,6 @@ function parseThinking(thinking: string | null | undefined): ParsedThinking {
   return result;
 }
 
-// Memoized ReactMarkdown components to prevent object recreation on every render
-const MARKDOWN_COMPONENTS: Components = {
-  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-  strong: ({ children }) => (
-    <strong className="font-semibold">{children}</strong>
-  ),
-  em: ({ children }) => <em className="italic">{children}</em>,
-  ul: ({ children }) => (
-    <ul className="list-disc list-inside mb-2">{children}</ul>
-  ),
-  ol: ({ children }) => (
-    <ol className="list-decimal list-inside mb-2">{children}</ol>
-  ),
-  li: ({ children }) => <li className="mb-1">{children}</li>,
-  code: ({
-    inline,
-    className,
-    children,
-    ...props
-  }: {
-    inline?: boolean;
-    className?: string;
-    children?: React.ReactNode;
-  } & React.HTMLAttributes<HTMLElement>) => {
-    const match = /language-(\w+)/.exec(className || "");
-    const codeString = String(children).replace(/\n$/, "");
-    const isInline = inline ?? (!className && !codeString.includes("\n"));
-
-    return isInline ? (
-      <code
-        className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono"
-        {...props}
-      >
-        {children}
-      </code>
-    ) : (
-      <SyntaxHighlighter
-        style={oneDark as { [key: string]: React.CSSProperties }}
-        language={match ? match[1] : "text"}
-        PreTag="div"
-        customStyle={{
-          margin: 0,
-          borderRadius: "0.75rem",
-          fontSize: "0.875rem",
-        }}
-      >
-        {codeString}
-      </SyntaxHighlighter>
-    );
-  },
-  pre: ({ children }) => (
-    <div className="mb-2 overflow-hidden rounded-xl">{children}</div>
-  ),
-};
 
 interface WhiteboardMessageInfo {
   renderedContent: string;
@@ -137,25 +82,6 @@ export const MessageRow = memo(
     onToggleThinking,
     onCopyToClipboard,
   }: MessageRowProps) => {
-    const formatTime = (timestamp: string) => {
-      // Ensure timestamp is treated as UTC if no timezone info present
-      let isoString = timestamp;
-      if (
-        !timestamp.endsWith("Z") &&
-        !timestamp.includes("+") &&
-        !/T\d{2}:\d{2}:\d{2}.*-/.test(timestamp)
-      ) {
-        isoString = timestamp + "Z";
-      }
-      const date = new Date(isoString);
-      if (isNaN(date.getTime())) {
-        return "";
-      }
-      const hours = date.getHours().toString().padStart(2, "0");
-      const minutes = date.getMinutes().toString().padStart(2, "0");
-      return `${hours}:${minutes}`;
-    };
-
     const getDisplayContent = (msg: Message): string => {
       const wbInfo = whiteboardInfo.get(msg.id);
       if (wbInfo?.isWhiteboardMessage) {
@@ -236,7 +162,10 @@ export const MessageRow = memo(
                       const fallback = document.createElement("div");
                       fallback.className =
                         "avatar-mobile rounded-full flex items-center justify-center flex-shrink-0 bg-slate-300";
-                      fallback.innerHTML = `<span class="text-slate-700 font-semibold text-sm">${message.agent_name?.[0]?.toUpperCase() || "A"}</span>`;
+                      const span = document.createElement("span");
+                      span.className = "text-slate-700 font-semibold text-sm";
+                      span.textContent = message.agent_name?.[0]?.toUpperCase() || "A";
+                      fallback.appendChild(span);
                       parent.appendChild(fallback);
                     }
                   }}
@@ -258,7 +187,7 @@ export const MessageRow = memo(
                     </span>
                     {!message.is_typing && !message.is_chatting && (
                       <span className="text-xs text-slate-500">
-                        {formatTime(message.timestamp)}
+                        {formatTimeShort(message.timestamp)}
                       </span>
                     )}
                   </div>
@@ -273,7 +202,7 @@ export const MessageRow = memo(
                     </span>
                     {!message.is_typing && !message.is_chatting && (
                       <span className="text-xs text-slate-500">
-                        {formatTime(message.timestamp)}
+                        {formatTimeShort(message.timestamp)}
                       </span>
                     )}
                   </div>
@@ -423,7 +352,7 @@ export const MessageRow = memo(
                           ) : (
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm, remarkBreaks]}
-                              components={MARKDOWN_COMPONENTS}
+                              components={CHAT_MARKDOWN_COMPONENTS}
                             >
                               {getDisplayContent(message)}
                             </ReactMarkdown>

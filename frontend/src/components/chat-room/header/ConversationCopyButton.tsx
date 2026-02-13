@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Message } from "../../../types";
 import { useToast } from "../../../contexts/ToastContext";
+import { formatTimestampFull } from "../../../utils/time";
 
 interface ConversationCopyButtonProps {
   roomName: string;
@@ -15,28 +16,6 @@ export const ConversationCopyButton = ({
   const [copiedType, setCopiedType] = useState<"normal" | "thinking" | null>(
     null,
   );
-
-  const formatTimestamp = (timestamp: string) => {
-    // Ensure timestamp is treated as UTC if no timezone info present
-    let isoString = timestamp;
-    if (
-      !timestamp.endsWith("Z") &&
-      !timestamp.includes("+") &&
-      !/T\d{2}:\d{2}:\d{2}.*-/.test(timestamp)
-    ) {
-      isoString = timestamp + "Z";
-    }
-    const date = new Date(isoString);
-    return date.toLocaleString("en-US", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  };
 
   const copyConversation = async (includeThinking: boolean) => {
     try {
@@ -58,7 +37,7 @@ export const ConversationCopyButton = ({
       transcript += `${"=".repeat(60)}\n\n`;
 
       realMessages.forEach((message) => {
-        const timestamp = formatTimestamp(message.timestamp);
+        const timestamp = formatTimestampFull(message.timestamp);
         let sender = "Unknown";
 
         if (message.role === "user") {

@@ -292,14 +292,15 @@ export function useSSE(roomId: number | null): UseSSEReturn {
 
     return () => {
       isActiveRef.current = false;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      tempIdMapRef.current.clear();
       setIsConnected(false);
     };
   }, [roomId, connect]);

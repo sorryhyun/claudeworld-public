@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 import { LoadingDots } from "./LoadingDots";
+import { formatTimeLocal } from "../../utils/time";
 
 export type MessageVariant = "chat" | "game" | "system" | "narration";
 
@@ -59,12 +60,6 @@ export const MessageBubble = memo(function MessageBubble({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [content, onCopy]);
-
-  const formatTime = (ts: Date | string) => {
-    const date = typeof ts === "string" ? new Date(ts) : ts;
-    if (isNaN(date.getTime())) return "";
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
 
   // Variant-specific container styles
   const variantContainerStyles: Record<MessageVariant, string> = {
@@ -152,7 +147,7 @@ export const MessageBubble = memo(function MessageBubble({
               </span>
               {timestamp && !isTyping && (
                 <span className="text-xs text-slate-500">
-                  {formatTime(timestamp)}
+                  {formatTimeLocal(timestamp)}
                 </span>
               )}
             </div>

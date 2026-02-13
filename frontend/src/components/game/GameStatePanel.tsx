@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense, memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useGame } from "../../contexts/GameContext";
+import { ErrorBoundary } from "../ErrorBoundary";
 
 // Lazy load tab content for code splitting
 const StatsDisplay = lazy(() =>
@@ -20,6 +21,19 @@ const LocationListPanel = lazy(() =>
 const TabLoadingFallback = () => (
   <div className="flex items-center justify-center p-6">
     <div className="w-5 h-5 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin" />
+  </div>
+);
+
+// Error fallback for lazy-loaded tabs
+const TabErrorFallback = (
+  <div className="flex flex-col items-center justify-center p-6 text-center">
+    <p className="text-sm text-slate-500 mb-2">Failed to load panel</p>
+    <button
+      onClick={() => window.location.reload()}
+      className="text-xs text-slate-400 hover:text-slate-600 underline"
+    >
+      Reload
+    </button>
   </div>
 );
 
@@ -220,6 +234,7 @@ export function GameStatePanel() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
+        <ErrorBoundary fallback={TabErrorFallback}>
         <Suspense fallback={<TabLoadingFallback />}>
           {activeTab === "locations" && (
             <div
@@ -272,6 +287,7 @@ export function GameStatePanel() {
             </div>
           )}
         </Suspense>
+        </ErrorBoundary>
       </div>
 
       {/* Time & Turn Counter */}

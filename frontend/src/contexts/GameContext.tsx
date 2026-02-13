@@ -156,10 +156,10 @@ function AppProvider({ children }: { children: ReactNode }) {
     return "ko";
   });
 
-  // Sync i18n on initial mount
+  // Sync i18n when language changes (including initial mount)
   useEffect(() => {
     i18nChangeLanguage(language);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [language]);
 
   const setLanguage = useCallback((lang: GameLanguage) => {
     setLanguageState(lang);
@@ -390,7 +390,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
     } else {
       setWorldItems([]);
     }
-  }, [world?.id, world?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [world?.id, world?.phase, refreshWorldItems]);
 
   // ==========================================================================
   // CONTEXT VALUE

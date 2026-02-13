@@ -11,7 +11,7 @@ import { OnboardingPage } from "./components/onboarding";
 import { GameRoom } from "./components/game/GameRoom";
 import { GameStatePanel } from "./components/game/GameStatePanel";
 import { Login } from "./components/Login";
-import { BREAKPOINTS } from "./config/breakpoints";
+import { BREAKPOINTS } from "./utils/breakpoints";
 
 function AuthenticatedApp() {
   const { t } = useTranslation();

@@ -10,9 +10,10 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useGame } from "../../contexts/GameContext";
+import { useToast } from "../../contexts/ToastContext";
 import { Button } from "../ui/button";
 import { LoadingDots } from "../shared/LoadingDots";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 interface ImageData {
   data: string; // Base64 encoded (without data URL prefix)
@@ -56,6 +57,7 @@ interface ActionInputProps {
 export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   const { t } = useTranslation();
   const { submitAction, messages, phase, isChatMode, isClauding } = useGame();
+  const { addToast } = useToast();
 
   // Combined disabled state: explicit prop OR agents are processing
   const isDisabled = disabled || isClauding;
@@ -88,11 +90,11 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   // Handle file selection
   const handleFileSelect = async (file: File) => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      alert("Please select a valid image file (PNG, JPEG, GIF, or WebP)");
+      addToast("Please select a valid image file (PNG, JPEG, GIF, or WebP)", "error");
       return;
     }
     if (file.size > MAX_IMAGE_SIZE) {
-      alert("Image size must be less than 10MB");
+      addToast("Image size must be less than 10MB", "error");
       return;
     }
     try {
@@ -100,7 +102,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
       setAttachedImage(imageData);
     } catch (error) {
       console.error("Error converting image:", error);
-      alert("Failed to process image");
+      addToast("Failed to process image", "error");
     }
   };
 

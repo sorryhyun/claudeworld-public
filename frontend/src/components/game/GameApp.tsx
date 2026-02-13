@@ -6,7 +6,7 @@ import { GameRoom } from "./GameRoom";
 import { GameSidebar } from "./GameSidebar";
 import { GameStatePanel } from "./GameStatePanel";
 import { Login } from "../Login";
-import { BREAKPOINTS } from "../../config/breakpoints";
+import { BREAKPOINTS } from "../../utils/breakpoints";
 
 function GameAppContent() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
