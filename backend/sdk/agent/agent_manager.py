@@ -14,6 +14,7 @@ import uuid
 from typing import TYPE_CHECKING, AsyncIterator
 
 from claude_agent_sdk import ClaudeSDKClient
+from claude_agent_sdk.types import ResultMessage, SystemMessage
 
 if TYPE_CHECKING:
     from infrastructure.sse import EventBroadcaster
@@ -368,7 +369,7 @@ class AgentManager:
                     break
 
                 # Check if this is the final result message
-                is_result_message = message.__class__.__name__ == "ResultMessage"
+                is_result_message = isinstance(message, ResultMessage)
                 # Parse the message using StreamParser
                 parsed = self.stream_parser.parse_message(message, response_text, thinking_text)
 
@@ -456,11 +457,7 @@ class AgentManager:
 
                     if streaming_config.get("enabled", True):
                         # Skip system init messages if configured
-                        is_system_init = (
-                            message.__class__.__name__ == "SystemMessage"
-                            and hasattr(message, "subtype")
-                            and message.subtype == "init"
-                        )
+                        is_system_init = isinstance(message, SystemMessage) and message.subtype == "init"
                         skip_system_init = streaming_config.get("skip_system_init", True)
 
                         if not (is_system_init and skip_system_init):
@@ -512,23 +509,11 @@ class AgentManager:
 
             # Log token usage from API response
             if usage_data:
-                # Handle both dict and object-style usage data
-                if hasattr(usage_data, "__dict__"):
-                    # It's an object, convert to dict
-                    logger.info(f"📊 usage_data is object: {type(usage_data).__name__}, attrs: {dir(usage_data)}")
-                    input_tokens = getattr(usage_data, "input_tokens", 0)
-                    cache_creation = getattr(usage_data, "cache_creation_input_tokens", 0)
-                    cache_read = getattr(usage_data, "cache_read_input_tokens", 0)
-                    output_tokens = getattr(usage_data, "output_tokens", 0)
-                else:
-                    # It's a dict
-                    logger.info(
-                        f"📊 usage_data dict keys: {list(usage_data.keys()) if isinstance(usage_data, dict) else 'N/A'}"
-                    )
-                    input_tokens = usage_data.get("input_tokens", 0)
-                    cache_creation = usage_data.get("cache_creation_input_tokens", 0)
-                    cache_read = usage_data.get("cache_read_input_tokens", 0)
-                    output_tokens = usage_data.get("output_tokens", 0)
+                # ResultMessage.usage is typed as dict[str, Any] | None
+                input_tokens = usage_data.get("input_tokens", 0)
+                cache_creation = usage_data.get("cache_creation_input_tokens", 0)
+                cache_read = usage_data.get("cache_read_input_tokens", 0)
+                output_tokens = usage_data.get("output_tokens", 0)
                 total_input = input_tokens + cache_creation + cache_read
                 _perf.log_sync(
                     "api_usage",

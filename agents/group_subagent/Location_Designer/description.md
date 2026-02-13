@@ -1,0 +1,1 @@
+Invoke to design a new location for the game world. You MUST provide the exact snake_case location name (e.g., 'fringe_market_descent', 'abandoned_warehouse') along with the purpose and adjacent location. Calls proper persistence tool with name, display_name, description, position, and adjacent_hints.

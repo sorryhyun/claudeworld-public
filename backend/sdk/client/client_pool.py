@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk.types import ResultMessage
 from domain.value_objects.task_identifier import TaskIdentifier
 from infrastructure.logging.perf_logger import get_perf_logger
 
@@ -204,8 +205,7 @@ def _is_critical_message(msg: "Message") -> bool:
 
     Dropping these can wedge requests until timeout.
     """
-    msg_type = type(msg).__name__
-    return "Result" in msg_type or "result" in msg_type.lower()
+    return isinstance(msg, ResultMessage)
 
 
 async def _pump_messages(pooled: PooledClient, task_id: TaskIdentifier) -> None:

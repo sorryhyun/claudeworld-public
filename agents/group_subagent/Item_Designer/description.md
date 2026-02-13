@@ -1,0 +1,1 @@
+Invoke to design a new item template for the game world. Provide the purpose, context, and any specific requirements. Calls proper persistence tool with item_id, name, description, and properties. Use this when players find, craft, or receive new items that don't exist yet.

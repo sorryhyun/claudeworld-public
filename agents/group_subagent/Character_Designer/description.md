@@ -1,0 +1,1 @@
+Invoke to design a new NPC character for the game world. Provide the purpose/role of the character. Calls proper persistence tool with name, role, appearance, personality, location, and initial_disposition.

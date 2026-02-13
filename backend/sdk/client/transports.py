@@ -308,7 +308,7 @@ class MetricsTransport(Transport):
 
                 # Only log significant waits (>500ms) to reduce noise from streaming tokens
                 if wait_ms > 500:
-                    msg_type = message.get("type", "unknown") if isinstance(message, dict) else type(message).__name__
+                    msg_type = type(message).__name__
                     self._perf.log_sync(
                         "transport_read_gap",
                         wait_ms,

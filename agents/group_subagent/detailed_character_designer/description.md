@@ -1,0 +1,1 @@
+Invoke to create a comprehensive character with rich backstory and consolidated memories. Provide detailed description of the character's role, background, personality, and desired memories (3-8 recommended). Use this for main story NPCs when depth and complexity are needed. Calls create_comprehensive_character and implant_consolidated_memory tools.

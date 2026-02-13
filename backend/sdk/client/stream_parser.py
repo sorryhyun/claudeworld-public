@@ -1,13 +1,18 @@
-"""
-StreamParser - Parses Claude SDK streaming messages with proper type handling.
-
-SDK Best Practice: Use structured message types (AssistantMessage, SystemMessage, etc.)
-instead of raw dictionary parsing.
-"""
+"""StreamParser - Parses Claude Agent SDK streaming messages using typed message classes."""
 
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+
+from claude_agent_sdk.types import (
+    AssistantMessage,
+    ResultMessage,
+    StreamEvent,
+    SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolUseBlock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +20,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ParsedStreamMessage:
     """Structured result from parsing SDK stream messages.
-
-    Replaces unstructured tuple returns from _parse_stream_message().
 
     Attributes:
         response_text: Accumulated response text (previous + new delta)
@@ -45,124 +48,69 @@ class ParsedStreamMessage:
 
 
 class StreamParser:
-    """Parses Claude SDK streaming messages with proper type handling.
-
-    SDK Best Practice: Use structured message types (AssistantMessage,
-    SystemMessage, etc.) instead of raw dictionary parsing.
+    """Parses Claude Agent SDK streaming messages using typed message classes.
 
     This class is stateless - all methods can be static or class methods.
     """
 
     @staticmethod
     def parse_message(message, current_response: str, current_thinking: str) -> ParsedStreamMessage:
-        """Parse a streaming message from Claude SDK.
+        """Parse a streaming message from Claude Agent SDK.
 
         Args:
-            message: SDK message object (AssistantMessage, SystemMessage, StreamEvent, etc.)
+            message: SDK message (AssistantMessage, SystemMessage, StreamEvent, etc.)
             current_response: Accumulated response text so far
             current_thinking: Accumulated thinking text so far
 
         Returns:
             ParsedStreamMessage with extracted fields and updated accumulated text
-
-        SDK Message Types:
-            - StreamEvent: Raw API streaming events (content_block_delta, etc.)
-              Only emitted when include_partial_messages=True and max_thinking_tokens is NOT set.
-            - AssistantMessage: content=[TextBlock, ThinkingBlock, ToolUseBlock, ...]
-            - SystemMessage: subtype='sessionStarted', data={'session_id': ...}
-            - ResultMessage: Final result with session_id, duration_ms, is_error
         """
-        msg_class = message.__class__.__name__
-
-        # Handle StreamEvent (raw API streaming events)
-        # These are emitted when include_partial_messages=True
-        if msg_class == "StreamEvent":
+        if isinstance(message, StreamEvent):
             return StreamParser._parse_stream_event(message, current_response, current_thinking)
 
         content_delta = ""
         thinking_delta = ""
         new_session_id = None
         skip_tool_called = False
-        memory_entries = []
-        anthropic_calls = []
+        memory_entries: list[str] = []
+        anthropic_calls: list[str] = []
         structured_output = None
         usage = None
 
-        # Extract usage data from ResultMessage
-        if msg_class == "ResultMessage":
-            if hasattr(message, "usage") and message.usage:
+        if isinstance(message, ResultMessage):
+            if message.usage:
                 usage = message.usage
-                logger.info(f"📊 ResultMessage.usage raw: {type(usage).__name__} = {usage}")
+                logger.info(f"ResultMessage.usage raw: {type(usage).__name__} = {usage}")
+            if message.structured_output:
+                structured_output = message.structured_output
+                logger.debug(f"Extracted structured_output: {type(structured_output)}")
 
-        # Check for structured output (from output_format queries)
-        if hasattr(message, "structured_output") and message.structured_output:
-            structured_output = message.structured_output
-            logger.debug(f"📊 Extracted structured_output: {type(structured_output)}")
+        if isinstance(message, SystemMessage):
+            if "session_id" in message.data:
+                new_session_id = message.data["session_id"]
+                logger.debug(f"Extracted session_id: {new_session_id}")
 
-        # Extract session_id from SystemMessage
-        if msg_class == "SystemMessage":
-            if hasattr(message, "data") and isinstance(message.data, dict):
-                if "session_id" in message.data:
-                    new_session_id = message.data["session_id"]
-                    logger.debug(f"📝 Extracted session_id: {new_session_id}")
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, ToolUseBlock):
+                    if block.name.endswith("__skip"):
+                        skip_tool_called = True
+                        logger.info("Agent chose to skip")
+                    elif block.name.endswith("__memorize"):
+                        memory_entry = block.input.get("memory_entry", "")
+                        if memory_entry:
+                            memory_entries.append(memory_entry)
+                            logger.info(f"Agent recorded memory: {memory_entry}")
+                    elif block.name.endswith("__anthropic"):
+                        situation = block.input.get("situation", "")
+                        if situation:
+                            anthropic_calls.append(situation)
+                            logger.info(f"Agent called anthropic tool: {situation}")
+                elif isinstance(block, ThinkingBlock):
+                    thinking_delta = block.thinking
+                elif isinstance(block, TextBlock):
+                    content_delta += block.text
 
-        # Handle content
-        if hasattr(message, "text"):
-            content_delta = message.text
-        elif hasattr(message, "content"):
-            if isinstance(message.content, str):
-                content_delta = message.content
-            elif isinstance(message.content, list):
-                for block in message.content:
-                    block_type = getattr(block, "type", None) or (
-                        block.get("type") if isinstance(block, dict) else None
-                    )
-
-                    # Check for tool calls
-                    if block_type == "tool_use":
-                        tool_name = getattr(block, "name", None) or (
-                            block.get("name") if isinstance(block, dict) else None
-                        )
-
-                        if tool_name and tool_name.endswith("__skip"):
-                            skip_tool_called = True
-                            logger.info("⏭️  Agent chose to skip")
-                        elif tool_name and tool_name.endswith("__memorize"):
-                            tool_input = getattr(block, "input", None) or (
-                                block.get("input") if isinstance(block, dict) else None
-                            )
-                            if tool_input and isinstance(tool_input, dict):
-                                memory_entry = tool_input.get("memory_entry", "")
-                                if memory_entry:
-                                    memory_entries.append(memory_entry)
-                                    logger.info(f"💾 Agent recorded memory: {memory_entry}")
-                        elif tool_name and tool_name.endswith("__anthropic"):
-                            tool_input = getattr(block, "input", None) or (
-                                block.get("input") if isinstance(block, dict) else None
-                            )
-                            if tool_input and isinstance(tool_input, dict):
-                                situation = tool_input.get("situation", "")
-                                if situation:
-                                    anthropic_calls.append(situation)
-                                    logger.info(f"🔒 Agent called anthropic tool: {situation}")
-
-                    # Handle thinking blocks
-                    block_class_name = block.__class__.__name__ if hasattr(block, "__class__") else ""
-                    if block_class_name == "ThinkingBlock" or (hasattr(block, "type") and block.type == "thinking"):
-                        if hasattr(block, "thinking"):
-                            thinking_delta = block.thinking
-                        elif hasattr(block, "text"):
-                            thinking_delta = block.text
-                    elif isinstance(block, dict) and block.get("type") == "thinking":
-                        thinking_delta = block.get("thinking", block.get("text", ""))
-                    else:
-                        # Handle text content blocks
-                        if hasattr(block, "text"):
-                            content_delta += block.text
-                        elif isinstance(block, dict) and block.get("type") == "text":
-                            content_delta += block.get("text", "")
-
-        # Return accumulated text with deltas applied
         return ParsedStreamMessage(
             response_text=current_response + content_delta,
             thinking_text=current_thinking + thinking_delta,
@@ -175,34 +123,17 @@ class StreamParser:
         )
 
     @staticmethod
-    def _parse_stream_event(message, current_response: str, current_thinking: str) -> ParsedStreamMessage:
+    def _parse_stream_event(message: StreamEvent, current_response: str, current_thinking: str) -> ParsedStreamMessage:
         """Parse a StreamEvent containing raw Claude API streaming events.
 
-        StreamEvent structure:
-            - uuid: str
-            - session_id: str
-            - event: dict (raw Claude API stream event)
-            - parent_tool_use_id: str | None
-
-        Relevant event types:
-            - content_block_delta with delta.type="text_delta" -> text chunk
-            - content_block_delta with delta.type="thinking_delta" -> thinking chunk
-
-        Other event types (message_start, content_block_start, content_block_stop,
-        message_delta, message_stop) are ignored as they carry no text content.
+        StreamEvent.event is a raw Claude API event dict. Only content_block_delta
+        events with text_delta or thinking_delta subtypes carry useful content.
         """
-        event = getattr(message, "event", None)
-        if not isinstance(event, dict):
-            return ParsedStreamMessage(
-                response_text=current_response,
-                thinking_text=current_thinking,
-            )
-
+        event = message.event
         content_delta = ""
         thinking_delta = ""
-        event_type = event.get("type", "")
 
-        if event_type == "content_block_delta":
+        if event.get("type") == "content_block_delta":
             delta = event.get("delta", {})
             delta_type = delta.get("type", "")
 
@@ -211,11 +142,8 @@ class StreamParser:
             elif delta_type == "thinking_delta":
                 thinking_delta = delta.get("thinking", "")
 
-        # Extract session_id from the StreamEvent envelope if present
-        session_id = getattr(message, "session_id", None)
-
         return ParsedStreamMessage(
             response_text=current_response + content_delta,
             thinking_text=current_thinking + thinking_delta,
-            session_id=session_id if session_id and not current_response else None,
+            session_id=message.session_id if message.session_id and not current_response else None,
         )

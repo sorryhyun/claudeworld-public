@@ -5,7 +5,7 @@ This module builds AgentDefinition objects for sub-agents that can be invoked
 via the SDK Task tool by parent agents (Action Manager, Onboarding Manager).
 
 Key features:
-- Loads agent identity from filesystem (in_a_nutshell.md, characteristics.md)
+- Loads agent config from filesystem (in_a_nutshell.md, characteristics.md, description.md)
 - All sub-agent prompts are defined in characteristics.md files
 - Specifies persist tools for each sub-agent type
 - Integrates with ClaudeAgentOptions.agents parameter
@@ -67,35 +67,8 @@ SUBAGENT_DISPLAY_NAMES = {
     "detailed_character_designer": "Detailed Character Designer",
 }
 
-# Task-tool sub-agent descriptions for the Task tool
-SUBAGENT_DESCRIPTIONS = {
-    "item_designer": (
-        "Invoke to design a new item template for the game world. Provide the "
-        "purpose, context, and any specific requirements. Calls proper persistence tool "
-        "with item_id, name, description, and properties. Use this when players "
-        "find, craft, or receive new items that don't exist yet."
-    ),
-    "character_designer": (
-        "Invoke to design a new NPC character for the game world. Provide the "
-        "purpose/role of the character. Calls proper persistence tool with name, role, "
-        "appearance, personality, location, and initial_disposition."
-    ),
-    "location_designer": (
-        "Invoke to design a new location for the game world. You MUST provide the "
-        "exact snake_case location name (e.g., 'fringe_market_descent', 'abandoned_warehouse') "
-        "along with the purpose and adjacent location. Calls proper persistence tool with name, "
-        "display_name, description, position, and adjacent_hints."
-    ),
-    "detailed_character_designer": (
-        "Invoke to create a comprehensive character with rich backstory and consolidated memories. "
-        "Provide detailed description of the character's role, background, personality, and desired "
-        "memories (3-8 recommended). Use this for main story NPCs when depth and complexity are needed. "
-        "Calls create_comprehensive_character and implant_consolidated_memory tools."
-    ),
-}
 
-
-def _load_agent_identity(agent_type: str) -> tuple[str, str]:
+def _load_agent_identity(agent_type: str) -> tuple[str, str, str]:
     """
     Load agent identity from filesystem config files.
 
@@ -103,12 +76,12 @@ def _load_agent_identity(agent_type: str) -> tuple[str, str]:
         agent_type: Type of agent (item_designer, character_designer, etc.)
 
     Returns:
-        Tuple of (in_a_nutshell, characteristics)
+        Tuple of (in_a_nutshell, characteristics, description)
     """
     base_path = _get_subagent_paths().get(agent_type)
     if base_path is None or not base_path.exists():
         logger.warning(f"Agent path not found: {base_path}")
-        return "", ""
+        return "", "", ""
 
     in_a_nutshell = ""
     nutshell_path = base_path / "in_a_nutshell.md"
@@ -120,7 +93,12 @@ def _load_agent_identity(agent_type: str) -> tuple[str, str]:
     if char_path.exists():
         characteristics = char_path.read_text(encoding="utf-8").strip()
 
-    return in_a_nutshell, characteristics
+    description = ""
+    desc_path = base_path / "description.md"
+    if desc_path.exists():
+        description = desc_path.read_text(encoding="utf-8").strip()
+
+    return in_a_nutshell, characteristics, description
 
 
 def _build_subagent_prompt(
@@ -188,7 +166,7 @@ def build_subagent_definition(agent_type: str) -> Optional[AgentDefinition]:
     persist_tool_name = SUBAGENT_TOOL_NAMES.get(agent_type)
 
     # Load identity from filesystem
-    identity, characteristics = _load_agent_identity(agent_type)
+    identity, characteristics, description = _load_agent_identity(agent_type)
 
     # Build the complete system prompt
     prompt = _build_subagent_prompt(
@@ -198,11 +176,9 @@ def build_subagent_definition(agent_type: str) -> Optional[AgentDefinition]:
         persist_tool_name=persist_tool_name,
     )
 
-    # Get description
-    description = SUBAGENT_DESCRIPTIONS.get(
-        agent_type,
-        f"Sub-agent for {agent_type.replace('_', ' ')}",
-    )
+    # Fallback description if description.md is missing
+    if not description:
+        description = f"Sub-agent for {agent_type.replace('_', ' ')}"
 
     # Build tools list - only include persist tool if agent has one
     tools_list = [persist_tool_name] if persist_tool_name else []
@@ -251,7 +227,7 @@ def _get_subagent_mtimes(agent_types: list[str]) -> dict[str, float]:
     for agent_type in agent_types:
         base_path = subagent_paths.get(agent_type)
         if base_path and base_path.exists():
-            for filename in ["in_a_nutshell.md", "characteristics.md"]:
+            for filename in ["in_a_nutshell.md", "characteristics.md", "description.md"]:
                 file_path = base_path / filename
                 if file_path.exists():
                     mtimes[str(file_path)] = file_path.stat().st_mtime
