@@ -29,7 +29,7 @@ from sdk.client.stream_parser import StreamParser
 from sdk.tools import create_action_mcp_server
 
 # Subagent tools for SDK native Task pattern
-from sdk.tools.gameplay_tools.onboarding_tools import SUBAGENT_TOOL_NAMES, create_onboarding_tools
+from sdk.tools.onboarding_tools import SUBAGENT_TOOL_NAMES, create_onboarding_tools
 
 __all__ = [
     # Agent orchestration

@@ -10,11 +10,11 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from sdk.tools.context import ToolContext
-from sdk.tools.gameplay_tools import create_onboarding_mcp_server
-from sdk.tools.gameplay_tools.onboarding_tools import (
+from sdk.tools.onboarding_tools import (
     create_onboarding_tools,
     generate_default_world_name,
 )
+from sdk.tools.servers import create_onboarding_mcp_server
 
 
 class TestGenerateDefaultWorldName:
@@ -47,8 +47,8 @@ class TestGenerateDefaultWorldName:
 class TestCreateOnboardingTools:
     """Tests for create_onboarding_tools function."""
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_creates_all_tools_when_enabled(self, mock_get_desc, mock_is_enabled):
         """Test that all onboarding tools are created when enabled."""
         mock_is_enabled.return_value = True
@@ -65,7 +65,7 @@ class TestCreateOnboardingTools:
         assert "persist_world" in tool_names
         assert "complete" in tool_names
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
     def test_only_draft_and_persist_when_complete_disabled(self, mock_is_enabled):
         """Test that draft_world and persist_world are always created."""
         mock_is_enabled.return_value = False
@@ -79,8 +79,8 @@ class TestCreateOnboardingTools:
         assert "draft_world" in tool_names
         assert "persist_world" in tool_names
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_passes_agent_name_to_description(self, mock_get_desc, mock_is_enabled):
         """Test that agent name is passed to get_tool_description."""
         mock_is_enabled.return_value = True
@@ -102,8 +102,8 @@ class TestCreateOnboardingTools:
 class TestCreateOnboardingMCPServer:
     """Tests for create_onboarding_mcp_server function."""
 
-    @patch("sdk.tools.gameplay_tools.create_sdk_mcp_server")
-    @patch("sdk.tools.gameplay_tools.create_onboarding_tools")
+    @patch("sdk.tools.servers.create_sdk_mcp_server")
+    @patch("sdk.tools.servers.create_onboarding_tools")
     def test_creates_mcp_server(self, mock_create_tools, mock_create_mcp):
         """Test that MCP server is created."""
         mock_tools = [MagicMock()]
@@ -116,8 +116,8 @@ class TestCreateOnboardingMCPServer:
         mock_create_mcp.assert_called_once_with(name="onboarding", version="1.0.0", tools=mock_tools)
         assert server is not None
 
-    @patch("sdk.tools.gameplay_tools.create_sdk_mcp_server")
-    @patch("sdk.tools.gameplay_tools.create_onboarding_tools")
+    @patch("sdk.tools.servers.create_sdk_mcp_server")
+    @patch("sdk.tools.servers.create_onboarding_tools")
     def test_passes_context(self, mock_create_tools, mock_create_mcp):
         """Test that context is passed correctly."""
         mock_create_tools.return_value = []
@@ -141,8 +141,8 @@ class TestCompleteTool:
     SDK tool wrapper doesn't expose the function directly.
     """
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_complete_tool_created_with_correct_schema(self, mock_get_desc, mock_is_enabled):
         """Test that complete tool is created with correct schema."""
         mock_is_enabled.return_value = True
@@ -160,8 +160,8 @@ class TestCompleteTool:
         properties = schema.get("properties", {})
         assert "player_name" in properties
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_complete_tool_description_includes_agent_name(self, mock_get_desc, mock_is_enabled):
         """Test that tool description is fetched with agent name."""
         mock_is_enabled.return_value = True
@@ -172,8 +172,8 @@ class TestCompleteTool:
 
         mock_get_desc.assert_called_with("complete", agent_name="TestAgent", group_name=None)
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_complete_tool_created_without_world_name(self, mock_get_desc, mock_is_enabled):
         """Test that tool is created even without world_name."""
         mock_is_enabled.return_value = True
@@ -192,8 +192,8 @@ class TestCompleteTool:
 class TestDraftWorldTool:
     """Tests for the draft_world tool functionality."""
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_draft_world_tool_created_with_correct_schema(self, mock_get_desc, mock_is_enabled):
         """Test that draft_world tool is created with correct schema."""
         mock_is_enabled.return_value = True
@@ -215,8 +215,8 @@ class TestDraftWorldTool:
 class TestPersistWorldTool:
     """Tests for the persist_world tool functionality."""
 
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.is_tool_enabled")
-    @patch("sdk.tools.gameplay_tools.onboarding_tools.get_tool_description")
+    @patch("sdk.tools.onboarding_tools.is_tool_enabled")
+    @patch("sdk.tools.onboarding_tools.get_tool_description")
     def test_persist_world_tool_created_with_correct_schema(self, mock_get_desc, mock_is_enabled):
         """Test that persist_world tool is created with correct schema."""
         mock_is_enabled.return_value = True

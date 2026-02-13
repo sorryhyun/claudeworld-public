@@ -28,9 +28,8 @@ from sdk.config.gameplay_tool_definitions import (
 )
 from sdk.config.subagent_tool_definitions import PersistLocationDesignInput
 from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.common import build_action_context
 from sdk.tools.context import ToolContext
-
-from .common import build_action_context
 
 logger = logging.getLogger("GameplayTools.Location")
 

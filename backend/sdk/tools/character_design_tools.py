@@ -31,9 +31,10 @@ def create_character_design_tools(ctx: ToolContext) -> list:
         List of character design tool functions
     """
     import crud
-    from domain.entities.action_context import build_action_context
     from services.agent_factory import AgentFactory
     from services.location_service import LocationService
+
+    from sdk.tools.common import build_action_context
 
     tools = []
 

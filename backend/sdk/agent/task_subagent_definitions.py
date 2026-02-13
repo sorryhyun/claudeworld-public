@@ -21,7 +21,7 @@ from typing import Optional
 
 from claude_agent_sdk.types import AgentDefinition
 
-from sdk.tools.gameplay_tools.onboarding_tools import SUBAGENT_TOOL_NAMES
+from sdk.tools.onboarding_tools import SUBAGENT_TOOL_NAMES
 
 # Valid sub-agent types (formerly sourced from subagent_prompts.py)
 # Now sub-agent prompts are defined in characteristics.md files

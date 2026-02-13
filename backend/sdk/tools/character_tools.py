@@ -28,9 +28,8 @@ from sdk.config.gameplay_tool_definitions import (
 )
 from sdk.config.subagent_tool_definitions import PersistCharacterDesignInput
 from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.common import build_action_context
 from sdk.tools.context import ToolContext
-
-from .common import build_action_context
 
 logger = logging.getLogger("GameplayTools.Character")
 
@@ -115,7 +114,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                     }
 
                 # Get current location from context
-                from .common import build_action_context
+                from sdk.tools.common import build_action_context
 
                 context = build_action_context(world_name, "character removal")
                 current_location = context.current_location

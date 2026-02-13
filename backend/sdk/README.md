@@ -41,19 +41,18 @@ sdk/
 ├── tools/               # MCP tool implementations
 │   ├── action_tools.py       # skip, memorize, recall
 │   ├── guidelines_tools.py   # guidelines reader
-│   ├── common.py             # Shared tool utilities
+│   ├── common.py             # Shared tool utilities (build_action_context)
 │   ├── context.py            # ToolContext for tool handlers
-│   ├── errors.py             # Tool-specific exceptions
-│   └── gameplay_tools/       # TRPG gameplay and onboarding tools
-│       ├── character_tools.py   # remove_character, move_character, list_characters, persist_character_design
-│       ├── location_tools.py    # travel, list_locations, persist_location_design
-│       ├── mechanics_tools.py   # inject_memory, change_stat
-│       ├── narrative_tools.py   # narration, suggest_options
-│       ├── item_tools.py        # persist_item
-│       ├── equipment_tools.py   # Equipment handling
-│       ├── history_tools.py     # History compression
-│       ├── onboarding_tools.py  # draft_world, persist_world, complete (world initialization)
-│       └── common.py            # Shared gameplay utilities
+│   ├── servers.py            # MCP server factories (action manager, onboarding, subagents)
+│   ├── character_tools.py    # remove_character, move_character, list_characters, persist_character_design
+│   ├── character_design_tools.py # Comprehensive character creation for onboarding
+│   ├── location_tools.py     # travel, list_locations, persist_location_design
+│   ├── mechanics_tools.py    # inject_memory, change_stat
+│   ├── narrative_tools.py    # narration, suggest_options
+│   ├── item_tools.py         # persist_item
+│   ├── equipment_tools.py    # Equipment handling
+│   ├── history_tools.py      # History compression
+│   └── onboarding_tools.py   # draft_world, persist_world, complete (world initialization)
 │
 └── parsing/             # Parsing utilities
     ├── agent_parser.py    # Parse agent config from markdown files
@@ -180,13 +179,13 @@ Tools are organized into groups configured in YAML files:
 
 2. **Implement handler** in appropriate tools module:
    ```python
-   # sdk/tools/gameplay_tools/my_tools.py
+   # sdk/tools/my_tools.py
    async def handle_my_tool(param1: str, context: ToolContext) -> str:
        # Implementation
        return "Tool result"
    ```
 
-3. **Register in MCP server** (`sdk/tools/gameplay_tools/__init__.py`):
+3. **Register in MCP server** (`sdk/tools/servers.py`):
    ```python
    @mcp_server.tool()
    async def my_tool(param1: str) -> str:
