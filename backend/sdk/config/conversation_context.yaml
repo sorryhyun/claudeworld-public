@@ -15,11 +15,11 @@ conversation_context:
   # Response instructions for Onboarding Manager
   response_OM:
     en: |
-      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> How will {agent_name} think?
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> How will {agent_name} think?
     ko: |
-      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
     jp: |
-      To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name}はどう考えるでしょうか。
+      To initialize ClaudeWorld Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name}はどう考えるでしょうか。
 
   # Response instructions for regular agents (chat mode)
   response_agent:

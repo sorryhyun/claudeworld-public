@@ -107,7 +107,7 @@ def build_agent_options(
         logger.info("CLI tracing enabled - traces will be written to stderr")
 
     options = ClaudeAgentOptions(
-        model="claude-opus-4-6" if not USE_SONNET else "claude-sonnet-4-5-20250929",
+        model="claude-opus-4-6" if not USE_SONNET else "claude-sonnet-4-6",
         system_prompt=system_prompt,
         permission_mode="bypassPermissions",
         max_thinking_tokens=32768,

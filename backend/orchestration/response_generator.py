@@ -359,6 +359,7 @@ class ResponseGenerator:
             db=orch_context.db,  # Pass db for TRPG game tools
             world_id=orch_context.world_id,  # Pass world_id for TRPG game tools
             npc_reactions=npc_reactions,  # Pass NPC reactions for narration tool
+            hidden=hidden,  # Suppress content broadcasting for hidden agents
         )
 
         # Handle streaming response events

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ClaudeWorld** is a turn-based text adventure (TRPG) where AI agents collaborate to create and run interactive worlds:
 - **Onboarding**: Interview → World generation → Character creation
-- **Gameplay**: User action → Interpretation → Resolution → Narration
+- **Gameplay**: User action → NPC reactions → Interpretation → Resolution → Narration
 
 **Tech Stack:**
 - Backend: FastAPI + SQLAlchemy (async) + SQLite
@@ -42,13 +42,21 @@ uv run ruff check backend/ --fix                   # Auto-fix linting issues
 # Performance profiling
 make dev-perf                                      # Run with performance logging to ./latency.log
 
-# Agent evaluation
-make test-agents                                   # Test agent capabilities
-make evaluate-agents ARGS='--target-agent "프리렌" --evaluator "페른" --questions 3'
-
 # Windows executable deployment
 make build-exe                                     # Build standalone Windows .exe
 ```
+
+## LSP Support
+
+Claude Code can use the LSP tool for code intelligence (via Pyright for Python, TypeScript LSP for frontend):
+
+- `documentSymbol` - List all classes, functions, variables in a file
+- `hover` - Get type info and docstrings
+- `goToDefinition` - Jump to symbol definition
+- `findReferences` - Find all usages across the codebase
+- `incomingCalls` / `outgoingCalls` - Analyze call hierarchy
+
+Note: `goToImplementation` is not supported by Pyright (available only in Pylance/VS Code).
 
 ## Architecture Overview
 
@@ -103,7 +111,11 @@ backend/
 
 ## Game System
 
-Seven specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (1-agent tape where Action Manager coordinates sub-agents via SDK Task tool and handles narration directly).
+Seven specialized agents collaborate in two phases: **Onboarding** (interview → world generation) and **Gameplay** (2-cell tape where NPCs react first, then Action Manager coordinates sub-agents via SDK Task tool and handles narration).
+
+**Gameplay tape flow:**
+1. **Cell 1 (NPC Reactions)**: NPCs at player's location react concurrently (hidden), responses collected
+2. **Cell 2 (Action Manager)**: Receives NPC reactions, interprets action, invokes sub-agents, generates narration
 
 **See [docs/how_it_works.md](docs/how_it_works.md) for detailed architecture:** agent roles, turn flow diagrams, sub-agent invocation, data storage, and API endpoints.
 

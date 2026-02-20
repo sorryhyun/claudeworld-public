@@ -236,7 +236,7 @@ class AgentManager:
             logger.debug(f"Registered client for task: {task_id}")
 
             # Initialize streaming state for this task
-            await self.streaming_state.init(task_id, agent_name=context.agent_name)
+            await self.streaming_state.init(task_id, agent_name=context.agent_name, hidden=context.hidden)
 
             # Write debug log with complete agent input
             await write_debug_log(
@@ -454,12 +454,15 @@ class AgentManager:
                         "delta": content_delta,
                         "temp_id": temp_id,
                     }
-                    self._broadcast(context.room_id, {
-                        "type": "content_delta",
-                        "agent_id": context.agent_id,
-                        "delta": content_delta,
-                        "temp_id": temp_id,
-                    })
+                    # Don't broadcast content_delta for hidden agents (NPC reactions)
+                    # so their response text doesn't appear in the chatroom
+                    if not context.hidden:
+                        self._broadcast(context.room_id, {
+                            "type": "content_delta",
+                            "agent_id": context.agent_id,
+                            "delta": content_delta,
+                            "temp_id": temp_id,
+                        })
 
                 if thinking_delta:
                     chunk_count += 1

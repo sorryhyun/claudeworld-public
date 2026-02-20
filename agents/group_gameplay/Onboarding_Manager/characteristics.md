@@ -122,7 +122,6 @@ This unblocks sub-agents immediately.
 
 ## 2. Populate initial content (in background)
 Use **Task tool sub-agents** (self-sufficient: design + persistence).
-Do not use Plan/Explore/Default agents.
 
 ### Available sub-agents
 - `character_designer`: create basic NPCs (appearance, personality, disposition)

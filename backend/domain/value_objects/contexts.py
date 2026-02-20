@@ -140,6 +140,7 @@ class AgentResponseContext:
         db: Optional database session for TRPG game tools
         world_id: Optional world ID for TRPG game tools
         npc_reactions: Optional list of NPC reactions from the reaction cell
+        hidden: If True, suppress content broadcasting (for hidden agents like NPC reactions)
     """
 
     system_prompt: str
@@ -158,3 +159,4 @@ class AgentResponseContext:
     db: Optional["AsyncSession"] = None
     world_id: Optional[int] = None
     npc_reactions: Optional[List[Dict[str, Any]]] = None
+    hidden: bool = False

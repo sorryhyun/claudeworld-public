@@ -65,17 +65,17 @@ setup:
 
 run-backend:
 	@echo "Starting backend server (PostgreSQL)..."
-	cd backend && uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
+	cd backend && uv run uvicorn main:app --host 127.0.0.1 --port 8000
 
 run-backend-sqlite:
 	@echo "Starting backend server (SQLite)..."
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db uv run uvicorn main:app --host 127.0.0.1 --port 8000
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
 	@echo "Performance metrics will be written to ./latency.log"
 	@echo "Terminal output will be written to ./run.log"
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000 2>&1 | tee $(PWD)/run.log
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --host 127.0.0.1 --port 8000 2>&1 | tee $(PWD)/run.log
 
 run-frontend:
 	@echo "Starting frontend server..."
@@ -127,7 +127,7 @@ run-backend-trace:
 	@echo "Starting backend server (SQLite) with CLI tracing..."
 	@echo "Traces will be written to ./traces.jsonl"
 	@echo "Analyze with: make diagnose-traces FILE=traces.jsonl"
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db ENABLE_CLI_TRACING=true uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000 2>$(PWD)/traces.jsonl
+	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db ENABLE_CLI_TRACING=true uv run uvicorn main:app --host 127.0.0.1 --port 8000 2>$(PWD)/traces.jsonl
 
 dev-trace:
 	@mkdir -p /tmp/claude-empty
@@ -171,7 +171,7 @@ prod:
 	@echo "Prerequisites: vercel CLI logged in (run 'vercel login' first)"
 	@echo ""
 	@# Start backend in background
-	@cd backend && uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000 &
+	@cd backend && uv run uvicorn main:app --host 127.0.0.1 --port 8000 &
 	@sleep 2
 	@# Run tunnel script (handles URL detection, Vercel update, and redeploy)
 	@./scripts/deploy/update_vercel_backend_url.sh

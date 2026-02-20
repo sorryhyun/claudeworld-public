@@ -30,16 +30,17 @@ class StreamingStateManager:
         self._state: dict[TaskIdentifier, dict] = {}
         self._lock = asyncio.Lock()
 
-    async def init(self, task_id: TaskIdentifier, agent_name: str = "") -> None:
+    async def init(self, task_id: TaskIdentifier, agent_name: str = "", hidden: bool = False) -> None:
         """
         Initialize streaming state for a task.
 
         Args:
             task_id: Task identifier to initialize state for
             agent_name: Agent name for catch-up events
+            hidden: If True, suppress response_text (for hidden agents like NPC reactions)
         """
         async with self._lock:
-            self._state[task_id] = {"thinking_text": "", "response_text": "", "narration_text": "", "agent_name": agent_name}
+            self._state[task_id] = {"thinking_text": "", "response_text": "", "narration_text": "", "agent_name": agent_name, "hidden": hidden}
 
     async def update(self, task_id: TaskIdentifier, thinking_text: str, response_text: str) -> None:
         """
@@ -53,7 +54,9 @@ class StreamingStateManager:
         async with self._lock:
             if task_id in self._state:
                 self._state[task_id]["thinking_text"] = thinking_text
-                self._state[task_id]["response_text"] = response_text
+                # Don't expose response_text for hidden agents (e.g., NPC reactions)
+                if not self._state[task_id].get("hidden"):
+                    self._state[task_id]["response_text"] = response_text
 
     async def update_narration(self, task_id: TaskIdentifier, narration_text: str) -> None:
         """

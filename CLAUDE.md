@@ -24,7 +24,7 @@ make stop                # Stop all servers
 make clean               # Clean build artifacts (including SQLite database)
 
 # Backend only
-cd backend && DATABASE_URL=sqlite+aiosqlite:///../claudeworld.db uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd backend && DATABASE_URL=sqlite+aiosqlite:///../claudeworld.db uv run uvicorn main:app --host 0.0.0.0 --port 8000
 
 # Frontend only
 cd frontend && npm run dev
