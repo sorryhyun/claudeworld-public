@@ -23,11 +23,7 @@ from domain.value_objects.contexts import AgentResponseContext
 if TYPE_CHECKING:
     from sdk.agent.agent_manager import AgentManager
 
-from sdk.loaders import (
-    get_agent_tool_config,
-    get_tool_names_by_group,
-)
-from sdk.tools import (
+from sdk.handlers import (
     SUBAGENT_TOOL_NAMES,
     create_action_manager_mcp_server,
     create_action_mcp_server,
@@ -36,7 +32,11 @@ from sdk.tools import (
     create_onboarding_mcp_server,
     create_subagents_mcp_server,
 )
-from sdk.tools.context import ToolContext
+from sdk.handlers.context import ToolContext
+from sdk.loaders import (
+    get_agent_tool_config,
+    get_tool_names_by_group,
+)
 
 logger = logging.getLogger("MCPRegistry")
 

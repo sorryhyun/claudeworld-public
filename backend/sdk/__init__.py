@@ -7,8 +7,9 @@ managing agent lifecycle, response generation, and debugging.
 Package structure:
 - sdk/client/ - Claude SDK integration infrastructure (client pooling, stream parsing, MCP registry)
 - sdk/agent/ - High-level agent orchestration (agent manager, agent definitions)
-- sdk/tools/ - MCP tool implementations (onboarding_tools includes sub-agent tools for SDK native pattern)
-- sdk/config/ - YAML configurations (tools, guidelines, debug)
+- sdk/tools/ - Tool definitions (schemas, descriptions, input models)
+- sdk/handlers/ - MCP tool handler implementations (server factories, tool call logic)
+- sdk/config/ - YAML configurations (guidelines, localization)
 """
 
 # Monkey-patch the SDK's message parser to handle rate_limit_event gracefully.
@@ -44,11 +45,11 @@ from sdk.agent.task_subagent_definitions import (
 from sdk.client.client_pool import ClientPool
 from sdk.client.stream_parser import StreamParser
 
-# Re-exports from tools
-from sdk.tools import create_action_mcp_server
+# Re-exports from handlers
+from sdk.handlers import create_action_mcp_server
 
 # Subagent tools for SDK native Task pattern
-from sdk.tools.onboarding_tools import SUBAGENT_TOOL_NAMES, create_onboarding_tools
+from sdk.handlers.onboarding_tools import SUBAGENT_TOOL_NAMES, create_onboarding_tools
 
 __all__ = [
     # Agent orchestration

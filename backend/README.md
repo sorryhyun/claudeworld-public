@@ -260,9 +260,9 @@ DELETE /rooms/{id}/messages        # Clear room messages
 ### Adding Game Features
 
 **Add game tool:**
-1. Add tool definition to `sdk/config/gameplay_tool_definitions.py`
-2. Implement handler in `sdk/tools/`
-3. Register in MCP server (`sdk/tools/servers.py`)
+1. Add tool definition to `sdk/tools/gameplay.py`
+2. Implement handler in `sdk/handlers/`
+3. Register in MCP server (`sdk/handlers/servers.py`)
 
 **Add game state field:**
 1. Update `infrastructure/database/models.py` (World, Location, or PlayerState)

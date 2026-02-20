@@ -5,8 +5,8 @@ This module provides the base dataclass for defining tool definitions
 that combine descriptions and input schemas in one place.
 
 Usage:
-    from sdk.config.tool_definitions import ToolDefinition
-    from sdk.config.action_tools import ACTION_TOOLS
+    from sdk.tools.tool_definitions import ToolDefinition
+    from sdk.tools.action import ACTION_TOOLS
 
     tool = ACTION_TOOLS["skip"]
     print(tool.description)

@@ -9,7 +9,7 @@ import json
 
 from pydantic import BaseModel, Field, field_validator
 
-from .item_tool_definitions import (
+from .item import (
     ITEM_TOOLS,
     EquipItemInput,
     ListEquipmentInput,
@@ -18,7 +18,7 @@ from .item_tool_definitions import (
     UnequipItemInput,
     UseItemInput,
 )
-from .location_tool_definitions import (
+from .location import (
     LOCATION_TOOLS,
     ListCharactersInput,
     ListLocationsInput,

@@ -18,9 +18,9 @@ from domain.value_objects.action_models import (
     SkipOutput,
 )
 
-from sdk.config.action_tool_definitions import MemorizeInput, RecallInput, SkipInput
+from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
-from sdk.tools.context import ToolContext
+from sdk.tools.action import MemorizeInput, RecallInput, SkipInput
 
 
 def create_action_tools(ctx: ToolContext) -> list:

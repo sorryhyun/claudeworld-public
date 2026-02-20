@@ -29,14 +29,14 @@ from claude_agent_sdk import tool
 from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sdk.config.onboarding_tool_definitions import (
+from sdk.handlers.context import ToolContext
+from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
+from sdk.tools.onboarding import (
     CompleteOnboardingInput,
     DraftWorldInput,
     PersistWorldInput,
     ReadLoreGuidelinesInput,
 )
-from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
-from sdk.tools.context import ToolContext
 
 logger = logging.getLogger("OnboardingTools")
 

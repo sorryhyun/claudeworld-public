@@ -27,14 +27,14 @@ from services.agent_config_service import AgentConfigService
 from services.facades import PlayerFacade
 from services.item_service import ItemService
 
-from sdk.config.gameplay_tool_definitions import (
+from sdk.handlers.context import ToolContext
+from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.gameplay import (
     AdvanceTimeInput,
     ChangeStatInput,
     InjectMemoryInput,
     ListWorldItemInput,
 )
-from sdk.loaders import get_tool_description, is_tool_enabled
-from sdk.tools.context import ToolContext
 
 logger = logging.getLogger("GameplayTools.Mechanics")
 

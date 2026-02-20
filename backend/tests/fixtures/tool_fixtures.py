@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sdk.tools.context import ToolContext
+from sdk.handlers.context import ToolContext
 
 
 @pytest.fixture

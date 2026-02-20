@@ -22,14 +22,14 @@ from services.persistence_manager import PersistenceManager
 from services.player_service import PlayerService
 from services.world_service import WorldService
 
-from sdk.config.gameplay_tool_definitions import (
+from sdk.handlers.common import build_action_context
+from sdk.handlers.context import ToolContext
+from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.gameplay import (
     ListLocationsInput,
     TravelInput,
 )
-from sdk.config.subagent_tool_definitions import PersistLocationDesignInput
-from sdk.loaders import get_tool_description, is_tool_enabled
-from sdk.tools.common import build_action_context
-from sdk.tools.context import ToolContext
+from sdk.tools.subagent import PersistLocationDesignInput
 
 logger = logging.getLogger("GameplayTools.Location")
 

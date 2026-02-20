@@ -11,12 +11,12 @@ from typing import Any
 from services.agent_filesystem_service import AgentFilesystemService
 from services.world_service import WorldService
 
-from sdk.config.character_design_tool_definitions import (
+from sdk.handlers.context import ToolContext
+from sdk.loaders import is_tool_enabled
+from sdk.tools.character_design import (
     CreateComprehensiveCharacterInput,
     ImplantConsolidatedMemoryInput,
 )
-from sdk.loaders import is_tool_enabled
-from sdk.tools.context import ToolContext
 
 logger = logging.getLogger("CharacterDesignTools")
 
@@ -34,7 +34,7 @@ def create_character_design_tools(ctx: ToolContext) -> list:
     from services.agent_factory import AgentFactory
     from services.location_service import LocationService
 
-    from sdk.tools.common import build_action_context
+    from sdk.handlers.common import build_action_context
 
     tools = []
 

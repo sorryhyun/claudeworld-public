@@ -20,12 +20,12 @@ from infrastructure.logging.perf_logger import track_perf
 from services.location_service import LocationService
 from services.player_service import PlayerService
 
-from sdk.config.gameplay_tool_definitions import (
+from sdk.handlers.context import ToolContext
+from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.gameplay import (
     NarrationInput,
     SuggestOptionsInput,
 )
-from sdk.loaders import get_tool_description, is_tool_enabled
-from sdk.tools.context import ToolContext
 
 logger = logging.getLogger("GameplayTools.Narrative")
 

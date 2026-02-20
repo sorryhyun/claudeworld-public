@@ -20,16 +20,16 @@ from infrastructure.logging.perf_logger import track_perf
 from services.agent_filesystem_service import AgentFilesystemService
 from services.location_service import LocationService
 
-from sdk.config.gameplay_tool_definitions import (
+from sdk.handlers.common import build_action_context
+from sdk.handlers.context import ToolContext
+from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.gameplay import (
     DeleteCharacterInput,
     ListCharactersInput,
     MoveCharacterInput,
     RemoveCharacterInput,
 )
-from sdk.config.subagent_tool_definitions import PersistCharacterDesignInput
-from sdk.loaders import get_tool_description, is_tool_enabled
-from sdk.tools.common import build_action_context
-from sdk.tools.context import ToolContext
+from sdk.tools.subagent import PersistCharacterDesignInput
 
 logger = logging.getLogger("GameplayTools.Character")
 
@@ -114,7 +114,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                     }
 
                 # Get current location from context
-                from sdk.tools.common import build_action_context
+                from sdk.handlers.common import build_action_context
 
                 context = build_action_context(world_name, "character removal")
                 current_location = context.current_location

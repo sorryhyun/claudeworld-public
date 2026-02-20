@@ -18,9 +18,9 @@ from claude_agent_sdk import tool
 from services.facades import PlayerFacade
 from services.item_service import ItemService
 
-from sdk.config.subagent_tool_definitions import PersistItemInput
+from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
-from sdk.tools.context import ToolContext
+from sdk.tools.subagent import PersistItemInput
 
 logger = logging.getLogger("GameplayTools.Item")
 

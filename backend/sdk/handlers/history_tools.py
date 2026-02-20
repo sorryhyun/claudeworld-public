@@ -13,9 +13,9 @@ from typing import Any
 from claude_agent_sdk import tool
 from infrastructure.logging.perf_logger import track_perf
 
-from sdk.config.gameplay_tool_definitions import RecallHistoryInput
+from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
-from sdk.tools.context import ToolContext
+from sdk.tools.gameplay import RecallHistoryInput
 
 logger = logging.getLogger("GameplayTools.History")
 

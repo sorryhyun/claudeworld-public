@@ -154,20 +154,20 @@ ClaudeWorld uses **on-demand memory retrieval** via the `recall` tool:
 **Agent configs**, **system prompt**, and **tool configurations** use filesystem as single source of truth:
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
 - System prompt: `backend/sdk/config/guidelines_3rd.yaml` (`system_prompt` field)
-- Tool configurations: `backend/sdk/config/*_tool_definitions.py` files
+- Tool definitions: `backend/sdk/tools/` (Python modules)
 - Changes apply immediately on next agent response (hot-reloading)
 - File locking prevents concurrent write conflicts
 
 ### Tool Configuration (Python-Based)
 
-Tool definitions are defined in Python modules in `backend/sdk/config/`:
+Tool definitions are defined in Python modules in `backend/sdk/tools/`:
 
-- **`tool_definitions.py`** - Base `ToolDefinition` dataclass
-- **`action_tool_definitions.py`** - Common action tools (skip, memorize, recall)
-- **`guideline_tool_definitions.py`** - Guideline tools (read, anthropic)
-- **`gameplay_tool_definitions.py`** - Action Manager tools (narration, suggest_options, travel, etc.)
-- **`onboarding_tool_definitions.py`** - Onboarding phase tools (draft_world, persist_world, complete)
-- **`subagent_tool_definitions.py`** - Sub-agent persist tools (persist_item, persist_character_design, persist_location_design)
+- **`definitions.py`** - Base `ToolDefinition` dataclass
+- **`action.py`** - Common action tools (skip, memorize, recall)
+- **`guideline.py`** - Guideline tools (read, anthropic)
+- **`gameplay.py`** - Action Manager tools (narration, suggest_options, travel, etc.)
+- **`onboarding.py`** - Onboarding phase tools (draft_world, persist_world, complete)
+- **`subagent.py`** - Sub-agent persist tools (persist_item, persist_character_design, persist_location_design)
 
 ### Group-Specific Tool Overrides
 
@@ -288,7 +288,7 @@ Creates `dist/ClaudeWorld.exe` with bundled backend/frontend, setup wizard, and 
 
 ### Game Tools
 
-**Add game tool:** Add tool definition in `backend/sdk/config/gameplay_tool_definitions.py`, implement handler in `backend/sdk/tools/`
+**Add game tool:** Add tool definition in `backend/sdk/tools/gameplay.py`, implement handler in `backend/sdk/handlers/`
 
 **Test game flow:** Create world via API, submit actions, poll for responses
 

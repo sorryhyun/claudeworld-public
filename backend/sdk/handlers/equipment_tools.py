@@ -16,15 +16,15 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-from sdk.config.gameplay_tool_definitions import (
+from sdk.handlers.context import ToolContext
+from sdk.loaders import get_tool_description, is_tool_enabled
+from sdk.tools.gameplay import (
     EquipItemInput,
     ListEquipmentInput,
     SetFlagInput,
     UnequipItemInput,
     UseItemInput,
 )
-from sdk.loaders import get_tool_description, is_tool_enabled
-from sdk.tools.context import ToolContext
 
 logger = logging.getLogger("GameplayTools.Equipment")
 

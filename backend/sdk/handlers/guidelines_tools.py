@@ -9,13 +9,13 @@ from typing import Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from sdk.config.guideline_tool_definitions import GuidelinesAnthropicInput
 from sdk.loaders import (
     get_extreme_traits,
     get_tool_description,
     get_tool_response,
     is_tool_enabled,
 )
+from sdk.tools.guideline import GuidelinesAnthropicInput
 
 
 def _create_guidelines_anthropic_tool(agent_name: str, group_name: str | None = None):

@@ -7,9 +7,9 @@ Tests tool creation, configuration, and execution.
 from unittest.mock import Mock, patch
 
 import pytest
-from sdk.tools import create_action_mcp_server, create_action_tools
-from sdk.tools.context import ToolContext
-from sdk.tools.guidelines_tools import create_guidelines_mcp_server
+from sdk.handlers import create_action_mcp_server, create_action_tools
+from sdk.handlers.context import ToolContext
+from sdk.handlers.guidelines_tools import create_guidelines_mcp_server
 
 
 def make_ctx(agent_name: str = "TestAgent", **kwargs) -> ToolContext:
@@ -20,9 +20,9 @@ def make_ctx(agent_name: str = "TestAgent", **kwargs) -> ToolContext:
 class TestCreateActionTools:
     """Tests for create_action_tools function."""
 
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
-    @patch("sdk.tools.action_tools.get_tool_response")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.get_tool_response")
     def test_create_skip_tool(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating skip tool."""
         mock_is_enabled.return_value = True
@@ -37,9 +37,9 @@ class TestCreateActionTools:
         # Verify tool was configured correctly
         mock_get_description.assert_called()
 
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
-    @patch("sdk.tools.action_tools.get_tool_response")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.get_tool_response")
     def test_create_memorize_tool(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating memorize tool."""
         mock_is_enabled.return_value = True
@@ -51,9 +51,9 @@ class TestCreateActionTools:
         # Should include memorize tool
         assert len(tools) >= 2  # At least skip and memorize
 
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
-    @patch("sdk.tools.action_tools.get_tool_response")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.get_tool_response")
     def test_create_recall_tool_with_memory_index(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating recall tool when long-term memory is available."""
 
@@ -71,7 +71,7 @@ class TestCreateActionTools:
         # Should include recall tool
         assert len(tools) == 3  # skip, memorize, recall
 
-    @patch("sdk.tools.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
     def test_create_tools_when_disabled(self, mock_is_enabled):
         """Test that disabled tools are not created."""
         mock_is_enabled.return_value = False
@@ -82,9 +82,9 @@ class TestCreateActionTools:
         assert len(tools) == 0
 
     @pytest.mark.asyncio
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
-    @patch("sdk.tools.action_tools.get_tool_response")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.get_tool_response")
     async def test_skip_tool_execution(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test executing the skip tool."""
         mock_is_enabled.side_effect = lambda x: x == "skip"
@@ -99,9 +99,9 @@ class TestCreateActionTools:
         assert "Skip description" in tools[0].description
 
     @pytest.mark.asyncio
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
-    @patch("sdk.tools.action_tools.get_tool_response")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.get_tool_response")
     async def test_memorize_tool_execution(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating the memorize tool."""
         mock_is_enabled.side_effect = lambda x: x == "memorize"
@@ -116,9 +116,9 @@ class TestCreateActionTools:
         assert "Memorize description" in tools[0].description
 
     @pytest.mark.asyncio
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
-    @patch("sdk.tools.action_tools.get_tool_response")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.get_tool_response")
     async def test_recall_tool_creation_success(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating recall tool when memory index is provided."""
         mock_is_enabled.side_effect = lambda x: x == "recall"
@@ -134,8 +134,8 @@ class TestCreateActionTools:
         assert "Recall description" in tools[0].description
 
     @pytest.mark.asyncio
-    @patch("sdk.tools.action_tools.is_tool_enabled")
-    @patch("sdk.tools.action_tools.get_tool_description")
+    @patch("sdk.handlers.action_tools.is_tool_enabled")
+    @patch("sdk.handlers.action_tools.get_tool_description")
     async def test_recall_tool_without_memory_index(self, mock_get_description, mock_is_enabled):
         """Test that recall tool is not created when memory index is not provided."""
         mock_is_enabled.side_effect = lambda x: x == "recall"
@@ -151,10 +151,10 @@ class TestCreateActionTools:
 class TestCreateGuidelinesMCPServer:
     """Tests for create_guidelines_mcp_server function."""
 
-    @patch("sdk.tools.guidelines_tools.is_tool_enabled")
-    @patch("sdk.tools.guidelines_tools.get_tool_description")
-    @patch("sdk.tools.guidelines_tools.get_tool_response")
-    @patch("sdk.tools.guidelines_tools.create_sdk_mcp_server")
+    @patch("sdk.handlers.guidelines_tools.is_tool_enabled")
+    @patch("sdk.handlers.guidelines_tools.get_tool_description")
+    @patch("sdk.handlers.guidelines_tools.get_tool_response")
+    @patch("sdk.handlers.guidelines_tools.create_sdk_mcp_server")
     def test_create_guidelines_mcp_server_anthropic_only(
         self, mock_create_mcp, mock_get_response, mock_get_description, mock_is_enabled
     ):
@@ -172,11 +172,11 @@ class TestCreateGuidelinesMCPServer:
         tools = mock_create_mcp.call_args.kwargs["tools"]
         assert len(tools) == 1
 
-    @patch("sdk.tools.guidelines_tools.get_extreme_traits")
-    @patch("sdk.tools.guidelines_tools.is_tool_enabled")
-    @patch("sdk.tools.guidelines_tools.get_tool_description")
-    @patch("sdk.tools.guidelines_tools.get_tool_response")
-    @patch("sdk.tools.guidelines_tools.create_sdk_mcp_server")
+    @patch("sdk.handlers.guidelines_tools.get_extreme_traits")
+    @patch("sdk.handlers.guidelines_tools.is_tool_enabled")
+    @patch("sdk.handlers.guidelines_tools.get_tool_description")
+    @patch("sdk.handlers.guidelines_tools.get_tool_response")
+    @patch("sdk.handlers.guidelines_tools.create_sdk_mcp_server")
     def test_create_guidelines_mcp_server_with_group_name(
         self, mock_create_mcp, mock_get_response, mock_get_description, mock_is_enabled, mock_get_extreme_traits
     ):
@@ -199,8 +199,8 @@ class TestCreateGuidelinesMCPServer:
 class TestCreateActionMCPServer:
     """Tests for create_action_mcp_server function."""
 
-    @patch("sdk.tools.action_tools.create_sdk_mcp_server")
-    @patch("sdk.tools.action_tools.create_action_tools")
+    @patch("sdk.handlers.action_tools.create_sdk_mcp_server")
+    @patch("sdk.handlers.action_tools.create_action_tools")
     def test_create_action_mcp_server_basic(self, mock_create_tools, mock_create_mcp_server):
         """Test creating action MCP server."""
         mock_tools = [Mock(), Mock()]
@@ -216,8 +216,8 @@ class TestCreateActionMCPServer:
         # Should create MCP server with tools
         mock_create_mcp_server.assert_called_once_with(name="action", version="1.0.0", tools=mock_tools)
 
-    @patch("sdk.tools.action_tools.create_sdk_mcp_server")
-    @patch("sdk.tools.action_tools.create_action_tools")
+    @patch("sdk.handlers.action_tools.create_sdk_mcp_server")
+    @patch("sdk.handlers.action_tools.create_action_tools")
     def test_create_action_mcp_server_with_memory_index(self, mock_create_tools, mock_create_mcp_server):
         """Test creating action MCP server with memory index."""
         mock_tools = [Mock(), Mock(), Mock()]

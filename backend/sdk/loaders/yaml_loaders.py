@@ -3,7 +3,7 @@ Configuration file loaders.
 
 Provides functions to load specific configuration files with caching.
 
-Tool definitions are now loaded from Python modules (*_tool_definitions.py)
+Tool definitions are loaded from Python modules in sdk/tools/
 which combine input models and descriptions in one place. The YAML files
 are deprecated but group_config.yaml overrides are still supported.
 """
@@ -31,12 +31,12 @@ def _load_tool_descriptions_from_python() -> Dict[str, Any]:
         "subagents": {...},
     }
     """
-    from sdk.config.action_tool_definitions import ACTION_TOOLS
-    from sdk.config.gameplay_tool_definitions import ACTION_MANAGER_TOOLS
-    from sdk.config.guideline_tool_definitions import GUIDELINE_TOOLS
-    from sdk.config.onboarding_tool_definitions import ONBOARDING_TOOLS
-    from sdk.config.subagent_tool_definitions import SUBAGENT_TOOLS
-    from sdk.config.tool_definitions import ToolDefinition
+    from sdk.tools.action import ACTION_TOOLS
+    from sdk.tools.gameplay import ACTION_MANAGER_TOOLS
+    from sdk.tools.guideline import GUIDELINE_TOOLS
+    from sdk.tools.onboarding import ONBOARDING_TOOLS
+    from sdk.tools.subagent import SUBAGENT_TOOLS
+    from sdk.tools.tool_definitions import ToolDefinition
 
     def to_dict(tool: ToolDefinition) -> Dict[str, Any]:
         """Convert ToolDefinition to dictionary format."""

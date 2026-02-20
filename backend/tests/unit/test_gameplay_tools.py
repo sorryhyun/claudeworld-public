@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
-from sdk.config.gameplay_tool_definitions import (
+from sdk.handlers.context import ToolContext
+from sdk.tools.gameplay import (
     DeleteCharacterInput,
     RemoveCharacterInput,
     TravelInput,
 )
-from sdk.tools.context import ToolContext
 
 
 class TestGameplayInputModels:
@@ -114,15 +114,15 @@ class TestToolContext:
 class TestCharacterToolsCreation:
     """Tests for character tools creation."""
 
-    @patch("sdk.tools.character_tools.is_tool_enabled")
-    @patch("sdk.tools.character_tools.get_tool_description")
+    @patch("sdk.handlers.character_tools.is_tool_enabled")
+    @patch("sdk.handlers.character_tools.get_tool_description")
     def test_create_character_tools_requires_dependencies(
         self,
         mock_get_description,
         mock_is_enabled,
     ):
         """Test that character tools require all dependencies."""
-        from sdk.tools.character_tools import create_character_tools
+        from sdk.handlers.character_tools import create_character_tools
 
         mock_is_enabled.return_value = True
         mock_get_description.return_value = "Tool description"
@@ -138,15 +138,15 @@ class TestCharacterToolsCreation:
         with pytest.raises(RuntimeError, match="Database session not configured"):
             create_character_tools(ctx)
 
-    @patch("sdk.tools.character_tools.is_tool_enabled")
-    @patch("sdk.tools.character_tools.get_tool_description")
+    @patch("sdk.handlers.character_tools.is_tool_enabled")
+    @patch("sdk.handlers.character_tools.get_tool_description")
     def test_create_character_tools_when_disabled(
         self,
         mock_get_description,
         mock_is_enabled,
     ):
         """Test that disabled tools are not created."""
-        from sdk.tools.character_tools import create_character_tools
+        from sdk.handlers.character_tools import create_character_tools
 
         mock_is_enabled.return_value = False
 
@@ -165,15 +165,15 @@ class TestCharacterToolsCreation:
 class TestMechanicsToolsCreation:
     """Tests for mechanics tools creation."""
 
-    @patch("sdk.tools.mechanics_tools.is_tool_enabled")
-    @patch("sdk.tools.mechanics_tools.get_tool_description")
+    @patch("sdk.handlers.mechanics_tools.is_tool_enabled")
+    @patch("sdk.handlers.mechanics_tools.get_tool_description")
     def test_create_mechanics_tools_when_disabled(
         self,
         mock_get_description,
         mock_is_enabled,
     ):
         """Test that disabled tools are not created."""
-        from sdk.tools.mechanics_tools import create_mechanics_tools
+        from sdk.handlers.mechanics_tools import create_mechanics_tools
 
         mock_is_enabled.return_value = False
 
@@ -191,15 +191,15 @@ class TestMechanicsToolsCreation:
 class TestLocationToolsCreation:
     """Tests for location tools creation."""
 
-    @patch("sdk.tools.location_tools.is_tool_enabled")
-    @patch("sdk.tools.location_tools.get_tool_description")
+    @patch("sdk.handlers.location_tools.is_tool_enabled")
+    @patch("sdk.handlers.location_tools.get_tool_description")
     def test_create_location_tools_when_disabled(
         self,
         mock_get_description,
         mock_is_enabled,
     ):
         """Test that disabled tools are not created."""
-        from sdk.tools.location_tools import create_location_tools
+        from sdk.handlers.location_tools import create_location_tools
 
         mock_is_enabled.return_value = False
 
@@ -217,12 +217,12 @@ class TestLocationToolsCreation:
 class TestActionManagerMCPServer:
     """Tests for action manager MCP server creation."""
 
-    @patch("sdk.tools.servers.create_equipment_tools")
-    @patch("sdk.tools.servers.create_narrative_tools")
-    @patch("sdk.tools.servers.create_mechanics_tools")
-    @patch("sdk.tools.servers.create_location_tools")
-    @patch("sdk.tools.servers.create_character_tools")
-    @patch("sdk.tools.servers.create_sdk_mcp_server")
+    @patch("sdk.handlers.servers.create_equipment_tools")
+    @patch("sdk.handlers.servers.create_narrative_tools")
+    @patch("sdk.handlers.servers.create_mechanics_tools")
+    @patch("sdk.handlers.servers.create_location_tools")
+    @patch("sdk.handlers.servers.create_character_tools")
+    @patch("sdk.handlers.servers.create_sdk_mcp_server")
     def test_create_action_manager_mcp_server(
         self,
         mock_create_mcp,
@@ -233,7 +233,7 @@ class TestActionManagerMCPServer:
         mock_create_equip,
     ):
         """Test creating action manager MCP server."""
-        from sdk.tools.servers import create_action_manager_mcp_server
+        from sdk.handlers.servers import create_action_manager_mcp_server
 
         mock_create_char.return_value = [MagicMock(name="add_character")]
         mock_create_loc.return_value = [MagicMock(name="travel")]

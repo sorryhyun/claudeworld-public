@@ -8,16 +8,7 @@ Claude Agent SDK integration layer for managing AI agent lifecycle, MCP tools, a
 sdk/
 ├── __init__.py          # Module exports
 │
-├── config/              # Tool definitions and system prompt (hot-reloaded)
-│   ├── tool_definitions.py          # Base ToolDefinition dataclass
-│   ├── action_tool_definitions.py   # Action tools (skip, memorize, recall)
-│   ├── guideline_tool_definitions.py # Guidelines tool definition
-│   ├── gameplay_tool_definitions.py  # TRPG gameplay tools (travel, narration, etc.)
-│   ├── onboarding_tool_definitions.py # Onboarding tools (draft_world, persist_world, complete)
-│   ├── subagent_tool_definitions.py  # Shared sub-agent persist tools
-│   ├── character_design_tool_definitions.py # Character creation tools
-│   ├── item_tool_definitions.py      # Item persist tool
-│   ├── location_tool_definitions.py  # Location persist tool
+├── config/              # YAML configuration files (hot-reloaded)
 │   ├── guidelines_3rd.yaml           # System prompt template
 │   ├── conversation_context.yaml     # Context formatting
 │   └── localization.yaml             # Localized messages (en, ko)
@@ -42,7 +33,18 @@ sdk/
 │   ├── stream_parser.py # Response stream parsing
 │   └── transports.py    # Custom transport implementations
 │
-├── tools/               # MCP tool implementations
+├── tools/               # Tool definitions (Python modules)
+│   ├── definitions.py        # Base ToolDefinition dataclass
+│   ├── action.py             # Action tools (skip, memorize, recall)
+│   ├── guideline.py          # Guidelines tool definition
+│   ├── gameplay.py           # TRPG gameplay tools (travel, narration, etc.)
+│   ├── onboarding.py         # Onboarding tools (draft_world, persist_world, complete)
+│   ├── subagent.py           # Shared sub-agent persist tools
+│   ├── character_design.py   # Character creation tools
+│   ├── item.py               # Item persist tool
+│   └── location.py           # Location persist tool
+│
+├── handlers/            # MCP tool handler implementations
 │   ├── action_tools.py       # skip, memorize, recall
 │   ├── guidelines_tools.py   # guidelines reader
 │   ├── common.py             # Shared tool utilities (build_action_context)
@@ -152,9 +154,9 @@ Tools are organized into groups configured in YAML files:
 
 ## Adding New Tools
 
-1. **Define tool in Python** (`config/gameplay_tool_definitions.py`):
+1. **Define tool in Python** (`tools/gameplay.py`):
    ```python
-   from .tool_definitions import ToolDefinition
+   from .definitions import ToolDefinition
 
    MY_TOOL = ToolDefinition(
        name="my_tool",
@@ -175,15 +177,15 @@ Tools are organized into groups configured in YAML files:
    # Add to ALL_GAMEPLAY_TOOLS list
    ```
 
-2. **Implement handler** in appropriate tools module:
+2. **Implement handler** in appropriate handlers module:
    ```python
-   # sdk/tools/my_tools.py
+   # sdk/handlers/my_tools.py
    async def handle_my_tool(param1: str, context: ToolContext) -> str:
        # Implementation
        return "Tool result"
    ```
 
-3. **Register in MCP server** (`sdk/tools/servers.py`):
+3. **Register in MCP server** (`sdk/handlers/servers.py`):
    ```python
    @mcp_server.tool()
    async def my_tool(param1: str) -> str:

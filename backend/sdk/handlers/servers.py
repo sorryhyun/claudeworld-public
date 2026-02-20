@@ -10,16 +10,16 @@ Factory functions that aggregate tool modules into MCP servers:
 
 from claude_agent_sdk import create_sdk_mcp_server
 
-from sdk.tools.character_design_tools import create_character_design_tools
-from sdk.tools.character_tools import create_character_tools
-from sdk.tools.context import ToolContext
-from sdk.tools.equipment_tools import create_equipment_tools
-from sdk.tools.history_tools import create_history_tools
-from sdk.tools.item_tools import create_item_tools
-from sdk.tools.location_tools import create_location_tools
-from sdk.tools.mechanics_tools import create_mechanics_tools
-from sdk.tools.narrative_tools import create_narrative_tools
-from sdk.tools.onboarding_tools import (
+from sdk.handlers.character_design_tools import create_character_design_tools
+from sdk.handlers.character_tools import create_character_tools
+from sdk.handlers.context import ToolContext
+from sdk.handlers.equipment_tools import create_equipment_tools
+from sdk.handlers.history_tools import create_history_tools
+from sdk.handlers.item_tools import create_item_tools
+from sdk.handlers.location_tools import create_location_tools
+from sdk.handlers.mechanics_tools import create_mechanics_tools
+from sdk.handlers.narrative_tools import create_narrative_tools
+from sdk.handlers.onboarding_tools import (
     SUBAGENT_TOOL_NAMES,
     create_onboarding_tools,
 )
