@@ -63,6 +63,8 @@ config_dir = backend_dir / 'sdk' / 'config'
 # Data files to include
 logging_config_dir = backend_dir / 'infrastructure' / 'logging'
 
+assets_dir = project_root / 'assets'
+
 datas = [
     # Frontend static files
     (str(frontend_dist), 'static'),
@@ -72,6 +74,8 @@ datas = [
     (str(config_dir), 'backend/sdk/config'),
     # Logging/debug config
     (str(logging_config_dir), 'backend/infrastructure/logging'),
+    # Application icon (for pywebview window)
+    (str(assets_dir / 'icon.ico'), 'assets'),
     # .env.example as template
     (str(project_root / '.env.example'), '.'),
 ]
@@ -174,7 +178,13 @@ hiddenimports = [
     'PIL.Image',
     # FastAPI MCP
     'fastapi_mcp',
+    # pywebview (native window)
+    'webview',
 ]
+
+# Collect pywebview submodules for the active platform
+webview_hiddenimports = collect_submodules('webview')
+hiddenimports += webview_hiddenimports
 
 a = Analysis(
     [str(backend_dir / 'launcher.py')],
@@ -212,12 +222,12 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # Console window for debugging
+    console=True,  # Needed for first-time setup wizard; hidden programmatically after startup
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add icon path here if desired
+    icon=str(assets_dir / 'icon.ico') if (assets_dir / 'icon.ico').exists() else None,
     version=version_info,  # Windows version info (reduces SmartScreen warnings)
 )

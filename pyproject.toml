@@ -42,6 +42,7 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "sse-starlette>=2.0.0",
     "watchfiles>=1.0.0",
+    "pywebview>=5.0.0",
 ]
 
 [dependency-groups]
