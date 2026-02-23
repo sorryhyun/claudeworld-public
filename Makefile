@@ -1,4 +1,4 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-hash build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-hash generate-icon build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -31,7 +31,8 @@ help:
 	@echo "  make run-tunnel-frontend- Run Cloudflare tunnel for frontend"
 	@echo ""
 	@echo "Build:"
-	@echo "  make build-exe         - Build Windows executable (requires frontend build first)"
+	@echo "  make generate-icon     - Regenerate application icon (assets/icon.ico + frontend favicon)"
+	@echo "  make build-exe         - Build standalone executable with native window (requires frontend build first)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make stop              - Stop all running servers"
@@ -199,11 +200,18 @@ generate-hash:
 	@echo "Generating password hash..."
 	uv run python scripts/setup/generate_hash.py
 
+generate-icon:
+	@echo "Generating application icon..."
+	uv run python scripts/generate_icon.py
+	@echo "Done! Generated assets/icon.ico and frontend/public/favicon.svg"
+
 build-exe:
-	@echo "Building executable..."
-	@echo "Step 1: Building frontend..."
+	@echo "Building standalone executable..."
+	@echo "Step 1: Generating application icon..."
+	uv run python scripts/generate_icon.py
+	@echo "Step 2: Building frontend..."
 	cd frontend && npm run build
-	@echo "Step 2: Building executable with PyInstaller..."
+	@echo "Step 3: Building executable with PyInstaller..."
 	uv run pyinstaller ClaudeWorld.spec --noconfirm
 	@# Rename to add .exe suffix if not present (for cross-platform builds)
 	@if [ -f "dist/ClaudeWorld" ] && [ ! -f "dist/ClaudeWorld.exe" ]; then \
@@ -211,3 +219,4 @@ build-exe:
 	fi
 	@echo ""
 	@echo "Build complete! Executable is in dist/ClaudeWorld.exe"
+	@echo "The application opens in a native window (use --browser flag for browser mode)"

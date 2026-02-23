@@ -42,8 +42,9 @@ uv run ruff check backend/ --fix                   # Auto-fix linting issues
 # Performance profiling
 make dev-perf                                      # Run with performance logging to ./latency.log
 
-# Windows executable deployment
-make build-exe                                     # Build standalone Windows .exe
+# Standalone executable deployment
+make build-exe                                     # Build standalone .exe with native window
+make generate-icon                                 # Regenerate application icon
 ```
 
 ## LSP Support
@@ -244,13 +245,17 @@ Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법
 
 ## Windows Deployment
 
-ClaudeWorld can be packaged as a standalone Windows executable:
+ClaudeWorld can be packaged as a standalone executable with a native desktop window:
 
 ```bash
 make build-exe
 ```
 
-Creates `dist/ClaudeWorld.exe` with bundled backend/frontend, setup wizard, and SQLite database support.
+Creates `dist/ClaudeWorld.exe` with:
+- Native window (pywebview + Edge WebView2) — no browser chrome
+- Bundled backend/frontend, setup wizard, and SQLite database support
+- Application icon for taskbar and executable
+- `--browser` flag available for traditional browser mode
 
 **For detailed deployment instructions**, see [docs/deployment.md](docs/deployment.md).
 

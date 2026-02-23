@@ -4,11 +4,14 @@ This guide explains how to build and deploy ClaudeWorld as a standalone Windows 
 
 ## Overview
 
-ClaudeWorld can be packaged into a single Windows `.exe` file using PyInstaller. This executable includes:
+ClaudeWorld can be packaged into a single Windows `.exe` file using PyInstaller. The executable runs as a **standalone desktop application** with a native window (powered by pywebview + Edge WebView2) instead of opening in the default browser.
+
+This executable includes:
 - FastAPI backend server
-- Pre-built React frontend
+- Pre-built React frontend rendered in a native window
 - All agent configurations
 - Configuration files
+- Application icon
 - SQLite database support
 
 The packaged application includes a first-time setup wizard that guides users through password creation and configuration.
@@ -108,11 +111,13 @@ For a single-file distribution, the current spec file creates a self-contained e
 When users run `ClaudeWorld.exe` for the first time:
 
 1. **Agent Setup:** Default agents are copied from the bundled resources to the working directory
-2. **Configuration Wizard:**
+2. **Configuration Wizard** (console window):
    - Password creation (with confirmation)
    - Display name selection
    - Auto-generation of JWT secret
-3. **Auto-start:** Server starts automatically and opens browser to `http://localhost:8000`
+3. **Auto-start:** Server starts and the application opens in a native window
+   - The console window is automatically hidden after startup
+   - To force browser mode instead: `ClaudeWorld.exe --browser`
 
 ### User Data Location
 
@@ -123,18 +128,18 @@ User data is stored in the same directory as the executable:
 
 ## Build Customization
 
-### Adding an Icon
+### Application Icon
 
-To add a custom icon to the executable:
+The build automatically uses `assets/icon.ico` for the executable icon and taskbar. To regenerate or customize:
 
-1. Create or obtain a `.ico` file
-2. Edit `ClauseWorld.spec`:
-   ```python
-   exe = EXE(
-       # ... other parameters ...
-       icon='path/to/icon.ico',  # Add this line
-   )
-   ```
+```bash
+# Regenerate from the script (editable at scripts/generate_icon.py)
+make generate-icon
+
+# Or provide your own .ico file at assets/icon.ico
+```
+
+The icon is also used as the pywebview window icon at runtime.
 
 ### Changing Executable Name
 
@@ -146,16 +151,22 @@ exe = EXE(
 )
 ```
 
+### Native Window vs. Browser Mode
+
+By default, the bundled executable opens in a **native window** using pywebview (Edge WebView2 on Windows). This provides a standalone desktop experience without browser chrome.
+
+To use the traditional browser mode:
+```bash
+ClaudeWorld.exe --browser
+```
+
+The spec file uses `console=True` so the first-time setup wizard can accept keyboard input. The console window is hidden programmatically once the native window opens.
+
 ### Debug Mode
 
-To create a debug build with console output:
-
-The current spec file already has `console=True` for debugging. To disable the console window:
-```python
-exe = EXE(
-    # ... other parameters ...
-    console=False,  # Hide console window
-)
+To keep the console window visible for debugging, set the environment variable:
+```
+CLAUDEWORLD_SHOW_CONSOLE=1
 ```
 
 ### Adding More Data Files

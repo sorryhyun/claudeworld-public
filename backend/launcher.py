@@ -5,7 +5,7 @@ This is the entry point for the PyInstaller bundle. It:
 1. Sets up paths for bundled resources
 2. Runs first-time setup wizard if needed
 3. Starts the uvicorn server
-4. Opens the browser to the application
+4. Opens a native window (pywebview) or falls back to the browser
 """
 
 import getpass
@@ -14,9 +14,16 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import webbrowser
 from pathlib import Path
 from threading import Timer
+
+# Server configuration
+HOST = "127.0.0.1"
+PORT = 8000
+SERVER_URL = f"http://{HOST}:{PORT}"
 
 
 def get_base_path() -> Path:
@@ -192,7 +199,7 @@ def setup_environment() -> bool:
 
 def open_browser():
     """Open the browser to the application."""
-    webbrowser.open("http://localhost:8000")
+    webbrowser.open(SERVER_URL)
 
 
 def detect_claude_code() -> dict:
@@ -246,10 +253,108 @@ def detect_claude_code() -> dict:
     return result
 
 
+def wait_for_server(timeout: int = 30) -> bool:
+    """Wait for the server to become ready."""
+    import urllib.request
+
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            urllib.request.urlopen(f"{SERVER_URL}/docs", timeout=2)
+            return True
+        except Exception:
+            time.sleep(0.3)
+    return False
+
+
+def hide_console_window():
+    """Hide the console window on Windows (after setup wizard is done)."""
+    if sys.platform != "win32":
+        return
+    if os.environ.get("CLAUDEWORLD_SHOW_CONSOLE", "").strip() == "1":
+        return
+    try:
+        import ctypes
+
+        console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if console_hwnd:
+            SW_HIDE = 0
+            ctypes.windll.user32.ShowWindow(console_hwnd, SW_HIDE)
+    except Exception:
+        pass
+
+
+def run_server_thread(app):
+    """Run uvicorn server in a background thread."""
+    import uvicorn
+
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+
+
+def start_with_webview(app):
+    """
+    Start the application with a native pywebview window.
+
+    The server runs in a background daemon thread while pywebview
+    takes the main thread (required on Windows for GUI).
+    When the window is closed, the process exits.
+    """
+    import webview
+
+    # Start server in background thread
+    server_thread = threading.Thread(target=run_server_thread, args=(app,), daemon=True)
+    server_thread.start()
+
+    # Wait for server to be ready
+    print("Waiting for server to start...")
+    if not wait_for_server():
+        print("ERROR: Server failed to start. Falling back to browser mode.")
+        start_with_browser(app)
+        return
+
+    print("Server ready. Opening application window...")
+
+    # Hide console window now that setup is done and server is running
+    hide_console_window()
+
+    # Resolve icon path for the window
+    icon_path = None
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys._MEIPASS) / "assets" / "icon.ico"
+        if candidate.exists():
+            icon_path = str(candidate)
+
+    # Create native window
+    window = webview.create_window(
+        "ClaudeWorld",
+        SERVER_URL,
+        width=1280,
+        height=860,
+        min_size=(800, 600),
+    )
+
+    # Start webview event loop (blocks until window is closed)
+    webview.start(icon=icon_path)
+
+    # When window closes, exit the process (server thread is daemon)
+    os._exit(0)
+
+
+def start_with_browser(app):
+    """Start the application with the default browser (fallback mode)."""
+    import uvicorn
+
+    Timer(2.0, open_browser).start()
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+
+
 def main():
     """Main entry point."""
     # Set up paths first
     setup_paths()
+
+    # Check for --browser flag (skip pywebview, use browser directly)
+    use_browser = "--browser" in sys.argv
 
     # Run environment setup (including first-time wizard if needed)
     setup_was_run = setup_environment()
@@ -271,9 +376,6 @@ def main():
     if claude_code_info["path"]:
         os.environ["CLAUDE_CODE_PATH"] = claude_code_info["path"]
 
-    # Import uvicorn and app after setting up paths and loading .env
-    import uvicorn
-
     print("=" * 60)
     print("ClaudeWorld")
     print("=" * 60)
@@ -288,24 +390,31 @@ def main():
         print("  Install from: https://claude.ai/code")
     print()
 
-    print("Server starting: http://localhost:8000")
+    print(f"Server starting: {SERVER_URL}")
     print("Press Ctrl+C to stop the server")
     print()
-
-    # Open browser after a short delay
-    Timer(2.0, open_browser).start()
 
     # Import the app directly instead of using string path
     # This works better with PyInstaller bundling
     from main import app
 
-    # Run the server with the app object directly
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info",
-    )
+    # Decide how to start the application
+    if use_browser:
+        print("Mode: Browser (--browser flag)")
+        start_with_browser(app)
+    elif getattr(sys, "frozen", False):
+        # Bundled mode: try pywebview for native window
+        try:
+            import webview  # noqa: F401
+
+            print("Mode: Native window (pywebview)")
+            start_with_webview(app)
+        except ImportError:
+            print("Mode: Browser (pywebview not available)")
+            start_with_browser(app)
+    else:
+        # Development mode: use browser
+        start_with_browser(app)
 
 
 if __name__ == "__main__":
