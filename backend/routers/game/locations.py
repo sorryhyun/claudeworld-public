@@ -17,7 +17,7 @@ from core.dependencies import (
 from domain.services.access_control import AccessControl
 from fastapi import APIRouter, Depends, HTTPException
 from infrastructure.database.connection import get_db
-from services.location_service import LocationService
+from services.room_mapping_service import RoomMappingService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("GameRouter.Locations")
@@ -99,8 +99,8 @@ async def travel_to_location(
     await crud.set_current_location(db, world_id, location_id)
 
     # Update current room in _state.json for filesystem sync
-    room_key = LocationService.location_to_room_key(location.name)
-    LocationService.set_current_room(world.name, room_key)
+    room_key = RoomMappingService.location_to_room_key(location.name)
+    RoomMappingService.set_current_room(world.name, room_key)
 
     logger.info(f"Traveled to location {location.display_name or location.name}")
 

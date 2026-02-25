@@ -271,8 +271,8 @@ async def import_world_from_filesystem(
 
     The world's phase, genre, theme etc. come from filesystem config.
     """
-    from services.location_service import LocationService
     from services.player_service import PlayerService
+    from services.room_mapping_service import RoomMappingService
 
     from crud.rooms import create_room
 
@@ -327,14 +327,14 @@ async def import_world_from_filesystem(
 
     # Store room mapping in _state.json for FS-first architecture
     if phase == WorldPhase.ACTIVE:
-        LocationService.set_room_mapping(
+        RoomMappingService.set_room_mapping(
             world_name=fs_config.name,
             room_key="main",
             db_room_id=room.id,
             agents=["Action_Manager", "Narrator"],
         )
     else:
-        LocationService.set_room_mapping(
+        RoomMappingService.set_room_mapping(
             world_name=fs_config.name,
             room_key="onboarding",
             db_room_id=room.id,

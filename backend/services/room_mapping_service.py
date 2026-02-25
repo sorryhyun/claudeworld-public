@@ -108,8 +108,14 @@ class RoomMappingService:
                 mapping = state.rooms.get(room_key)
 
         if not mapping:
-            logger.warning(f"Room {room_key} not found in world {world_name}")
-            return False
+            # Auto-create room mapping for location rooms (agent tracking only, no db_room_id yet)
+            if room_key.startswith("location:"):
+                mapping = RoomMapping(db_room_id=0, agents=[])
+                state.rooms[room_key] = mapping
+                logger.info(f"Auto-created room mapping for {room_key} in world {world_name}")
+            else:
+                logger.warning(f"Room {room_key} not found in world {world_name}")
+                return False
 
         if agent_name in mapping.agents:
             return False
@@ -210,15 +216,14 @@ class RoomMappingService:
         """Find a location room key using fuzzy matching.
 
         Tries multiple matching strategies in order:
-        1. Exact match on the location part of room key
-        2. Case-insensitive exact match
-        3. Prefix match (room key location starts with search term)
-        4. Contains match (room key location contains search term)
-        5. Reverse contains (search term contains room key location)
+        1. Exact match on the location part of room key in _state.json
+        2. Case-insensitive exact match in _state.json
+        3. Partial match in _state.json (prefix, contains, reverse contains)
+        4. Filesystem fallback: match against folder names and display names from _index.yaml
 
         Args:
             world_name: Name of the world
-            location_name: Location name to search for (can be partial)
+            location_name: Location name to search for (can be folder name or display name)
 
         Returns:
             Matching room key (e.g., "location:tavern") or None
@@ -228,15 +233,18 @@ class RoomMappingService:
 
         location_rooms = [k for k in state.rooms.keys() if k.startswith("location:")]
 
+        # 1. Exact match
         exact_key = f"location:{location_name}"
         if exact_key in state.rooms:
             return exact_key
 
+        # 2. Case-insensitive exact match
         for room_key in location_rooms:
             loc_name = room_key[9:]
             if loc_name.lower() == search_lower:
                 return room_key
 
+        # 3. Partial matches (prefix, contains, reverse contains)
         for room_key in location_rooms:
             loc_name = room_key[9:]
             if loc_name.lower().startswith(search_lower):
@@ -251,6 +259,14 @@ class RoomMappingService:
             loc_name = room_key[9:]
             if loc_name.lower() in search_lower:
                 return room_key
+
+        # 4. Filesystem fallback: check _index.yaml for folder names not yet in _state.json
+        from .location_storage import LocationStorage
+
+        fs_locations = LocationStorage.load_all_locations(world_name)
+        for folder_name in fs_locations:
+            if folder_name.lower() == search_lower or search_lower in folder_name.lower():
+                return f"location:{folder_name}"
 
         return None
 

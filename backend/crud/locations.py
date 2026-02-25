@@ -290,10 +290,11 @@ async def sync_locations_with_filesystem(
     Returns:
         Number of locations deleted
     """
-    from services.location_service import LocationService
+    from services.location_storage import LocationStorage
+    from services.room_mapping_service import RoomMappingService
 
     # Get filesystem locations
-    fs_locations = LocationService.load_all_locations(world_name)
+    fs_locations = LocationStorage.load_all_locations(world_name)
     fs_location_names = set(fs_locations.keys())
 
     # Get database locations
@@ -307,7 +308,7 @@ async def sync_locations_with_filesystem(
 
             # Clean up room mapping in _state.json
             room_key = f"location:{db_loc.name}"
-            LocationService.delete_room_mapping(world_name, room_key)
+            RoomMappingService.delete_room_mapping(world_name, room_key)
 
             # Delete from database
             await delete_location(db, db_loc.id)

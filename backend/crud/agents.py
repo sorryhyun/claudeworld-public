@@ -150,33 +150,6 @@ async def delete_agent(db: AsyncSession, agent_id: int) -> bool:
     return False
 
 
-@retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2)
-async def delete_agents_by_world(db: AsyncSession, world_name: str) -> int:
-    """
-    Delete all agents associated with a specific world.
-
-    Args:
-        db: Database session
-        world_name: The world name to delete agents for
-
-    Returns:
-        Number of agents deleted
-    """
-    result = await db.execute(select(models.Agent).where(models.Agent.world_name == world_name))
-    agents = result.scalars().all()
-
-    count = len(agents)
-    for agent in agents:
-        await db.delete(agent)
-
-    if count > 0:
-        async with serialized_write():
-            await db.commit()
-        logger.info(f"Deleted {count} agents for world '{world_name}'")
-
-    return count
-
-
 async def get_agents_by_world(db: AsyncSession, world_name: str) -> List[models.Agent]:
     """Get all agents for a specific world."""
     result = await db.execute(select(models.Agent).where(models.Agent.world_name == world_name))

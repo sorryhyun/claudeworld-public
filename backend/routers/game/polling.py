@@ -23,9 +23,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from infrastructure.database.connection import async_session_maker, get_db
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
-from services.location_service import LocationService
 from services.persistence_manager import PersistenceManager
 from services.player_service import PlayerService
+from services.transient_state_service import TransientStateService
 from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -236,7 +236,7 @@ async def poll_updates(
 
     # Always include suggestions in poll response to avoid race conditions
     # (suggestions may be saved after narration message but before next poll)
-    response["suggestions"] = LocationService.load_suggestions(world.name)
+    response["suggestions"] = TransientStateService.load_suggestions(world.name)
 
     return response
 

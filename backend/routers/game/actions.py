@@ -21,8 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from infrastructure.database.connection import get_db
 from orchestration.trpg_orchestrator import get_trpg_orchestrator
 from sdk import AgentManager
-from services.location_service import LocationService
 from services.player_service import PlayerService
+from services.transient_state_service import TransientStateService
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.images import compress_image_base64
 
@@ -234,5 +234,5 @@ async def get_action_suggestions(
     AccessControl.raise_if_no_access(identity.user_id, identity.role, world.owner_id)
 
     # Load suggestions directly from _state.json
-    suggestions = LocationService.load_suggestions(world.name)
+    suggestions = TransientStateService.load_suggestions(world.name)
     return {"suggestions": suggestions}

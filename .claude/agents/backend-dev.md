@@ -34,7 +34,9 @@ ClaudeWorld is a turn-based text adventure (TRPG) where AI agents collaborate to
 - `persistence_manager.py` - Saves game state
 - `world_service.py` - World creation and management
 - `player_service.py` - Player state management
-- `location_service.py` / `location_storage.py` - Location CRUD and logic
+- `location_storage.py` - Location filesystem storage
+- `room_mapping_service.py` - Room-location mapping
+- `transient_state_service.py` - Transient runtime state (_state.json)
 - `item_service.py` - Item management
 - `cache_service.py` - In-memory caching layer
 - `prompt_builder.py` - Builds system prompts for agents

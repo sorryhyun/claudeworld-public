@@ -5,7 +5,7 @@ Tests exception initialization and error messages.
 """
 
 import pytest
-from domain.exceptions import AgentNotFoundError, ConfigurationError, RoomAlreadyExistsError, RoomNotFoundError
+from domain.exceptions import ConfigurationError, RoomAlreadyExistsError, RoomNotFoundError
 from fastapi import status
 
 
@@ -30,20 +30,6 @@ class TestRoomExceptions:
 
         assert error.status_code == status.HTTP_404_NOT_FOUND
         assert str(room_id) in error.detail
-        assert "not found" in error.detail
-
-
-class TestAgentExceptions:
-    """Tests for agent-related exceptions."""
-
-    @pytest.mark.unit
-    def test_agent_not_found_error(self):
-        """Test AgentNotFoundError exception."""
-        agent_id = 456
-        error = AgentNotFoundError(agent_id)
-
-        assert error.status_code == status.HTTP_404_NOT_FOUND
-        assert str(agent_id) in error.detail
         assert "not found" in error.detail
 
 

@@ -173,7 +173,7 @@ class SerializedWrite:
     For PostgreSQL this is a transparent no-op.
     """
 
-    def __init__(self, lock_key=None):
+    def __init__(self):
         self._is_sqlite = DATABASE_TYPE == "sqlite"
 
     async def __aenter__(self):
@@ -187,12 +187,12 @@ class SerializedWrite:
         return False
 
 
-def serialized_write(lock_key=None) -> SerializedWrite:
+def serialized_write() -> SerializedWrite:
     """Return a context manager that serializes writes for SQLite."""
-    return SerializedWrite(lock_key)
+    return SerializedWrite()
 
 
-async def serialized_commit(db: AsyncSession, lock_key=None) -> None:
+async def serialized_commit(db: AsyncSession) -> None:
     """Commit under the write lock (SQLite) or directly (PostgreSQL)."""
-    async with serialized_write(lock_key):
+    async with serialized_write():
         await db.commit()

@@ -27,8 +27,10 @@ from infrastructure.database.connection import async_session_maker, get_db, seri
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
 from services.facades import WorldFacade
-from services.location_service import LocationService
+from services.location_storage import LocationStorage
 from services.player_service import PlayerService
+from services.room_mapping_service import RoomMappingService
+from services.transient_state_service import TransientStateService
 from services.world_reset_service import WorldResetService
 from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,13 +78,13 @@ async def create_world(
 
     # Store onboarding room mapping in _state.json (Phase 1.3 - FS-first architecture)
     if db_world.onboarding_room_id:
-        LocationService.set_room_mapping(
+        RoomMappingService.set_room_mapping(
             world_name=world.name,
             room_key="onboarding",
             db_room_id=db_world.onboarding_room_id,
             agents=["Onboarding_Manager"],
         )
-        LocationService.set_current_room(world.name, "onboarding")
+        RoomMappingService.set_current_room(world.name, "onboarding")
         logger.info(f"Stored onboarding room mapping for world '{world.name}'")
 
     # Find and add Onboarding Manager to the onboarding room
@@ -413,7 +415,7 @@ async def _perform_world_reset(
     logger.info(f"Resetting world '{world.name}' to initial state")
 
     # Clean up stale entries from _index.yaml (entries without directories)
-    stale_entries = LocationService.cleanup_stale_entries(world.name)
+    stale_entries = LocationStorage.cleanup_stale_entries(world.name)
     if stale_entries:
         logger.info(f"Cleaned up {len(stale_entries)} stale entries from _index.yaml: {stale_entries}")
 
@@ -430,7 +432,7 @@ async def _perform_world_reset(
         logger.info(f"Cleaned up {stale_agents_count} stale agents during reset")
 
     # Get all room mappings for this world
-    room_mappings = LocationService.get_all_room_mappings(world.name)
+    room_mappings = RoomMappingService.get_all_room_mappings(world.name)
 
     # Create fresh rooms for each location (clears conversation context completely)
     for room_key, mapping in room_mappings.items():
@@ -453,7 +455,7 @@ async def _perform_world_reset(
 
                 # Update room mapping in _state.json with new room_id
                 # Only keep system agent names (no characters)
-                LocationService.set_room_mapping(
+                RoomMappingService.set_room_mapping(
                     world_name=world.name,
                     room_key=room_key,
                     db_room_id=new_room_id,
@@ -463,7 +465,7 @@ async def _perform_world_reset(
                 logger.info(f"Created fresh room for {room_key} (old={old_room_id}, new={new_room_id})")
             else:
                 # Location doesn't exist in DB, just clear the mapping
-                LocationService.delete_room_mapping(world.name, room_key)
+                RoomMappingService.delete_room_mapping(world.name, room_key)
                 logger.info(f"Removed stale room mapping {room_key}")
 
     # Get starting location from database, or create it from filesystem if not found
@@ -505,7 +507,7 @@ async def _perform_world_reset(
     logger.info(f"Reset player.yaml in filesystem (game_time: {initial_game_time['hour']}:00)")
 
     # Reset _state.json to only contain onboarding room and starting location
-    state = LocationService.load_state(world.name)
+    state = TransientStateService.load_state(world.name)
     starting_room_key = f"location:{starting_location_name}"
 
     # Keep only onboarding and starting location rooms
@@ -521,7 +523,7 @@ async def _perform_world_reset(
     # Clear stale arrival context from previous travel
     if "arrival_context" in state.ui:
         del state.ui["arrival_context"]
-    LocationService.save_state(world.name, state)
+    TransientStateService.save_state(world.name, state)
     logger.info(f"Reset _state.json rooms to: {list(preserved_rooms.keys())}")
 
     # Reset is_discovered for all locations except starting location

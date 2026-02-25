@@ -20,8 +20,9 @@ from domain.value_objects.enums import Language, WorldPhase
 from infrastructure.database import models
 from infrastructure.database.connection import serialized_write
 
-from services.location_service import LocationService
+from services.location_storage import LocationStorage
 from services.player_service import PlayerService
+from services.room_mapping_service import RoomMappingService
 from services.world_service import WorldService
 
 if TYPE_CHECKING:
@@ -141,15 +142,15 @@ class WorldFacade:
         import crud
 
         try:
-            # Load location data from filesystem using LocationService
-            loc_config = LocationService.load_location(world_name, location_name)
+            # Load location data from filesystem using LocationStorage
+            loc_config = LocationStorage.load_location(world_name, location_name)
             if not loc_config:
                 logger.warning(f"Location '{location_name}' not found in filesystem")
                 return None
 
             # Check for existing room mapping to preserve agents added during onboarding
-            room_key = LocationService.location_to_room_key(location_name)
-            existing_mapping = LocationService.get_room_mapping(world_name, room_key)
+            room_key = RoomMappingService.location_to_room_key(location_name)
+            existing_mapping = RoomMappingService.get_room_mapping(world_name, room_key)
             existing_agents = existing_mapping.agents if existing_mapping else []
 
             # Create location in database
@@ -170,7 +171,7 @@ class WorldFacade:
 
             # Store room mapping in _state.json (preserve existing agents)
             if db_location.room_id:
-                LocationService.set_room_mapping(
+                RoomMappingService.set_room_mapping(
                     world_name=world_name,
                     room_key=room_key,
                     db_room_id=db_location.room_id,
@@ -259,8 +260,8 @@ class WorldFacade:
             await self.db.commit()
 
         # Update current_room in _state.json to match the player's location
-        room_key = LocationService.location_to_room_key(fs_state.current_location)
-        LocationService.set_current_room(world.name, room_key)
+        room_key = RoomMappingService.location_to_room_key(fs_state.current_location)
+        RoomMappingService.set_current_room(world.name, room_key)
 
         logger.info(f"Synced player state from FS for world '{world.name}'")
         return True
@@ -419,7 +420,7 @@ class WorldFacade:
         world_name = world.name
 
         # Log room mappings for debugging
-        room_ids = LocationService.get_room_ids_for_world(world_name)
+        room_ids = RoomMappingService.get_room_ids_for_world(world_name)
         if room_ids:
             logger.info(f"World '{world_name}' has {len(room_ids)} rooms in _state.json")
 

@@ -14,8 +14,9 @@ from typing import Any, Dict, List, Optional
 
 from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config
-from services.location_service import LocationService
+from services.location_storage import LocationStorage
 from services.player_service import PlayerService
+from services.transient_state_service import TransientStateService
 from services.world_service import WorldService
 
 logger = logging.getLogger("GameplayContext")
@@ -80,7 +81,7 @@ class GameplayContextBuilder:
             self._player_state = PlayerService.load_player_state(self.world_name)
 
             if self._player_state and self._player_state.current_location:
-                self._current_location = LocationService.load_location(
+                self._current_location = LocationStorage.load_location(
                     self.world_name, self._player_state.current_location
                 )
 
@@ -181,7 +182,7 @@ class GameplayContextBuilder:
         # Current location
         parts.append("# Current Location")
         parts.append("")
-        parts.append(f"**{context.location_display_name or 'Unknown'}**")
+        parts.append(f"**{context.location_name or 'Unknown'}**")
         if context.location_description:
             parts.append("")
             parts.append(context.location_description.strip())
@@ -224,7 +225,7 @@ class GameplayContextBuilder:
             location_name = self._current_location.name
 
         # Check for arrival context (one-time use after travel)
-        arrival_context = LocationService.load_and_clear_arrival_context(self.world_name)
+        arrival_context = TransientStateService.load_and_clear_arrival_context(self.world_name)
 
         # Build the base message
         parts = []

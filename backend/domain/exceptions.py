@@ -22,13 +22,6 @@ class RoomNotFoundError(HTTPException):
         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=f"Room with id {room_id} not found")
 
 
-class AgentNotFoundError(HTTPException):
-    """Raised when a requested agent does not exist."""
-
-    def __init__(self, agent_id: int):
-        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent with id {agent_id} not found")
-
-
 class ConfigurationError(ValueError):
     """Raised when there's an error in configuration parsing or validation."""
 

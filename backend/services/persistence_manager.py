@@ -18,8 +18,9 @@ import crud
 import schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.location_service import LocationService
+from services.location_storage import LocationStorage
 from services.player_service import PlayerService
+from services.room_mapping_service import RoomMappingService
 from services.world_service import WorldService
 
 logger = logging.getLogger("PersistenceManager")
@@ -82,7 +83,7 @@ class PersistenceManager:
             Database ID of the created location
         """
         # 1. Create in filesystem (source of truth)
-        LocationService.create_location(
+        LocationStorage.create_location(
             self.world_name,
             name,
             display_name,
@@ -107,8 +108,8 @@ class PersistenceManager:
 
         # 3. Store room mapping in _state.json (FS-first architecture)
         if db_location.room_id:
-            room_key = LocationService.location_to_room_key(name)
-            LocationService.set_room_mapping(
+            room_key = RoomMappingService.location_to_room_key(name)
+            RoomMappingService.set_room_mapping(
                 world_name=self.world_name,
                 room_key=room_key,
                 db_room_id=db_location.room_id,
@@ -119,8 +120,8 @@ class PersistenceManager:
         # 4. If starting location, set as current location and room
         if is_starting:
             await crud.set_current_location(self.db, self.world_id, db_location.id)
-            room_key = LocationService.location_to_room_key(name)
-            LocationService.set_current_room(self.world_name, room_key)
+            room_key = RoomMappingService.location_to_room_key(name)
+            RoomMappingService.set_current_room(self.world_name, room_key)
             logger.info(f"Set '{name}' as current location and room")
 
         return db_location.id
@@ -199,15 +200,15 @@ class PersistenceManager:
             The created Location model, or None if failed
         """
         try:
-            # Load location data from filesystem using LocationService
-            loc_config = LocationService.load_location(self.world_name, location_name)
+            # Load location data from filesystem using LocationStorage
+            loc_config = LocationStorage.load_location(self.world_name, location_name)
             if not loc_config:
                 logger.warning(f"Location '{location_name}' not found in filesystem")
                 return None
 
             # Check for existing room mapping to preserve agents added during onboarding
-            room_key = LocationService.location_to_room_key(location_name)
-            existing_mapping = LocationService.get_room_mapping(self.world_name, room_key)
+            room_key = RoomMappingService.location_to_room_key(location_name)
+            existing_mapping = RoomMappingService.get_room_mapping(self.world_name, room_key)
             existing_agents = existing_mapping.agents if existing_mapping else []
 
             # Create location in database
@@ -228,7 +229,7 @@ class PersistenceManager:
 
             # Store room mapping in _state.json (preserve existing agents)
             if db_location.room_id:
-                LocationService.set_room_mapping(
+                RoomMappingService.set_room_mapping(
                     world_name=self.world_name,
                     room_key=room_key,
                     db_room_id=db_location.room_id,
@@ -385,10 +386,10 @@ class PersistenceManager:
 
         # Export location discovered status
         for location in locations:
-            loc_config = LocationService.load_location(self.world_name, location.name)
+            loc_config = LocationStorage.load_location(self.world_name, location.name)
             if loc_config and loc_config.is_discovered != location.is_discovered:
                 # Update filesystem location with discovered status
-                LocationService.update_location(
+                LocationStorage.update_location(
                     self.world_name,
                     location.name,
                     is_discovered=location.is_discovered,

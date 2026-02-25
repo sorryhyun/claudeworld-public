@@ -176,7 +176,7 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
             - Sub-agents (location_designer, character_designer, item_designer)
             - persist_world (full lore, stats)
             """
-            from services.location_service import LocationService
+            from services.location_storage import LocationStorage
             from services.player_service import PlayerService
             from services.world_reset_service import WorldResetService
 
@@ -197,7 +197,7 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
 
             try:
                 # Validate that starting_location exists in filesystem
-                fs_locations = LocationService.load_all_locations(effective_world_name)
+                fs_locations = LocationStorage.load_all_locations(effective_world_name)
                 if starting_location not in fs_locations:
                     available = ", ".join(fs_locations.keys()) if fs_locations else "none"
                     return {

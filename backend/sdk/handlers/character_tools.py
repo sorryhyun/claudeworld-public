@@ -18,7 +18,9 @@ from claude_agent_sdk import tool
 from domain.entities.gameplay_models import CharacterRemoval, RemovalReason
 from infrastructure.logging.perf_logger import track_perf
 from services.agent_filesystem_service import AgentFilesystemService
-from services.location_service import LocationService
+from services.location_storage import LocationStorage
+from services.room_mapping_service import RoomMappingService
+from services.transient_state_service import TransientStateService
 
 from sdk.handlers.common import build_action_context
 from sdk.handlers.context import ToolContext
@@ -118,14 +120,14 @@ def create_character_tools(ctx: ToolContext) -> list:
 
                 context = build_action_context(world_name, "character removal")
                 current_location = context.current_location
-                current_room_key = LocationService.location_to_room_key(current_location)
+                current_room_key = RoomMappingService.location_to_room_key(current_location)
 
                 # Remove character from current location in filesystem state
-                state = LocationService.load_state(world_name)
+                state = TransientStateService.load_state(world_name)
                 mapping = state.rooms.get(current_room_key)
 
                 if mapping and character_folder in mapping.agents:
-                    LocationService.remove_agent_from_room(world_name, current_room_key, character_folder)
+                    RoomMappingService.remove_agent_from_room(world_name, current_room_key, character_folder)
                     logger.info(f"Removed {character_folder} from {current_room_key}")
 
                     # DB sync: remove from current location
@@ -300,15 +302,11 @@ def create_character_tools(ctx: ToolContext) -> list:
                 # ============================================================
                 # FILESYSTEM-PRIMARY: Find destination location
                 # ============================================================
-                dest_room_key = LocationService.find_location_room_key_fuzzy(world_name, destination)
+                dest_room_key = RoomMappingService.find_location_room_key_fuzzy(world_name, destination)
                 if not dest_room_key:
-                    # List available locations for helpful error
-                    fs_locations = LocationService.load_all_locations(world_name)
-                    available = (
-                        ", ".join(loc.display_name or name for name, loc in fs_locations.items())
-                        if fs_locations
-                        else "none"
-                    )
+                    # List available locations for helpful error (show folder names)
+                    fs_locations = LocationStorage.load_all_locations(world_name)
+                    available = ", ".join(fs_locations.keys()) if fs_locations else "none"
                     return {
                         "content": [
                             {
@@ -320,23 +318,22 @@ def create_character_tools(ctx: ToolContext) -> list:
                     }
 
                 dest_location_name = dest_room_key[9:]  # len("location:") = 9
-                dest_config = LocationService.load_location(world_name, dest_location_name)
-                location_display = dest_config.display_name if dest_config else dest_location_name
+                location_display = dest_location_name
 
                 # ============================================================
                 # FILESYSTEM-PRIMARY: Find and remove from current locations
                 # ============================================================
-                state = LocationService.load_state(world_name)
+                state = TransientStateService.load_state(world_name)
                 for room_key, mapping in state.rooms.items():
                     if room_key.startswith("location:") and room_key != dest_room_key:
                         if character_folder in mapping.agents:
-                            LocationService.remove_agent_from_room(world_name, room_key, character_folder)
+                            RoomMappingService.remove_agent_from_room(world_name, room_key, character_folder)
                             logger.info(f"Removed {character_folder} from {room_key}")
 
                 # ============================================================
                 # FILESYSTEM-PRIMARY: Add to destination location
                 # ============================================================
-                LocationService.add_agent_to_room(world_name, dest_room_key, character_folder)
+                RoomMappingService.add_agent_to_room(world_name, dest_room_key, character_folder)
                 logger.info(f"Added {character_folder} to {dest_room_key}")
 
                 # ============================================================
@@ -435,25 +432,22 @@ def create_character_tools(ctx: ToolContext) -> list:
                     }
 
                 # Build agent-to-location mapping from _state.json
-                state = LocationService.load_state(world_name)
-                agent_locations: dict[str, str] = {}  # agent_name -> location_display_name
+                state = TransientStateService.load_state(world_name)
+                agent_locations: dict[str, str] = {}  # agent_name -> location_folder_name
 
                 for room_key, mapping in state.rooms.items():
                     if room_key.startswith("location:"):
                         loc_name = room_key[9:]  # len("location:") = 9
-                        # Load location to get display name
-                        loc_config = LocationService.load_location(world_name, loc_name)
-                        loc_display = loc_config.display_name if loc_config else loc_name
                         for agent_name in mapping.agents:
                             # Skip system agents (Narrator, Action_Manager, etc.)
                             if agent_name in ("Narrator", "Action_Manager", "Onboarding_Manager"):
                                 continue
-                            agent_locations[agent_name] = loc_display
+                            agent_locations[agent_name] = loc_name
 
                 if location_filter:
                     # Filter characters by location
                     # Find the room key for this location
-                    room_key = LocationService.find_location_room_key_fuzzy(world_name, location_filter)
+                    room_key = RoomMappingService.find_location_room_key_fuzzy(world_name, location_filter)
                     if not room_key:
                         return {
                             "content": [
@@ -466,8 +460,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                         }
 
                     loc_name = room_key[9:]  # len("location:") = 9
-                    loc_config = LocationService.load_location(world_name, loc_name)
-                    location_display = loc_config.display_name if loc_config else loc_name
+                    location_display = loc_name
 
                     # Get agents in this room from state
                     mapping = state.rooms.get(room_key)
@@ -609,24 +602,24 @@ def create_character_tools(ctx: ToolContext) -> list:
                 if which_location.lower() != "current":
                     target_loc = await crud.get_location_by_name(db, world_id, which_location)
                     if target_loc:
-                        room_key = LocationService.location_to_room_key(target_loc.name)
+                        room_key = RoomMappingService.location_to_room_key(target_loc.name)
                         if target_loc.room_id:
-                            LocationService.ensure_room_mapping_exists(
+                            RoomMappingService.ensure_room_mapping_exists(
                                 world_name=world_name,
                                 room_key=room_key,
                                 db_room_id=target_loc.room_id,
                                 agents=[],
                             )
-                        LocationService.add_agent_to_room(world_name, room_key, agent_name)
+                        RoomMappingService.add_agent_to_room(world_name, room_key, agent_name)
                         location_display = target_loc.display_name or target_loc.name
                     else:
                         # Fallback to current location
-                        room_key = LocationService.location_to_room_key(current_location_name)
-                        LocationService.add_agent_to_room(world_name, room_key, agent_name)
+                        room_key = RoomMappingService.location_to_room_key(current_location_name)
+                        RoomMappingService.add_agent_to_room(world_name, room_key, agent_name)
                         location_display = "current location"
                 else:
-                    room_key = LocationService.location_to_room_key(current_location_name)
-                    LocationService.add_agent_to_room(world_name, room_key, agent_name)
+                    room_key = RoomMappingService.location_to_room_key(current_location_name)
+                    RoomMappingService.add_agent_to_room(world_name, room_key, agent_name)
                     location_display = "current location"
 
                 # Create agent in DB

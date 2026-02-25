@@ -32,7 +32,7 @@ def create_character_design_tools(ctx: ToolContext) -> list:
     """
     import crud
     from services.agent_factory import AgentFactory
-    from services.location_service import LocationService
+    from services.room_mapping_service import RoomMappingService
 
     from sdk.handlers.common import build_action_context
 
@@ -102,24 +102,24 @@ def create_character_design_tools(ctx: ToolContext) -> list:
                 if which_location.lower() != "current":
                     target_loc = await crud.get_location_by_name(db, world_id, which_location)
                     if target_loc:
-                        room_key = LocationService.location_to_room_key(target_loc.name)
+                        room_key = RoomMappingService.location_to_room_key(target_loc.name)
                         if target_loc.room_id:
-                            LocationService.ensure_room_mapping_exists(
+                            RoomMappingService.ensure_room_mapping_exists(
                                 world_name=world_name,
                                 room_key=room_key,
                                 db_room_id=target_loc.room_id,
                                 agents=[],
                             )
-                        LocationService.add_agent_to_room(world_name, room_key, agent_name)
-                        location_display = target_loc.display_name or target_loc.name
+                        RoomMappingService.add_agent_to_room(world_name, room_key, agent_name)
+                        location_display = target_loc.name
                     else:
                         # Fallback to current location
-                        room_key = LocationService.location_to_room_key(current_location_name)
-                        LocationService.add_agent_to_room(world_name, room_key, agent_name)
+                        room_key = RoomMappingService.location_to_room_key(current_location_name)
+                        RoomMappingService.add_agent_to_room(world_name, room_key, agent_name)
                         location_display = "current location"
                 else:
-                    room_key = LocationService.location_to_room_key(current_location_name)
-                    LocationService.add_agent_to_room(world_name, room_key, agent_name)
+                    room_key = RoomMappingService.location_to_room_key(current_location_name)
+                    RoomMappingService.add_agent_to_room(world_name, room_key, agent_name)
                     location_display = "current location"
 
                 # Create agent in DB

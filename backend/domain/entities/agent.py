@@ -39,24 +39,6 @@ class Agent:
     group: Optional[str]
     system_prompt: str
 
-    @classmethod
-    def from_db_model(cls, db_agent) -> "Agent":
-        """
-        Create a domain Agent from a database model.
-
-        Args:
-            db_agent: SQLAlchemy Agent model instance
-
-        Returns:
-            Domain Agent instance
-        """
-        return cls(
-            id=db_agent.id,
-            name=db_agent.name,
-            group=db_agent.group,
-            system_prompt=db_agent.system_prompt,
-        )
-
 
 def is_action_manager(agent_name: str) -> bool:
     """Check if agent is Action Manager (for gameplay context)."""

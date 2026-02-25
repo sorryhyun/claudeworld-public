@@ -106,7 +106,6 @@ backend/
 │   ├── prompt_builder.py      # System prompt assembly
 │   ├── world_service.py       # World filesystem storage
 │   ├── world_reset_service.py # World reset operations
-│   ├── location_service.py    # Location management
 │   ├── location_storage.py    # Location filesystem storage
 │   ├── player_service.py      # Player state management
 │   ├── item_service.py        # Item template management

@@ -17,9 +17,11 @@ import schemas
 from claude_agent_sdk import tool
 from domain.value_objects.enums import MessageRole
 from infrastructure.logging.perf_logger import track_perf
-from services.location_service import LocationService
+from services.location_storage import LocationStorage
 from services.persistence_manager import PersistenceManager
 from services.player_service import PlayerService
+from services.room_mapping_service import RoomMappingService
+from services.transient_state_service import TransientStateService
 from services.world_service import WorldService
 
 from sdk.handlers.common import build_action_context
@@ -121,7 +123,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 if from_location_name and from_location_name != "unknown":
                     try:
                         # Get location display name for history entry
-                        from_location_config = LocationService.load_location(world_name, from_location_name)
+                        from_location_config = LocationStorage.load_location(world_name, from_location_name)
                         from_display_name = (
                             from_location_config.display_name if from_location_config else from_location_name
                         )
@@ -153,13 +155,8 @@ def create_location_tools(ctx: ToolContext) -> list:
                 matching_location = None
 
                 for loc in db_locations:
-                    # Match by name or display_name (case-insensitive)
-                    if (
-                        loc.name.lower() == destination_lower
-                        or (loc.display_name and loc.display_name.lower() == destination_lower)
-                        or destination_lower in loc.name.lower()
-                        or (loc.display_name and destination_lower in loc.display_name.lower())
-                    ):
+                    # Match by folder name only (case-insensitive)
+                    if loc.name.lower() == destination_lower or destination_lower in loc.name.lower():
                         matching_location = loc
                         break
 
@@ -177,8 +174,8 @@ def create_location_tools(ctx: ToolContext) -> list:
 
                 # If no match found, return error - use add_location to create new locations
                 if matching_location is None:
-                    # Get all location display names for helpful error message
-                    location_names = [loc.display_name or loc.name for loc in db_locations]
+                    # Get all location folder names for helpful error message
+                    location_names = [loc.name for loc in db_locations]
                     available = ", ".join(location_names) if location_names else "none"
                     logger.warning(f"Location '{destination}' not found. Available: {available}")
                     return {
@@ -199,8 +196,8 @@ def create_location_tools(ctx: ToolContext) -> list:
                     logger.info(f"Created new room {new_room.id} for location {matching_location.name}")
 
                     # Update room mapping in _state.json
-                    room_key = LocationService.location_to_room_key(matching_location.name)
-                    LocationService.set_room_mapping(
+                    room_key = RoomMappingService.location_to_room_key(matching_location.name)
+                    RoomMappingService.set_room_mapping(
                         world_name=world_name,
                         room_key=room_key,
                         db_room_id=new_room.id,
@@ -241,7 +238,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                         fs_state.current_location = matching_location.name
                         PlayerService.save_player_state(world_name, fs_state)
 
-                    display_name = matching_location.display_name or matching_location.name
+                    display_name = matching_location.name
                     pos_x, pos_y = matching_location.position_x, matching_location.position_y
 
                     logger.info(f"Traveled to existing location: {display_name}")
@@ -286,7 +283,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 # Save action suggestions to _state.json
                 # ============================================================
                 try:
-                    LocationService.save_suggestions(world_name, [action_1, action_2])
+                    TransientStateService.save_suggestions(world_name, [action_1, action_2])
                     logger.info(f"Travel suggestions saved: [{action_1}] / [{action_2}]")
                 except Exception as e:
                     logger.error(f"Failed to save travel suggestions: {e}")
@@ -295,7 +292,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 # Save arrival context for continuity (one-time use)
                 # ============================================================
                 try:
-                    LocationService.save_arrival_context(
+                    TransientStateService.save_arrival_context(
                         world_name=world_name,
                         previous_narration=narration,
                         triggering_action=user_action,
@@ -356,7 +353,7 @@ def create_location_tools(ctx: ToolContext) -> list:
 
             try:
                 # Load locations from filesystem (source of truth)
-                fs_locations = LocationService.load_all_locations(world_name)
+                fs_locations = LocationStorage.load_all_locations(world_name)
 
                 if not fs_locations:
                     return {
@@ -370,8 +367,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 # Build location list from filesystem locations
                 location_entries = []
                 for loc_name, loc_config in fs_locations.items():
-                    display_name = loc_config.display_name or loc_name
-                    entry = f"- **{display_name}**"
+                    entry = f"- **{loc_name}**"
 
                     if loc_name == current_location:
                         entry += " (current)"
@@ -382,11 +378,21 @@ def create_location_tools(ctx: ToolContext) -> list:
 
                     # Add description if available
                     if loc_config.description:
+                        # Strip leading markdown heading (e.g. "# Location Name\n\n")
+                        desc_text = loc_config.description.lstrip()
+                        if desc_text.startswith("#"):
+                            # Remove the heading line and leading whitespace after it
+                            newline_idx = desc_text.find("\n")
+                            if newline_idx != -1:
+                                desc_text = desc_text[newline_idx + 1:].lstrip()
+                            else:
+                                desc_text = ""
                         # Truncate description to first 100 chars
-                        desc_preview = loc_config.description[:100]
-                        if len(loc_config.description) > 100:
+                        desc_preview = desc_text[:100]
+                        if len(desc_text) > 100:
                             desc_preview += "..."
-                        entry += f"\n  {desc_preview}"
+                        if desc_preview:
+                            entry += f"\n  {desc_preview}"
 
                     location_entries.append(entry)
 
@@ -484,7 +490,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 logger.info(f"Created location: {validated.display_name} (id={new_location_id})")
 
                 response_text = f"""**Location Created:**
-- Name: {validated.display_name}
+- Name: {validated.name}
 - Position: ({validated.position_x}, {validated.position_y})
 - Is Starting: {validated.is_starting}
 - Description: {validated.description[:200]}..."""
