@@ -18,7 +18,7 @@ from claude_agent_sdk import tool
 from domain.value_objects.enums import MessageRole
 from infrastructure.logging.perf_logger import track_perf
 from services.player_service import PlayerService
-from services.transient_state_service import TransientStateService
+from services.room_mapping_service import RoomMappingService
 
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
@@ -186,7 +186,7 @@ def create_narrative_tools(ctx: ToolContext) -> list:
 
             # Persist suggestions to _state.json for frontend retrieval
             try:
-                TransientStateService.save_suggestions(world_name, [action_1, action_2])
+                RoomMappingService.save_suggestions(world_name, [action_1, action_2])
                 logger.info(f"💾 Suggestions persisted to _state.json for world: {world_name}")
             except Exception as e:
                 logger.error(f"Failed to persist suggestions: {e}")

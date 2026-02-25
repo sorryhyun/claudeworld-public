@@ -13,7 +13,6 @@ from claude_agent_sdk import create_sdk_mcp_server
 from sdk.handlers.character_design_tools import create_character_design_tools
 from sdk.handlers.character_tools import create_character_tools
 from sdk.handlers.context import ToolContext
-from sdk.handlers.equipment_tools import create_equipment_tools
 from sdk.handlers.history_tools import create_history_tools
 from sdk.handlers.item_tools import create_item_tools
 from sdk.handlers.location_tools import create_location_tools
@@ -65,9 +64,6 @@ def create_action_manager_tools(ctx: ToolContext) -> list:
 
     # Add narrative tools (narration, suggest_options)
     tools.extend(create_narrative_tools(ctx))
-
-    # Add equipment tools (equip_item, unequip_item, use_item, list_equipment, set_flag) - Phase 2
-    tools.extend(create_equipment_tools(ctx))
 
     # Add history tools (recall_history) - for recalling past events from consolidated history
     tools.extend(create_history_tools(ctx))

@@ -16,7 +16,7 @@ from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config
 from services.location_storage import LocationStorage
 from services.player_service import PlayerService
-from services.transient_state_service import TransientStateService
+from services.room_mapping_service import RoomMappingService
 from services.world_service import WorldService
 
 logger = logging.getLogger("GameplayContext")
@@ -225,7 +225,7 @@ class GameplayContextBuilder:
             location_name = self._current_location.name
 
         # Check for arrival context (one-time use after travel)
-        arrival_context = TransientStateService.load_and_clear_arrival_context(self.world_name)
+        arrival_context = RoomMappingService.load_and_clear_arrival_context(self.world_name)
 
         # Build the base message
         parts = []

@@ -21,7 +21,6 @@ from services.location_storage import LocationStorage
 from services.persistence_manager import PersistenceManager
 from services.player_service import PlayerService
 from services.room_mapping_service import RoomMappingService
-from services.transient_state_service import TransientStateService
 from services.world_service import WorldService
 
 from sdk.handlers.common import build_action_context
@@ -283,7 +282,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 # Save action suggestions to _state.json
                 # ============================================================
                 try:
-                    TransientStateService.save_suggestions(world_name, [action_1, action_2])
+                    RoomMappingService.save_suggestions(world_name, [action_1, action_2])
                     logger.info(f"Travel suggestions saved: [{action_1}] / [{action_2}]")
                 except Exception as e:
                     logger.error(f"Failed to save travel suggestions: {e}")
@@ -292,7 +291,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 # Save arrival context for continuity (one-time use)
                 # ============================================================
                 try:
-                    TransientStateService.save_arrival_context(
+                    RoomMappingService.save_arrival_context(
                         world_name=world_name,
                         previous_narration=narration,
                         triggering_action=user_action,

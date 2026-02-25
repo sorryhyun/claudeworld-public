@@ -6,11 +6,10 @@ Handles world CRUD operations:
 - Enter world (start gameplay)
 - Reset world to initial state
 - Import worlds from filesystem
-
-Uses WorldFacade for FS↔DB sync operations.
 """
 
 import logging
+from typing import Optional
 
 import crud
 import schemas
@@ -26,11 +25,9 @@ from infrastructure.database import models
 from infrastructure.database.connection import async_session_maker, get_db, serialized_write
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
-from services.facades import WorldFacade
 from services.location_storage import LocationStorage
 from services.player_service import PlayerService
 from services.room_mapping_service import RoomMappingService
-from services.transient_state_service import TransientStateService
 from services.world_reset_service import WorldResetService
 from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +36,101 @@ from sqlalchemy.future import select
 logger = logging.getLogger("GameRouter.Worlds")
 
 router = APIRouter()
+
+
+# =============================================================================
+# FS↔DB SYNC HELPERS (formerly WorldFacade)
+# =============================================================================
+
+
+async def _sync_world_from_fs(db: AsyncSession, world: models.World) -> bool:
+    """Sync DB state from FS (source of truth). Returns True if anything changed."""
+    fs_config = WorldService.load_world_config(world.name)
+    if not fs_config:
+        logger.warning(f"FS config not found for world '{world.name}'")
+        return False
+
+    updates = {}
+    if fs_config.phase != world.phase:
+        updates["phase"] = fs_config.phase
+    if fs_config.user_name and fs_config.user_name != world.user_name:
+        updates["user_name"] = fs_config.user_name
+    if fs_config.genre and fs_config.genre != world.genre:
+        updates["genre"] = fs_config.genre
+    if fs_config.theme and fs_config.theme != world.theme:
+        updates["theme"] = fs_config.theme
+
+    if updates:
+        await crud.update_world(db, world.id, schemas.WorldUpdate(**updates))
+        logger.info(f"Synced {len(updates)} fields for world '{world.name}'")
+        return True
+    return False
+
+
+async def _create_location_from_filesystem(
+    db: AsyncSession, world_name: str, world_id: int, location_name: str
+) -> Optional[models.Location]:
+    """Create a location in the database from filesystem data."""
+    from crud.room_agents import add_agent_to_room
+
+    try:
+        loc_config = LocationStorage.load_location(world_name, location_name)
+        if not loc_config:
+            logger.warning(f"Location '{location_name}' not found in filesystem")
+            return None
+
+        # Check for existing room mapping to preserve agents added during onboarding
+        room_key = RoomMappingService.location_to_room_key(location_name)
+        existing_mapping = RoomMappingService.get_room_mapping(world_name, room_key)
+        existing_agents = existing_mapping.agents if existing_mapping else []
+
+        position = loc_config.position if isinstance(loc_config.position, tuple) else (0, 0)
+        location_create = schemas.LocationCreate(
+            name=location_name,
+            display_name=loc_config.display_name,
+            description=loc_config.description or "",
+            position_x=position[0],
+            position_y=position[1],
+            adjacent_to=None,
+            is_discovered=loc_config.is_discovered,
+            is_draft=loc_config.is_draft,
+        )
+
+        db_location = await crud.create_location(db, world_id, location_create)
+        logger.info(f"Created location '{location_name}' in database (id={db_location.id})")
+
+        # Store room mapping and add agents
+        if db_location.room_id:
+            RoomMappingService.set_room_mapping(
+                world_name=world_name,
+                room_key=room_key,
+                db_room_id=db_location.room_id,
+                agents=existing_agents,
+            )
+            for agent_name in existing_agents:
+                agent = await crud.get_agent_by_name(db, agent_name)
+                if agent:
+                    await add_agent_to_room(db, db_location.room_id, agent.id)
+            if existing_agents:
+                logger.info(f"Added {len(existing_agents)} agents to room {db_location.room_id}")
+
+        return db_location
+    except Exception as e:
+        logger.error(f"Failed to create location '{location_name}' from filesystem: {e}")
+        return None
+
+
+def _build_world_response(world: models.World) -> schemas.World:
+    """Build a full World response with lore and stat definitions from FS."""
+    lore = WorldService.load_lore(world.name)
+    stat_defs = PlayerService.load_stat_definitions(world.name)
+
+    world_schema = schemas.World.model_validate(world)
+    world_schema.lore = lore
+    world_schema.stat_definitions = schemas.StatDefinitions(
+        stats=[schemas.StatDefinition(**s) for s in stat_defs.get("stats", [])]
+    )
+    return world_schema
 
 
 # =============================================================================
@@ -176,8 +268,10 @@ async def list_importable_worlds(
     List worlds that exist in filesystem but not in database.
     These are worlds that can be imported/loaded.
     """
-    facade = WorldFacade(db)
-    fs_worlds = await facade.list_importable_worlds(identity.user_id)
+    fs_worlds = WorldService.list_worlds()
+    db_worlds = await crud.get_worlds_by_owner(db, identity.user_id)
+    db_world_names = {w.name for w in db_worlds}
+    importable = [w for w in fs_worlds if w.name not in db_world_names]
 
     return [
         schemas.ImportableWorld(
@@ -190,7 +284,7 @@ async def list_importable_worlds(
             theme=w.theme,
             created_at=w.created_at,
         )
-        for w in fs_worlds
+        for w in importable
     ]
 
 
@@ -204,14 +298,19 @@ async def import_world(
     Import a world from filesystem into the database.
     This creates the database records for an existing filesystem world.
     """
-    facade = WorldFacade(db)
-    try:
-        db_world = await facade.import_world(world_name, identity.user_id)
-        return db_world
-    except ValueError as e:
-        if "not found in filesystem" in str(e):
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+    # Check FS
+    fs_config = WorldService.load_world_config(world_name)
+    if not fs_config:
+        raise HTTPException(status_code=404, detail=f"World '{world_name}' not found in filesystem")
+
+    # Check DB
+    existing = await crud.get_world_by_name(db, world_name, identity.user_id)
+    if existing:
+        raise HTTPException(status_code=400, detail=f"World '{world_name}' already exists in database")
+
+    db_world = await crud.import_world_from_filesystem(db, fs_config, identity.user_id)
+    logger.info(f"Imported world '{world_name}' for user '{identity.user_id}'")
+    return db_world
 
 
 @router.get("/{world_id}", response_model=schemas.World)
@@ -229,11 +328,9 @@ async def get_world(
     if world.owner_id != identity.user_id and identity.role != "admin":
         raise HTTPException(status_code=403, detail="Not your world")
 
-    # Sync from filesystem (source of truth) via facade
-    facade = WorldFacade(db)
-    sync_result = await facade.sync_from_fs(world)
-    if sync_result.synced:
-        # Refresh world object after sync
+    # Sync from filesystem (source of truth)
+    synced = await _sync_world_from_fs(db, world)
+    if synced:
         world = await crud.get_world(db, world_id)
 
     # Pre-connect agents for active worlds (reduces first-action latency)
@@ -281,7 +378,7 @@ async def get_world(
                 background_tasks.add_task(pre_connect_agents)
 
     # Build full response with lore and stat definitions from FS
-    return facade.build_world_response(world)
+    return _build_world_response(world)
 
 
 @router.delete("/{world_id}")
@@ -291,16 +388,22 @@ async def delete_world(
     identity: RequestIdentity = Depends(get_request_identity),
 ):
     """Delete a world and all associated data (FS + DB)."""
-    facade = WorldFacade(db)
-    try:
-        await facade.delete_world(world_id, identity.user_id, is_admin=(identity.role == "admin"))
-        return {"status": "deleted"}
-    except ValueError as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        if "not authorized" in str(e).lower():
-            raise HTTPException(status_code=403, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+    world = await crud.get_world(db, world_id)
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+    if world.owner_id != identity.user_id and identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to delete this world")
+
+    world_name = world.name
+
+    # Delete DB records (CASCADE deletes rooms)
+    await crud.delete_world(db, world_id)
+
+    # Delete FS data
+    WorldService.delete_world(world_name)
+
+    logger.info(f"Deleted world '{world_name}' (FS + DB)")
+    return {"status": "deleted"}
 
 
 @router.get("/{world_id}/characters")
@@ -472,8 +575,7 @@ async def _perform_world_reset(
     starting_location = await crud.get_location_by_name(db, world.id, starting_location_name)
     if not starting_location:
         # Try to create the location from filesystem
-        facade = WorldFacade(db)
-        starting_location = await facade._create_location_from_filesystem(world.name, world.id, starting_location_name)
+        starting_location = await _create_location_from_filesystem(db, world.name, world.id, starting_location_name)
         if not starting_location:
             raise ValueError(f"Starting location '{starting_location_name}' not found in database or filesystem")
         logger.info(f"Created starting location '{starting_location_name}' from filesystem during reset")
@@ -507,7 +609,7 @@ async def _perform_world_reset(
     logger.info(f"Reset player.yaml in filesystem (game_time: {initial_game_time['hour']}:00)")
 
     # Reset _state.json to only contain onboarding room and starting location
-    state = TransientStateService.load_state(world.name)
+    state = RoomMappingService.load_state(world.name)
     starting_room_key = f"location:{starting_location_name}"
 
     # Keep only onboarding and starting location rooms
@@ -523,7 +625,7 @@ async def _perform_world_reset(
     # Clear stale arrival context from previous travel
     if "arrival_context" in state.ui:
         del state.ui["arrival_context"]
-    TransientStateService.save_state(world.name, state)
+    RoomMappingService.save_state(world.name, state)
     logger.info(f"Reset _state.json rooms to: {list(preserved_rooms.keys())}")
 
     # Reset is_discovered for all locations except starting location
@@ -618,17 +720,14 @@ async def enter_world(
     if world.owner_id != identity.user_id and identity.role != "admin":
         raise HTTPException(status_code=403, detail="Not your world")
 
-    # Use facade for sync operations (ensures world is active)
-    facade = WorldFacade(db)
-    try:
-        entry_result = await facade.enter_world(world_id)
-    except ValueError as e:
-        if "not ready yet" in str(e).lower():
-            raise HTTPException(status_code=400, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+    # Apply pending phase change and sync FS→DB
+    WorldService.apply_pending_phase(world.name)
+    await _sync_world_from_fs(db, world)
 
-    # Refresh world after sync
+    # Refresh and validate world is active
     world = await crud.get_world(db, world_id)
+    if world.phase != WorldPhase.ACTIVE:
+        raise HTTPException(status_code=400, detail="World is not ready yet (still in onboarding phase)")
 
     # Perform reset and trigger initial scene
     try:
@@ -679,15 +778,9 @@ async def enter_world(
         raise HTTPException(status_code=500, detail=f"Failed to enter world: {str(e)}")
 
     # Build response
-    world_schema = schemas.World.model_validate(entry_result.world)
-    world_schema.lore = entry_result.lore
-    world_schema.stat_definitions = schemas.StatDefinitions(
-        stats=[schemas.StatDefinition(**s) for s in entry_result.stat_definitions.get("stats", [])]
-    )
-
     return {
-        "world": world_schema,
-        "arrival_message_sent": True,  # Always true now since we always reset
+        "world": _build_world_response(world),
+        "arrival_message_sent": True,
     }
 
 

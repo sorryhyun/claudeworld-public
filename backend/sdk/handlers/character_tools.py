@@ -20,7 +20,6 @@ from infrastructure.logging.perf_logger import track_perf
 from services.agent_filesystem_service import AgentFilesystemService
 from services.location_storage import LocationStorage
 from services.room_mapping_service import RoomMappingService
-from services.transient_state_service import TransientStateService
 
 from sdk.handlers.common import build_action_context
 from sdk.handlers.context import ToolContext
@@ -123,7 +122,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                 current_room_key = RoomMappingService.location_to_room_key(current_location)
 
                 # Remove character from current location in filesystem state
-                state = TransientStateService.load_state(world_name)
+                state = RoomMappingService.load_state(world_name)
                 mapping = state.rooms.get(current_room_key)
 
                 if mapping and character_folder in mapping.agents:
@@ -323,7 +322,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                 # ============================================================
                 # FILESYSTEM-PRIMARY: Find and remove from current locations
                 # ============================================================
-                state = TransientStateService.load_state(world_name)
+                state = RoomMappingService.load_state(world_name)
                 for room_key, mapping in state.rooms.items():
                     if room_key.startswith("location:") and room_key != dest_room_key:
                         if character_folder in mapping.agents:
@@ -432,7 +431,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                     }
 
                 # Build agent-to-location mapping from _state.json
-                state = TransientStateService.load_state(world_name)
+                state = RoomMappingService.load_state(world_name)
                 agent_locations: dict[str, str] = {}  # agent_name -> location_folder_name
 
                 for room_key, mapping in state.rooms.items():

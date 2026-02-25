@@ -217,7 +217,7 @@ class TestLocationToolsCreation:
 class TestActionManagerMCPServer:
     """Tests for action manager MCP server creation."""
 
-    @patch("sdk.handlers.servers.create_equipment_tools")
+    @patch("sdk.handlers.servers.create_history_tools")
     @patch("sdk.handlers.servers.create_narrative_tools")
     @patch("sdk.handlers.servers.create_mechanics_tools")
     @patch("sdk.handlers.servers.create_location_tools")
@@ -230,7 +230,7 @@ class TestActionManagerMCPServer:
         mock_create_loc,
         mock_create_mech,
         mock_create_narr,
-        mock_create_equip,
+        mock_create_hist,
     ):
         """Test creating action manager MCP server."""
         from sdk.handlers.servers import create_action_manager_mcp_server
@@ -239,13 +239,7 @@ class TestActionManagerMCPServer:
         mock_create_loc.return_value = [MagicMock(name="travel")]
         mock_create_mech.return_value = [MagicMock(name="stat_calc")]
         mock_create_narr.return_value = [MagicMock(name="narration"), MagicMock(name="suggest_options")]
-        mock_create_equip.return_value = [
-            MagicMock(name="equip_item"),
-            MagicMock(name="unequip_item"),
-            MagicMock(name="use_item"),
-            MagicMock(name="list_equipment"),
-            MagicMock(name="set_flag"),
-        ]
+        mock_create_hist.return_value = [MagicMock(name="recall_history")]
         mock_create_mcp.return_value = MagicMock()
 
         ctx = ToolContext(
@@ -263,11 +257,11 @@ class TestActionManagerMCPServer:
         mock_create_loc.assert_called_once_with(ctx)
         mock_create_mech.assert_called_once_with(ctx)
         mock_create_narr.assert_called_once_with(ctx)
-        mock_create_equip.assert_called_once_with(ctx)
+        mock_create_hist.assert_called_once_with(ctx)
 
         # MCP server should be created with all tools combined
         mock_create_mcp.assert_called_once()
         call_args = mock_create_mcp.call_args
         assert call_args.kwargs["name"] == "action_manager"
-        # char(1) + loc(1) + mech(1) + narr(2) + equip(5) = 10 tools
-        assert len(call_args.kwargs["tools"]) == 10
+        # char(1) + loc(1) + mech(1) + narr(2) + hist(1) = 6 tools
+        assert len(call_args.kwargs["tools"]) == 6
