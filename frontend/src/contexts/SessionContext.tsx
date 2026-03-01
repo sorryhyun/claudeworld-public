@@ -273,35 +273,26 @@ export function SessionProvider({
 
   const loadWorldData = useCallback(async (worldId: number) => {
     try {
-      // Load player state
-      const state = await gameService.getPlayerState(worldId);
+      // Load all independent data in parallel
+      const [state, locs, pollResult, suggs] = await Promise.all([
+        gameService.getPlayerState(worldId),
+        gameService.getLocations(worldId),
+        gameService.pollUpdates(worldId, null).catch(() => null),
+        gameService.getActionSuggestions(worldId),
+      ]);
+
       setPlayerState(state);
-
-      // Load locations
-      const locs = await gameService.getLocations(worldId);
       setLocations(locs);
+      setCurrentLocation(locs.find((l) => l.is_current) || null);
 
-      // Find current location
-      const current = locs.find((l) => l.is_current) || null;
-      setCurrentLocation(current);
-
-      // Load messages via poll endpoint
-      try {
-        const pollData = await gameService.pollUpdates(worldId, null);
-        if (pollData.messages.length > 0) {
-          setMessages(pollData.messages);
-          setLastMessageId(pollData.messages[pollData.messages.length - 1].id);
-        } else {
-          setMessages([]);
-          setLastMessageId(null);
-        }
-      } catch {
+      if (pollResult && pollResult.messages.length > 0) {
+        setMessages(pollResult.messages);
+        setLastMessageId(pollResult.messages[pollResult.messages.length - 1].id);
+      } else {
         setMessages([]);
         setLastMessageId(null);
       }
 
-      // Load suggestions
-      const suggs = await gameService.getActionSuggestions(worldId);
       setSuggestions(suggs);
     } catch (error) {
       console.error("Failed to load world data:", error);
@@ -436,20 +427,17 @@ export function SessionProvider({
       try {
         await gameService.travelToLocation(world.id, locationId);
 
-        const updatedLocs = await gameService.getLocations(world.id);
+        // Load locations and messages in parallel
+        const [updatedLocs, msgs] = await Promise.all([
+          gameService.getLocations(world.id),
+          gameService.getLocationMessages(world.id, locationId),
+        ]);
         setLocations(updatedLocs);
 
         const newCurrent = updatedLocs.find((l) => l.id === locationId) || null;
         setCurrentLocation(newCurrent);
-
-        if (newCurrent) {
-          const msgs = await gameService.getLocationMessages(
-            world.id,
-            newCurrent.id,
-          );
-          setMessages(msgs);
-          setLastMessageId(msgs.length > 0 ? msgs[msgs.length - 1].id : null);
-        }
+        setMessages(msgs);
+        setLastMessageId(msgs.length > 0 ? msgs[msgs.length - 1].id : null);
       } finally {
         setActionInProgress(false);
       }
@@ -726,7 +714,7 @@ export function SessionProvider({
   // CONTEXT VALUE
   // ==========================================================================
 
-  const value: SessionContextValue = {
+  const value: SessionContextValue = useMemo(() => ({
     world,
     playerState,
     currentLocation,
@@ -752,7 +740,12 @@ export function SessionProvider({
 
     startPolling,
     stopPolling,
-  };
+  }), [
+    world, playerState, currentLocation, locations, messages, suggestions,
+    phase, loading, actionInProgress, isClauding, isChatMode, loadWorld,
+    clearWorld, submitAction, sendOnboardingMessage, selectSuggestion,
+    travelTo, updateLocationLabel, viewLocationHistory, startPolling, stopPolling,
+  ]);
 
   return (
     <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

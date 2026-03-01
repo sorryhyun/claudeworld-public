@@ -14,21 +14,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { Button } from "../ui/button";
 import { LoadingDots } from "../shared/LoadingDots";
 import { cn } from "@/utils/cn";
-
-interface ImageData {
-  data: string; // Base64 encoded (without data URL prefix)
-  mediaType: string; // MIME type
-  preview: string; // Full data URL for preview
-}
-
-// Allowed image types
-const ALLOWED_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-];
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
+import { type ImageData, ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE, fileToBase64 } from "@/utils/image";
 
 interface SlashCommand {
   command: string;
@@ -68,24 +54,6 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const commandListRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Convert file to base64
-  const fileToBase64 = (file: File): Promise<ImageData> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64Data = result.split(",")[1];
-        resolve({
-          data: base64Data,
-          mediaType: file.type,
-          preview: result,
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
 
   // Handle file selection
   const handleFileSelect = async (file: File) => {
@@ -166,27 +134,10 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
     setAttachedImage(null);
   };
 
-  // Memoize processing state calculations to avoid filtering on every render
-  const { isProcessing, isChatModeProcessing } = useMemo(() => {
-    // Check if Action_Manager or sub-agents are currently thinking (only in normal mode)
-    // Sub-agents (Summarizer, World Seed Generator) have negative agent_ids (-1, -2)
-    const chattingAgents = messages.filter((m) => m.is_chatting);
-    const processing =
-      phase === "active" &&
-      !isChatMode &&
-      chattingAgents.some(
-        (m) =>
-          m.agent_name === "Action_Manager" ||
-          (m.agent_id !== undefined && m.agent_id !== null && m.agent_id < 0),
-      );
-    // Check if NPCs are responding in chat mode
-    const chatModeProcessing =
-      phase === "active" && isChatMode && chattingAgents.length > 0;
-
-    return {
-      isProcessing: processing,
-      isChatModeProcessing: chatModeProcessing,
-    };
+  // Check if NPCs are responding in chat mode
+  const isChatModeProcessing = useMemo(() => {
+    if (phase !== "active" || !isChatMode) return false;
+    return messages.some((m) => m.is_chatting);
   }, [messages, phase, isChatMode]);
 
   // Filter available commands based on current mode and input
@@ -360,7 +311,7 @@ export function ActionInput({ placeholder, disabled }: ActionInputProps) {
       )}
 
       {/* Clauding indicator (normal gameplay mode) */}
-      {(isProcessing || isClauding) && !isChatMode && (
+      {isClauding && !isChatMode && (
         <div
           className="flex items-center justify-center gap-2 py-2 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg"
           role="status"

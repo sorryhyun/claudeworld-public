@@ -15,12 +15,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/utils/cn";
 import { useMention } from "../../hooks/useMention";
 import { MentionDropdown } from "./MentionDropdown";
-
-interface ImageData {
-  data: string; // Base64 encoded (without data URL prefix)
-  mediaType: string; // MIME type
-  preview: string; // Full data URL for preview
-}
+import { type ImageData, ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE, fileToBase64 } from "@/utils/image";
 
 interface MessageInputProps {
   isConnected: boolean;
@@ -38,14 +33,6 @@ export interface MessageInputHandle {
   handleFileSelect: (file: File) => Promise<void>;
 }
 
-// Allowed image types
-const ALLOWED_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-];
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
 const MAX_IMAGES = 5; // Maximum number of images per message
 
 export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
@@ -71,25 +58,6 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     useImperativeHandle(ref, () => ({
       handleFileSelect,
     }));
-
-    // Convert file to base64
-    const fileToBase64 = (file: File): Promise<ImageData> => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          // Extract base64 data without the data URL prefix
-          const base64Data = result.split(",")[1];
-          resolve({
-            data: base64Data,
-            mediaType: file.type,
-            preview: result,
-          });
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    };
 
     // Handle file selection (adds to existing images, respects MAX_IMAGES limit)
     const handleFileSelect = async (file: File) => {

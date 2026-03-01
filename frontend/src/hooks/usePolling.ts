@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Message, ImageItem } from "../types";
-import { getApiKey } from "../services";
+import { API_BASE_URL, getFetchOptions } from "../services/apiClient";
 import { useSSE } from "./useSSE";
 
 interface UsePollingReturn {
@@ -20,8 +20,6 @@ interface UsePollingReturn {
 const POLL_INTERVAL = 5000; // Poll every 5 seconds
 const POLL_INTERVAL_SSE = 30000; // Safety-net polling when SSE connected
 const STATUS_POLL_INTERVAL = 3000; // Poll agent status every 3 seconds
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export const usePolling = (roomId: number | null): UsePollingReturn => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -136,19 +134,10 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      };
-
-      if (apiKey) {
-        headers["X-API-Key"] = apiKey;
-      }
-
-      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, {
-        headers,
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/rooms/${roomId}/messages`,
+        getFetchOptions(),
+      );
 
       if (response.ok) {
         const allMessages = await response.json();
@@ -175,22 +164,12 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      };
-
-      if (apiKey) {
-        headers["X-API-Key"] = apiKey;
-      }
-
       const url =
         lastMessageIdRef.current > 0
           ? `${API_BASE_URL}/rooms/${roomId}/messages/poll?since_id=${lastMessageIdRef.current}`
           : `${API_BASE_URL}/rooms/${roomId}/messages/poll`;
 
-      const response = await fetch(url, { headers });
+      const response = await fetch(url, getFetchOptions());
 
       if (response.ok) {
         const newMessages = await response.json();
@@ -227,19 +206,9 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     if (sseConnectedRef.current) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      };
-
-      if (apiKey) {
-        headers["X-API-Key"] = apiKey;
-      }
-
       const response = await fetch(
         `${API_BASE_URL}/rooms/${roomId}/chatting-agents`,
-        { headers },
+        getFetchOptions(),
       );
 
       if (response.ok) {
@@ -400,16 +369,6 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      };
-
-      if (apiKey) {
-        headers["X-API-Key"] = apiKey;
-      }
-
       const messageData: {
         content: string;
         role: string;
@@ -436,11 +395,11 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
       const response = await fetch(
         `${API_BASE_URL}/rooms/${roomId}/messages/send`,
-        {
+        getFetchOptions({
           method: "POST",
-          headers,
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(messageData),
-        },
+        }),
       );
 
       if (response.ok) {

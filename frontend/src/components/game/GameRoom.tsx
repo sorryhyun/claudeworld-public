@@ -250,9 +250,6 @@ export function GameRoom() {
   const lastMessageCountRef = useRef(0);
   const [showHistory, setShowHistory] = useState(false);
   const historyModalRef = useFocusTrap<HTMLDivElement>(showHistory);
-  const [lastAnnouncedMessageId, setLastAnnouncedMessageId] = useState<
-    number | null
-  >(null);
 
   // Get only the latest turn for display (not the full history)
   const displayMessages = useMemo(() => getLatestTurn(messages), [messages]);
@@ -283,19 +280,6 @@ export function GameRoom() {
       lastMessageCountRef.current = 0;
     }
   }, [displayMessages.length]);
-
-  // Track last message for screen reader announcement
-  useEffect(() => {
-    if (displayMessages.length > 0) {
-      const lastMessage = displayMessages[displayMessages.length - 1];
-      if (
-        lastMessage.id !== lastAnnouncedMessageId &&
-        lastMessage.role !== "user"
-      ) {
-        setLastAnnouncedMessageId(lastMessage.id);
-      }
-    }
-  }, [displayMessages, lastAnnouncedMessageId]);
 
   // Handle Escape key to close history modal
   useEffect(() => {

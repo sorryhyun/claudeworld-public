@@ -61,55 +61,15 @@ export const useAgents = () => {
 
     let isActive = true;
 
-    const doFetch = async (isInitial = false) => {
-      try {
-        if (isInitial) {
-          setLoading(true);
-        }
-        setError(null);
-        const data = await api.getAllAgents();
-
-        // Only update state if agents have actually changed
-        setAgents((prevAgents) => {
-          // Check if data is different
-          if (prevAgents.length !== data.length) {
-            return data;
-          }
-
-          // Check if any agent has changed
-          const hasChanges = data.some((newAgent) => {
-            const prevAgent = prevAgents.find((a) => a.id === newAgent.id);
-            if (!prevAgent) return true;
-
-            // Compare relevant properties
-            return (
-              prevAgent.name !== newAgent.name ||
-              prevAgent.profile_pic !== newAgent.profile_pic ||
-              prevAgent.config_file !== newAgent.config_file
-            );
-          });
-
-          return hasChanges ? data : prevAgents;
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch agents");
-        console.error("Failed to fetch agents:", err);
-      } finally {
-        if (isInitial) {
-          setLoading(false);
-        }
-      }
-    };
-
     // Initial fetch
-    doFetch(true);
+    fetchAgents(true);
 
     // Setup polling using setTimeout to prevent stacking
     const scheduleNextPoll = () => {
       if (!isActive) return;
 
       pollIntervalRef.current = setTimeout(async () => {
-        await doFetch(false);
+        await fetchAgents(false);
         scheduleNextPoll(); // Schedule next poll after this one completes
       }, POLL_INTERVAL);
     };

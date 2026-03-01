@@ -4,6 +4,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   ReactNode,
 } from "react";
 import * as gameService from "../services/gameService";
@@ -164,7 +165,6 @@ function AppProvider({ children }: { children: ReactNode }) {
   const setLanguage = useCallback((lang: GameLanguage) => {
     setLanguageState(lang);
     localStorage.setItem("gameLanguage", lang);
-    i18nChangeLanguage(lang); // Sync i18n language immediately
   }, []);
 
   return (
@@ -396,7 +396,7 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
   // CONTEXT VALUE
   // ==========================================================================
 
-  const value: GameContextValue = {
+  const value: GameContextValue = useMemo(() => ({
     // State
     worlds,
     world,
@@ -448,7 +448,15 @@ function GameInnerProvider({ children }: { children: ReactNode }) {
 
     // World Items
     refreshWorldItems,
-  };
+  }), [
+    worlds, world, playerState, currentLocation, locations, messages,
+    suggestions, phase, loading, worldsLoading, actionInProgress, isClauding,
+    isChatMode, worldItems, mode, setMode, enterOnboarding, enterGame,
+    exitToChat, language, setLanguage, createWorld, loadWorld, deleteWorld,
+    resetWorld, refreshWorlds, clearWorld, submitAction, sendOnboardingMessage,
+    selectSuggestion, travelTo, updateLocationLabel, viewLocationHistory,
+    startPolling, stopPolling, refreshWorldItems,
+  ]);
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
