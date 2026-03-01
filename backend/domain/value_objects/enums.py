@@ -58,6 +58,13 @@ class Language(str, Enum):
     def __str__(self) -> str:
         return self.value
 
+    @staticmethod
+    def to_lang_key(lang: "str | Language | None") -> str:
+        """Convert a language value to a config lookup key ('en', 'ko', 'jp')."""
+        if lang in ("jp", "ko"):
+            return str(lang)
+        return "en"
+
 
 class MessageRole(str, Enum):
     """Message role in chat conversations."""

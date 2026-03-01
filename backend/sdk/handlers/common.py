@@ -4,9 +4,21 @@ Shared utilities for gameplay tools.
 Contains common helpers used across character, location, and mechanics tools.
 """
 
+from typing import Any
+
 from domain.entities.gameplay_models import ActionContext
 from services.player_service import PlayerService
 from services.world_service import WorldService
+
+
+def tool_success(text: str) -> dict[str, Any]:
+    """Build a standard MCP tool success response."""
+    return {"content": [{"type": "text", "text": text}]}
+
+
+def tool_error(message: str) -> dict[str, Any]:
+    """Build a standard MCP tool error response."""
+    return {"content": [{"type": "text", "text": message}], "is_error": True}
 
 
 def build_action_context(world_name: str, player_action: str) -> ActionContext:

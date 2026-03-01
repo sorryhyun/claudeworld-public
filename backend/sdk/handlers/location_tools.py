@@ -23,7 +23,7 @@ from services.player_service import PlayerService
 from services.room_mapping_service import RoomMappingService
 from services.world_service import WorldService
 
-from sdk.handlers.common import build_action_context
+from sdk.handlers.common import build_action_context, tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.gameplay import (
@@ -87,10 +87,7 @@ def create_location_tools(ctx: ToolContext) -> list:
             user_action = validated.user_action
 
             if not destination:
-                return {
-                    "content": [{"type": "text", "text": "No destination specified."}],
-                    "is_error": True,
-                }
+                return tool_error("No destination specified.")
 
             logger.info(f"travel invoked: '{destination}' (bringing={bring_characters})")
 
@@ -177,15 +174,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                     location_names = [loc.name for loc in db_locations]
                     available = ", ".join(location_names) if location_names else "none"
                     logger.warning(f"Location '{destination}' not found. Available: {available}")
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Location '{destination}' does not exist. Use Task tool with location_designer to create it first.\n\nAvailable locations: {available}",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(f"Location '{destination}' does not exist. Use Task tool with location_designer to create it first.\n\nAvailable locations: {available}")
                 else:
                     # Move to existing location - create fresh room for new visit
                     destination_location_id = matching_location.id
@@ -313,14 +302,11 @@ def create_location_tools(ctx: ToolContext) -> list:
                 response_text += "\n Chat summary saved to world history."
                 response_text += "\n Arrival context saved for next action continuity."
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"travel error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error during travel: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error during travel: {e}")
             finally:
                 # Clear sub-agent status when travel completes (success or error)
                 if current_room_id:
@@ -355,9 +341,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                 fs_locations = LocationStorage.load_all_locations(world_name)
 
                 if not fs_locations:
-                    return {
-                        "content": [{"type": "text", "text": "No locations found in this world."}],
-                    }
+                    return tool_success("No locations found in this world.")
 
                 # Get current location for highlighting
                 state = PlayerService.load_player_state(world_name)
@@ -397,14 +381,11 @@ def create_location_tools(ctx: ToolContext) -> list:
 
                 response_text = f"**Locations in {world_name}:**\n\n" + "\n\n".join(location_entries)
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"list_locations error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error listing locations: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error listing locations: {e}")
 
         tools.append(list_locations_tool)
 
@@ -449,15 +430,7 @@ def create_location_tools(ctx: ToolContext) -> list:
                         break
 
                 if existing:
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Location '{validated.name}' already exists. Cannot overwrite.",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(f"Location '{validated.name}' already exists. Cannot overwrite.")
 
                 # Build adjacent hints from adjacent_to (already a list or None)
                 adjacent_hints = validated.adjacent_to or []
@@ -494,14 +467,11 @@ def create_location_tools(ctx: ToolContext) -> list:
 - Is Starting: {validated.is_starting}
 - Description: {validated.description[:200]}..."""
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"persist_location_design error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating location: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error creating location: {e}")
 
         tools.append(persist_location_design_tool)
 

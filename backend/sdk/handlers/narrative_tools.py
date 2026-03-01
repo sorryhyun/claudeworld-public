@@ -20,6 +20,7 @@ from infrastructure.logging.perf_logger import track_perf
 from services.player_service import PlayerService
 from services.room_mapping_service import RoomMappingService
 
+from sdk.handlers.common import tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.gameplay import (
@@ -123,21 +124,11 @@ def create_narrative_tools(ctx: ToolContext) -> list:
 
                 logger.info(f"✅ Narrative message created | room={room_id} | agent={agent_id}")
 
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "✓ Narrative message created and displayed to player.",
-                        }
-                    ]
-                }
+                return tool_success("✓ Narrative message created and displayed to player.")
 
             except Exception as e:
                 logger.error(f"narration error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating narrative: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error creating narrative: {e}")
 
         tools.append(narration_tool)
 
@@ -179,10 +170,7 @@ def create_narrative_tools(ctx: ToolContext) -> list:
             logger.info(f"💡 suggest_options invoked: [{action_1}] / [{action_2}]")
 
             if not action_1 or not action_2:
-                return {
-                    "content": [{"type": "text", "text": "Please provide both action suggestions."}],
-                    "is_error": True,
-                }
+                return tool_error("Please provide both action suggestions.")
 
             # Persist suggestions to _state.json for frontend retrieval
             try:
@@ -196,9 +184,7 @@ def create_narrative_tools(ctx: ToolContext) -> list:
 1. {action_1}
 2. {action_2}"""
 
-            return {
-                "content": [{"type": "text", "text": response_text}],
-            }
+            return tool_success(response_text)
 
         tools.append(suggest_options_tool)
 

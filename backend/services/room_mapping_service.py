@@ -220,8 +220,7 @@ class RoomMappingService:
         mapping = state.rooms.get(room_key)
 
         if not mapping and room_key.startswith("location:"):
-            location_name = room_key[9:]
-            fuzzy_key = cls.find_location_room_key_fuzzy(world_name, location_name)
+            fuzzy_key = cls.find_location_room_key_fuzzy(world_name, cls.room_key_to_location(room_key))
             if fuzzy_key:
                 logger.info(f"Fuzzy matched room key: '{room_key}' -> '{fuzzy_key}'")
                 room_key = fuzzy_key
@@ -254,8 +253,7 @@ class RoomMappingService:
         mapping = state.rooms.get(room_key)
 
         if not mapping and room_key.startswith("location:"):
-            location_name = room_key[9:]
-            fuzzy_key = cls.find_location_room_key_fuzzy(world_name, location_name)
+            fuzzy_key = cls.find_location_room_key_fuzzy(world_name, cls.room_key_to_location(room_key))
             if fuzzy_key:
                 logger.info(f"Fuzzy matched room key: '{room_key}' -> '{fuzzy_key}'")
                 room_key = fuzzy_key
@@ -312,30 +310,30 @@ class RoomMappingService:
         location_rooms = [k for k in state.rooms.keys() if k.startswith("location:")]
 
         # 1. Exact match
-        exact_key = f"location:{location_name}"
+        exact_key = cls.location_to_room_key(location_name)
         if exact_key in state.rooms:
             return exact_key
 
         # 2. Case-insensitive exact match
         for room_key in location_rooms:
-            loc_name = room_key[9:]
-            if loc_name.lower() == search_lower:
+            loc_name = cls.room_key_to_location(room_key)
+            if loc_name and loc_name.lower() == search_lower:
                 return room_key
 
         # 3. Partial matches (prefix, contains, reverse contains)
         for room_key in location_rooms:
-            loc_name = room_key[9:]
-            if loc_name.lower().startswith(search_lower):
+            loc_name = cls.room_key_to_location(room_key)
+            if loc_name and loc_name.lower().startswith(search_lower):
                 return room_key
 
         for room_key in location_rooms:
-            loc_name = room_key[9:]
-            if search_lower in loc_name.lower():
+            loc_name = cls.room_key_to_location(room_key)
+            if loc_name and search_lower in loc_name.lower():
                 return room_key
 
         for room_key in location_rooms:
-            loc_name = room_key[9:]
-            if loc_name.lower() in search_lower:
+            loc_name = cls.room_key_to_location(room_key)
+            if loc_name and loc_name.lower() in search_lower:
                 return room_key
 
         # 4. Filesystem fallback

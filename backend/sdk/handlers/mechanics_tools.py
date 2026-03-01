@@ -27,6 +27,7 @@ from services.agent_config_service import AgentConfigService
 from services.facades import PlayerFacade
 from services.item_service import ItemService
 
+from sdk.handlers.common import tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.gameplay import (
@@ -95,26 +96,14 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 agent = await crud.get_agent_by_name(db, character_name, world_name=world_name)
 
                 if not agent:
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Character '{character_name}' not found. Use list_characters to see available characters.",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(
+                        f"Character '{character_name}' not found. Use list_characters to see available characters."
+                    )
 
                 if not agent.config_file:
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Character '{agent.name}' does not have a config file for memory storage.",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(
+                        f"Character '{agent.name}' does not have a config file for memory storage."
+                    )
 
                 # Format memory entry with source if provided
                 formatted_memory = memory_entry
@@ -135,25 +124,21 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 )
 
                 if success:
-                    # Invalidate agent config cache since recent_events changed
-                    from infrastructure.cache import agent_config_key, get_cache
+                    # Invalidate agent cache since recent_events changed
+                    from crud.cached import invalidate_agent_cache
 
-                    cache = get_cache()
-                    cache.invalidate(agent_config_key(agent.id))
+                    invalidate_agent_cache(agent.id)
 
                     response_text = f"**Memory Injected:**\n- Target: {agent.name}\n- Memory: {memory_entry}"
                     response_text += f"\n\n{agent.name} now remembers this as if it actually happened."
                 else:
                     response_text = f"Failed to inject memory into {agent.name}."
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"inject_memory error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error injecting memory: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error injecting memory: {e}")
 
         tools.append(inject_memory_tool)
 
@@ -214,7 +199,7 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
 
             logger.info(f"🎲 Roll result: {result}")
 
-            return {"content": [{"type": "text", "text": response_text}]}
+            return tool_success(response_text)
 
         tools.append(roll_the_dice_tool)
 
@@ -248,9 +233,7 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 inventory = player_facade.get_inventory(resolved=True)
 
                 if not inventory:
-                    return {
-                        "content": [{"type": "text", "text": "**Inventory:** Empty"}],
-                    }
+                    return tool_success("**Inventory:** Empty")
 
                 # Format inventory list
                 items_text = []
@@ -275,14 +258,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
 
                 response_text = f"**Inventory ({len(inventory)} items):**\n\n" + "\n".join(items_text)
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"list_inventory error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error listing inventory: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error listing inventory: {e}")
 
         tools.append(list_inventory_tool)
 
@@ -319,14 +299,9 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 all_items = ItemService.get_all_items_in_world(world_name)
 
                 if not all_items:
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "**World Items:** No items defined in this world's items/ directory.",
-                            }
-                        ],
-                    }
+                    return tool_success(
+                        "**World Items:** No items defined in this world's items/ directory."
+                    )
 
                 # Filter by keyword if provided
                 if keyword:
@@ -344,14 +319,7 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                     filter_note = ""
 
                 if not items_to_show:
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"**World Items:** No items found{filter_note}.",
-                            }
-                        ],
-                    }
+                    return tool_success(f"**World Items:** No items found{filter_note}.")
 
                 # Format items list
                 items_text = []
@@ -376,14 +344,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
 
                 response_text = f"**World Items ({len(items_to_show)}{filter_note}):**\n\n" + "\n\n".join(items_text)
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"list_world_item error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error listing world items: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error listing world items: {e}")
 
         tools.append(list_world_item_tool)
 
@@ -495,14 +460,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                         "to create them first."
                     )
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"change_stat error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error applying changes: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error applying changes: {e}")
 
         tools.append(change_stat_tool)
 
@@ -552,14 +514,11 @@ def create_mechanics_tools(ctx: ToolContext) -> list:
                 else:
                     response_text = f"**Time Advanced:** +{validated.minutes} minutes\n- Reason: {validated.reason}"
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"advance_time error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error advancing time: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error advancing time: {e}")
 
         tools.append(advance_time_tool)
 

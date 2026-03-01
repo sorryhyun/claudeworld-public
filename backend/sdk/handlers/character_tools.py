@@ -21,7 +21,7 @@ from services.agent_filesystem_service import AgentFilesystemService
 from services.location_storage import LocationStorage
 from services.room_mapping_service import RoomMappingService
 
-from sdk.handlers.common import build_action_context
+from sdk.handlers.common import build_action_context, tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.gameplay import (
@@ -104,19 +104,9 @@ def create_character_tools(ctx: ToolContext) -> list:
 
                 if not character_folder:
                     available = ", ".join(all_characters) if all_characters else "none"
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Character '{character_name}' not found.\n\nAvailable characters: {available}",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(f"Character '{character_name}' not found.\n\nAvailable characters: {available}")
 
                 # Get current location from context
-                from sdk.handlers.common import build_action_context
-
                 context = build_action_context(world_name, "character removal")
                 current_location = context.current_location
                 current_room_key = RoomMappingService.location_to_room_key(current_location)
@@ -150,14 +140,11 @@ def create_character_tools(ctx: ToolContext) -> list:
                         f"Character '{character_display_name}' was not at the current location ({current_location})."
                     )
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"remove_character error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error removing character from location: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error removing character from location: {e}")
 
         tools.append(remove_character_tool)
 
@@ -221,14 +208,11 @@ def create_character_tools(ctx: ToolContext) -> list:
                 else:
                     response_text = f"Character '{character_name}' not found or already deleted."
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"delete_character error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error deleting character: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error deleting character: {e}")
 
         tools.append(delete_character_tool)
 
@@ -288,15 +272,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                 if not character_folder:
                     # List available characters for helpful error
                     available = ", ".join(all_characters) if all_characters else "none"
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Character '{character_name}' not found in filesystem.\n\nAvailable characters: {available}",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(f"Character '{character_name}' not found in filesystem.\n\nAvailable characters: {available}")
 
                 # ============================================================
                 # FILESYSTEM-PRIMARY: Find destination location
@@ -306,17 +282,9 @@ def create_character_tools(ctx: ToolContext) -> list:
                     # List available locations for helpful error (show folder names)
                     fs_locations = LocationStorage.load_all_locations(world_name)
                     available = ", ".join(fs_locations.keys()) if fs_locations else "none"
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Location '{destination}' not found.\n\nAvailable locations: {available}",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(f"Location '{destination}' not found.\n\nAvailable locations: {available}")
 
-                dest_location_name = dest_room_key[9:]  # len("location:") = 9
+                dest_location_name = RoomMappingService.room_key_to_location(dest_room_key) or dest_room_key
                 location_display = dest_location_name
 
                 # ============================================================
@@ -380,14 +348,11 @@ def create_character_tools(ctx: ToolContext) -> list:
                 if narrative:
                     response_text += f"\n- Narrative: {narrative}"
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"move_character error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error moving character: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error moving character: {e}")
 
         tools.append(move_character_tool)
 
@@ -426,9 +391,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                 all_characters = AgentFilesystemService.list_world_agents_with_details(world_name)
 
                 if not all_characters:
-                    return {
-                        "content": [{"type": "text", "text": f"No characters in {world_name}."}],
-                    }
+                    return tool_success(f"No characters in {world_name}.")
 
                 # Build agent-to-location mapping from _state.json
                 state = RoomMappingService.load_state(world_name)
@@ -436,7 +399,7 @@ def create_character_tools(ctx: ToolContext) -> list:
 
                 for room_key, mapping in state.rooms.items():
                     if room_key.startswith("location:"):
-                        loc_name = room_key[9:]  # len("location:") = 9
+                        loc_name = RoomMappingService.room_key_to_location(room_key) or room_key
                         for agent_name in mapping.agents:
                             # Skip system agents (Narrator, Action_Manager, etc.)
                             if agent_name in ("Narrator", "Action_Manager", "Onboarding_Manager"):
@@ -448,17 +411,9 @@ def create_character_tools(ctx: ToolContext) -> list:
                     # Find the room key for this location
                     room_key = RoomMappingService.find_location_room_key_fuzzy(world_name, location_filter)
                     if not room_key:
-                        return {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Location '{location_filter}' not found. Check available locations by `mcp__action_manager__list_locations`",
-                                }
-                            ],
-                            "is_error": True,
-                        }
+                        return tool_error(f"Location '{location_filter}' not found. Check available locations by `mcp__action_manager__list_locations`")
 
-                    loc_name = room_key[9:]  # len("location:") = 9
+                    loc_name = RoomMappingService.room_key_to_location(room_key) or room_key
                     location_display = loc_name
 
                     # Get agents in this room from state
@@ -478,7 +433,7 @@ def create_character_tools(ctx: ToolContext) -> list:
                         response_text = (
                             f"**No characters at {location_display}.**\n\n**All characters:** {', '.join(char_names)}"
                         )
-                        return {"content": [{"type": "text", "text": response_text}]}
+                        return tool_success(response_text)
 
                     # Build character list
                     char_entries = []
@@ -526,14 +481,11 @@ def create_character_tools(ctx: ToolContext) -> list:
 
                     response_text = f"**Characters in {world_name}:**\n\n" + "\n\n".join(sections)
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"list_characters error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error listing characters: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error listing characters: {e}")
 
         tools.append(list_characters_tool)
 
@@ -662,14 +614,11 @@ def create_character_tools(ctx: ToolContext) -> list:
 - Location: {location_display}
 - Disposition: {validated.initial_disposition}"""
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"persist_character_design error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating character: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error creating character: {e}")
 
         tools.append(persist_character_design_tool)
 

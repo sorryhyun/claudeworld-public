@@ -40,39 +40,26 @@ class Agent:
     system_prompt: str
 
 
+def _matches_patterns(agent_name: str, patterns: frozenset[str]) -> bool:
+    """Check if an agent name matches any of the given patterns."""
+    normalized = agent_name.lower().replace(" ", "_")
+    return any(pattern in normalized for pattern in patterns)
+
+
 def is_action_manager(agent_name: str) -> bool:
     """Check if agent is Action Manager (for gameplay context)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in ACTION_MANAGER_PATTERNS)
+    return _matches_patterns(agent_name, ACTION_MANAGER_PATTERNS)
 
 
 def is_system_agent(agent: Agent) -> bool:
-    """
-    Check if agent is a system agent (should be excluded from present characters).
-
-    Args:
-        agent: Agent object with name and group attributes
-
-    Returns:
-        True if agent is a system agent, False otherwise
-    """
-    # Check by group
+    """Check if agent is a system agent (should be excluded from present characters)."""
     if agent.group and agent.group in SYSTEM_AGENT_GROUPS:
         return True
-    # Also check by name patterns (fallback)
     return is_action_manager(agent.name)
 
 
 def get_present_characters(room) -> list[str]:
-    """
-    Get names of character agents present in the room (excluding system agents).
-
-    Args:
-        room: Room object with agents list
-
-    Returns:
-        List of character agent names
-    """
+    """Get names of character agents present in the room (excluding system agents)."""
     if not room or not room.agents:
         return []
     return [a.name for a in room.agents if not is_system_agent(a)]
@@ -80,32 +67,27 @@ def get_present_characters(room) -> list[str]:
 
 def is_onboarding_manager(agent_name: str) -> bool:
     """Check if agent is Onboarding Manager (for TRPG onboarding)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in ONBOARDING_MANAGER_PATTERNS)
+    return _matches_patterns(agent_name, ONBOARDING_MANAGER_PATTERNS)
 
 
 def is_character_designer(agent_name: str) -> bool:
     """Check if agent is Character Designer (TRPG sub-agent)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in CHARACTER_DESIGNER_PATTERNS)
+    return _matches_patterns(agent_name, CHARACTER_DESIGNER_PATTERNS)
 
 
 def is_item_designer(agent_name: str) -> bool:
     """Check if agent is Item Designer (TRPG sub-agent)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in ITEM_DESIGNER_PATTERNS)
+    return _matches_patterns(agent_name, ITEM_DESIGNER_PATTERNS)
 
 
 def is_location_designer(agent_name: str) -> bool:
     """Check if agent is Location Designer (TRPG sub-agent)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in LOCATION_DESIGNER_PATTERNS)
+    return _matches_patterns(agent_name, LOCATION_DESIGNER_PATTERNS)
 
 
 def is_chat_summarizer(agent_name: str) -> bool:
     """Check if agent is Chat Summarizer (invoked on chat mode exit)."""
-    agent_name_lower = agent_name.lower().replace(" ", "_")
-    return any(pattern in agent_name_lower for pattern in CHAT_SUMMARIZER_PATTERNS)
+    return _matches_patterns(agent_name, CHAT_SUMMARIZER_PATTERNS)
 
 
 def find_trpg_agents(agents: list) -> dict:

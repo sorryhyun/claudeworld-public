@@ -7,10 +7,13 @@ before storing them in the database and sending them to the Claude API.
 
 import base64
 import io
+import logging
 import os
-from typing import Tuple
+from typing import Optional, Tuple
 
 from PIL import Image
+
+logger = logging.getLogger("ImageUtils")
 
 
 class ImageCompressionConfig:
@@ -75,5 +78,37 @@ def compress_image_base64(
     except Exception as e:
         # If compression fails, log error and return original
         # This ensures the app doesn't break if there's an issue
-        print(f"Image compression failed: {e}")
+        logger.warning(f"Image compression failed: {e}")
         return base64_data, media_type
+
+
+def try_compress_image(
+    image_data: Optional[str],
+    image_media_type: Optional[str],
+    context: str = "",
+) -> Tuple[Optional[str], Optional[str]]:
+    """Compress an image with logging, returning originals on failure.
+
+    Args:
+        image_data: Base64-encoded image data, or None
+        image_media_type: MIME type, or None
+        context: Description for log messages (e.g., "world 5")
+
+    Returns:
+        Tuple of (data, media_type) — compressed if possible, originals otherwise
+    """
+    if not image_data or not image_media_type:
+        return image_data, image_media_type
+
+    try:
+        ctx_str = f" for {context}" if context else ""
+        logger.info(f"Compressing image{ctx_str}")
+        compressed_data, compressed_media_type = compress_image_base64(image_data, image_media_type)
+        original_size = len(image_data)
+        compressed_size = len(compressed_data)
+        ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+        logger.info(f"Image compressed: {original_size} -> {compressed_size} bytes ({ratio:.1f}% reduction)")
+        return compressed_data, compressed_media_type
+    except Exception as e:
+        logger.warning(f"Image compression failed, using original: {e}")
+        return image_data, image_media_type

@@ -18,7 +18,7 @@ from core.dependencies import (
 from domain.entities.agent import is_action_manager
 from domain.services.access_control import AccessControl
 from domain.services.localization import Localization
-from domain.value_objects.enums import Language, MessageRole, WorldPhase
+from domain.value_objects.enums import Language, MessageRole, ParticipantType, WorldPhase
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from infrastructure.database.connection import async_session_maker, get_db
 from orchestration import get_trpg_orchestrator
@@ -126,7 +126,7 @@ async def poll_updates(
                         arrival_message = schemas.MessageCreate(
                             content=Localization.get_arrival_message(user_name, location_name, world.language),
                             role=MessageRole.USER,
-                            participant_type="system",
+                            participant_type=ParticipantType.SYSTEM,
                             participant_name="System",
                         )
                         await crud.create_message(
@@ -181,7 +181,7 @@ async def poll_updates(
             messages = await crud.get_messages_excluding_chat(db, target_room_id)
 
     # Filter out system messages (e.g., "Start onboarding..." trigger messages)
-    visible_messages = [m for m in messages if m.participant_type != "system"]
+    visible_messages = [m for m in messages if m.participant_type != ParticipantType.SYSTEM]
 
     # Load game_time from filesystem (source of truth)
     fs_state = PlayerService.load_player_state(world.name)

@@ -266,10 +266,8 @@ async def update_agent(
     await db.refresh(agent)
 
     # Invalidate agent caches
-    from infrastructure.cache import agent_config_key, agent_object_key, get_cache
+    from crud.cached import invalidate_agent_cache
 
-    cache = get_cache()
-    cache.invalidate(agent_config_key(agent_id))
-    cache.invalidate(agent_object_key(agent_id))
+    invalidate_agent_cache(agent_id)
 
     return agent

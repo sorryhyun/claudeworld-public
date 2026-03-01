@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from domain.value_objects.enums import Language
 from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config
 from services.location_storage import LocationStorage
@@ -273,12 +274,7 @@ class GameplayContextBuilder:
 
         # Determine language from world config
         world_lang = self._world_config.language if self._world_config else None
-        if world_lang == "jp":
-            lang_key = "jp"
-        elif world_lang == "ko":
-            lang_key = "ko"
-        else:
-            lang_key = "en"
+        lang_key = Language.to_lang_key(world_lang)
         response_am = config.get("response_AM", {})
         instruction = response_am.get(lang_key, "")
 

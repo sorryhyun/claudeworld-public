@@ -15,7 +15,7 @@ from core.dependencies import (
     get_request_identity,
 )
 from domain.services.access_control import AccessControl
-from domain.value_objects.enums import MessageRole, WorldPhase
+from domain.value_objects.enums import MessageRole, ParticipantType, WorldPhase
 from domain.value_objects.slash_commands import SlashCommandType, parse_slash_command
 from fastapi import APIRouter, Depends, HTTPException
 from infrastructure.database.connection import get_db
@@ -24,7 +24,7 @@ from sdk import AgentManager
 from services.player_service import PlayerService
 from services.room_mapping_service import RoomMappingService
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.images import compress_image_base64
+from utils.images import try_compress_image
 
 from routers.game.chat_mode import (
     handle_chat_command,
@@ -140,22 +140,9 @@ async def submit_action(
     new_turn = await crud.increment_turn(db, world_id)
 
     # Compress image if present
-    image_data = action.image_data
-    image_media_type = action.image_media_type
-    if image_data and image_media_type:
-        try:
-            logger.info(f"Compressing image for world {world_id}")
-            compressed_data, compressed_media_type = compress_image_base64(image_data, image_media_type)
-            original_size = len(image_data)
-            compressed_size = len(compressed_data)
-            compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-            logger.info(
-                f"Image compressed: {original_size} -> {compressed_size} bytes ({compression_ratio:.1f}% reduction)"
-            )
-            image_data = compressed_data
-            image_media_type = compressed_media_type
-        except Exception as e:
-            logger.warning(f"Image compression failed, using original: {e}")
+    image_data, image_media_type = try_compress_image(
+        action.image_data, action.image_media_type, context=f"world {world_id}"
+    )
 
     # Get game time snapshot for active phase (None for onboarding)
     game_time_snapshot = None
@@ -168,7 +155,7 @@ async def submit_action(
     message = schemas.MessageCreate(
         content=action.text,
         role=MessageRole.USER,
-        participant_type="user",
+        participant_type=ParticipantType.USER,
         image_data=image_data,
         image_media_type=image_media_type,
         game_time_snapshot=game_time_snapshot,

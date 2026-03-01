@@ -13,7 +13,7 @@ import schemas
 from domain.entities.agent import is_chat_summarizer
 from domain.entities.agent_config import AgentConfigData
 from domain.value_objects.contexts import AgentResponseContext
-from domain.value_objects.enums import MessageRole
+from domain.value_objects.enums import MessageRole, ParticipantType
 from domain.value_objects.task_identifier import TaskIdentifier
 from infrastructure.database import models
 from orchestration import get_chat_mode_orchestrator
@@ -22,7 +22,7 @@ from sdk.agent.options_builder import build_agent_options
 from services.agent_config_service import AgentConfigService
 from services.prompt_builder import build_system_prompt
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.images import compress_image_base64
+from utils.images import try_compress_image
 
 logger = logging.getLogger("ChatModeRoutes")
 
@@ -136,7 +136,7 @@ async def handle_chat_command(
         schemas.MessageCreate(
             content="[Chat mode started. You can now freely converse with NPCs. Type /end to return to gameplay.]",
             role=MessageRole.USER,
-            participant_type="system",
+            participant_type=ParticipantType.SYSTEM,
             participant_name="System",
             chat_session_id=chat_session_id,
         ),
@@ -190,30 +190,15 @@ async def handle_chat_mode_action(
     chat_session_id = player_state.chat_session_id
 
     # Compress image if present
-    compressed_image_data = image_data
-    compressed_image_media_type = image_media_type
-    if compressed_image_data and compressed_image_media_type:
-        try:
-            logger.info(f"Compressing image for chat mode in world {world_id}")
-            compressed_data, compressed_media_type = compress_image_base64(
-                compressed_image_data, compressed_image_media_type
-            )
-            original_size = len(compressed_image_data)
-            compressed_size = len(compressed_data)
-            compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-            logger.info(
-                f"Image compressed: {original_size} -> {compressed_size} bytes ({compression_ratio:.1f}% reduction)"
-            )
-            compressed_image_data = compressed_data
-            compressed_image_media_type = compressed_media_type
-        except Exception as e:
-            logger.warning(f"Image compression failed, using original: {e}")
+    compressed_image_data, compressed_image_media_type = try_compress_image(
+        image_data, image_media_type, context=f"chat mode in world {world_id}"
+    )
 
     # Save user message to room with chat_session_id
     message = schemas.MessageCreate(
         content=text,
         role=MessageRole.USER,
-        participant_type="user",
+        participant_type=ParticipantType.USER,
         chat_session_id=chat_session_id,
         image_data=compressed_image_data,
         image_media_type=compressed_image_media_type,
@@ -323,7 +308,7 @@ async def handle_end_command(
         schemas.MessageCreate(
             content="[Chat mode ended. Returning to gameplay...]",
             role=MessageRole.USER,
-            participant_type="system",
+            participant_type=ParticipantType.SYSTEM,
             participant_name="System",
         ),
         update_room_activity=True,

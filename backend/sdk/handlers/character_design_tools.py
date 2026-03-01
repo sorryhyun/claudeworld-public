@@ -11,6 +11,7 @@ from typing import Any
 from services.agent_filesystem_service import AgentFilesystemService
 from services.world_service import WorldService
 
+from sdk.handlers.common import tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import is_tool_enabled
 from sdk.tools.character_design import (
@@ -175,14 +176,11 @@ def create_character_design_tools(ctx: ToolContext) -> list:
 - `in_a_nutshell.md` - Brief identity
 - `characteristics.md` - Full profile with backstory{memory_note}"""
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"create_comprehensive_character error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating comprehensive character: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error creating comprehensive character: {e}")
 
         tools.append(create_comprehensive_character_tool)
 
@@ -208,16 +206,10 @@ def create_character_design_tools(ctx: ToolContext) -> list:
                 agent_path = world_path / "agents" / agent_name
 
                 if not agent_path.exists():
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Error: Character '{validated.character_name}' not found in world. "
-                                f"Create the character first using create_comprehensive_character.",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(
+                        f"Error: Character '{validated.character_name}' not found in world. "
+                        f"Create the character first using create_comprehensive_character."
+                    )
 
                 # Prepare consolidated_memory.md path
                 memory_file = agent_path / "consolidated_memory.md"
@@ -271,14 +263,11 @@ def create_character_design_tools(ctx: ToolContext) -> list:
 
 The character can now recall these memories using the `recall` tool."""
 
-                return {"content": [{"type": "text", "text": response_text}]}
+                return tool_success(response_text)
 
             except Exception as e:
                 logger.error(f"implant_consolidated_memory error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error implanting memories: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error implanting memories: {e}")
 
         tools.append(implant_consolidated_memory_tool)
 

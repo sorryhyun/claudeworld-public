@@ -146,12 +146,6 @@ class TRPGOrchestrator:
         # Record timestamp for interruption tracking
         self.last_user_message_time[room_id] = time.time()
 
-        # Pre-connect NPCs at current location (if active gameplay)
-        # This is done at turn start (before any SDK sessions) to safely warm up clients
-        # for characters that may have been moved here by move_character in a previous turn
-        if world.phase == WorldPhase.ACTIVE:
-            await self._pre_connect_npcs_at_location(db, world, room_id, agent_manager)
-
         # Get all agents for the room
         all_agents = await crud.get_agents_cached(db, room_id)
 
@@ -193,10 +187,17 @@ class TRPGOrchestrator:
             else:
                 logger.warning("[TRPG] Onboarding phase but no onboarding agents in room")
         else:
-            # Active gameplay - full turn sequence
+            # Active gameplay - get NPCs and pre-connect them
             if has_gameplay_agents(all_agents):
-                # Get NPCs at current location for reactions
-                npc_ids = await self._get_npc_ids_at_current_location(db, world.id)
+                npcs = await self._get_npcs_at_current_location(db, world.id)
+                npc_ids = [npc.id for npc in npcs]
+
+                # Pre-connect NPC clients concurrently (warm up SDK clients)
+                if npcs:
+                    npc_names = [npc.name for npc in npcs]
+                    logger.info(f"[TRPG] Found {len(npc_ids)} NPCs at location: {npc_names}")
+                    await self._pre_connect_npcs(npcs[:5], db, room_id, world, agent_manager)
+
                 tape = create_gameplay_tape(all_agents, npc_ids=npc_ids)
                 logger.info(f"[TRPG] Gameplay phase - running action round (NPCs: {len(npc_ids)})")
             else:
@@ -288,73 +289,29 @@ class TRPGOrchestrator:
 
         return True
 
-    async def _get_npc_ids_at_current_location(self, db: AsyncSession, world_id: int) -> List[int]:
-        """
-        Get agent IDs of NPCs at the player's current location.
-
-        Args:
-            db: Database session
-            world_id: ID of the world
-
-        Returns:
-            List of agent IDs for NPCs at current location
-        """
+    async def _get_npcs_at_current_location(self, db: AsyncSession, world_id: int) -> list:
+        """Get NPC agents at the player's current location."""
         from crud.locations import get_characters_at_location
 
-        # Get player state to find current location
         player_state = await crud.get_player_state(db, world_id)
         if not player_state or not player_state.current_location_id:
             logger.debug("[TRPG] No current location for NPC reactions")
             return []
 
-        # Get characters at current location (excluding system agents)
-        npcs = await get_characters_at_location(db, player_state.current_location_id, exclude_system_agents=True)
+        return await get_characters_at_location(db, player_state.current_location_id, exclude_system_agents=True)
 
-        npc_ids = [npc.id for npc in npcs]
-        if npc_ids:
-            npc_names = [npc.name for npc in npcs]
-            logger.info(f"[TRPG] Found {len(npc_ids)} NPCs at location: {npc_names}")
-
-        return npc_ids
-
-    async def _pre_connect_npcs_at_location(
+    async def _pre_connect_npcs(
         self,
+        npcs: list,
         db: AsyncSession,
-        world: models.World,
         room_id: int,
+        world: models.World,
         agent_manager: AgentManager,
     ) -> None:
-        """
-        Pre-connect NPC clients at the player's current location.
-
-        Called at the start of each turn to warm up SDK clients for NPCs.
-        This handles characters that were moved here via move_character in previous turns.
-
-        Args:
-            db: Database session
-            world: World model
-            room_id: Current room ID
-            agent_manager: AgentManager for pre-connecting
-        """
-        from crud.locations import get_characters_at_location
-
+        """Pre-connect NPC clients concurrently to warm up SDK clients."""
         try:
-            # Get player state to find current location
-            player_state = await crud.get_player_state(db, world.id)
-            if not player_state or not player_state.current_location_id:
-                return
-
-            # Get characters at current location (excluding system agents)
-            npcs = await get_characters_at_location(
-                db, player_state.current_location_id, exclude_system_agents=True
-            )
-
-            if not npcs:
-                return
-
-            # Pre-connect up to 5 NPCs (limit to avoid resource exhaustion)
-            for npc in npcs[:5]:
-                await agent_manager.pre_connect(
+            await asyncio.gather(*(
+                agent_manager.pre_connect(
                     db=db,
                     room_id=room_id,
                     agent_id=npc.id,
@@ -364,7 +321,8 @@ class TRPGOrchestrator:
                     config_file=npc.config_file,
                     group_name=npc.group,
                 )
-
+                for npc in npcs
+            ))
         except Exception as e:
             # Pre-connect is best-effort, don't fail the turn
             logger.debug(f"[TRPG] Pre-connect NPCs failed (non-critical): {e}")

@@ -55,10 +55,6 @@ class ResponseGenerator:
         """
         self.last_user_message_time = last_user_message_time
 
-    def _is_action_manager(self, agent_name: str) -> bool:
-        """Check if agent is Action Manager (for gameplay context)."""
-        return is_action_manager(agent_name)
-
     async def generate_response(
         self,
         orch_context: OrchestrationContext,
@@ -152,8 +148,8 @@ class ResponseGenerator:
             # Fallback: load world config from filesystem
             world_config = WorldService.load_world_config(orch_context.world_name)
             if world_config:
-                is_onboarding = world_config.phase == "onboarding"
-                is_game = world_config.phase == "active"
+                is_onboarding = world_config.phase == WorldPhase.ONBOARDING
+                is_game = world_config.phase == WorldPhase.ACTIVE
                 world_user_name = world_config.user_name
                 world_language = world_config.language
 
@@ -177,7 +173,7 @@ class ResponseGenerator:
         # For TRPG mode: NPCs should only see the most recent Action Manager narration
         # and user message, not all accumulated messages from previous turns.
         # Claude Agent SDK maintains its own conversation context natively.
-        is_action_mgr = self._is_action_manager(agent.name)
+        is_action_mgr = is_action_manager(agent.name)
         keep_latest_only = is_game and not is_action_mgr
 
         context_params = ConversationContextParams(

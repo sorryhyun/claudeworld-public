@@ -81,12 +81,11 @@ def create_action_tools(ctx: ToolContext) -> list:
                 )
 
                 if success:
-                    # Invalidate agent config cache since recent_events changed
+                    # Invalidate agent cache since recent_events changed
                     if ctx.agent_id is not None:
-                        from infrastructure.cache import agent_config_key, get_cache
+                        from crud.cached import invalidate_agent_cache
 
-                        cache = get_cache()
-                        cache.invalidate(agent_config_key(ctx.agent_id))
+                        invalidate_agent_cache(ctx.agent_id)
 
                     response_text = get_tool_response(
                         "memorize", group_name=ctx.group_name, memory_entry=validated_input.memory_entry

@@ -18,6 +18,7 @@ from claude_agent_sdk import tool
 from services.facades import PlayerFacade
 from services.item_service import ItemService
 
+from sdk.handlers.common import tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, is_tool_enabled
 from sdk.tools.subagent import PersistItemInput
@@ -164,14 +165,11 @@ def create_item_tools(ctx: ToolContext) -> list:
                 elif not validated.add_to_inventory and created_items:
                     response_parts.append("\nAction Manager can add these items to inventory via change_stat.")
 
-                return {"content": [{"type": "text", "text": "\n".join(response_parts)}]}
+                return tool_success("\n".join(response_parts))
 
             except Exception as e:
                 logger.error(f"persist_item error: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error creating items: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error creating items: {e}")
 
         tools.append(persist_item_tool)
 

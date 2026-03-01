@@ -9,7 +9,7 @@ from core import get_settings
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.entities.agent import is_action_manager
 from domain.value_objects.contexts import ConversationContextParams
-from domain.value_objects.enums import ConversationMode, ParticipantType
+from domain.value_objects.enums import ConversationMode, Language, ParticipantType
 from i18n.korean import format_with_particles
 from sdk.loaders import get_conversation_context_config, get_group_config
 
@@ -218,13 +218,7 @@ def build_conversation_context(params: ConversationContextParams) -> str:
     # response_AM is handled separately in gameplay_context.py for Action Manager
     if params.include_response_instruction and agent_name:
         # Determine language key
-        lang = params.world_language
-        if lang == "jp":
-            lang_key = "jp"
-        elif lang == "ko":
-            lang_key = "ko"
-        else:
-            lang_key = "en"
+        lang_key = Language.to_lang_key(params.world_language)
 
         # Select instruction based on mode
         if params.mode == ConversationMode.ONBOARDING:

@@ -29,6 +29,7 @@ from claude_agent_sdk import tool
 from services.world_service import WorldService
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sdk.handlers.common import tool_error, tool_success
 from sdk.handlers.context import ToolContext
 from sdk.loaders import get_tool_description, get_tool_response, is_tool_enabled
 from sdk.tools.onboarding import (
@@ -200,17 +201,11 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
                 fs_locations = LocationStorage.load_all_locations(effective_world_name)
                 if starting_location not in fs_locations:
                     available = ", ".join(fs_locations.keys()) if fs_locations else "none"
-                    return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Starting location '{starting_location}' not found. "
-                                f"Available locations: {available}. "
-                                "Make sure location_designer created this location first.",
-                            }
-                        ],
-                        "is_error": True,
-                    }
+                    return tool_error(
+                        f"Starting location '{starting_location}' not found. "
+                        f"Available locations: {available}. "
+                        "Make sure location_designer created this location first."
+                    )
 
                 # Ensure world directory exists
                 config = WorldService.ensure_world_exists(effective_world_name)
@@ -258,10 +253,7 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
 
             except Exception as e:
                 logger.error(f"Failed to complete onboarding: {e}", exc_info=True)
-                return {
-                    "content": [{"type": "text", "text": f"Error completing onboarding: {e}"}],
-                    "is_error": True,
-                }
+                return tool_error(f"Error completing onboarding: {e}")
 
             # Get response template from config
             response_text = get_tool_response(
@@ -272,7 +264,7 @@ def create_onboarding_tools(ctx: ToolContext) -> list:
                 starting_hour=starting_hour,
             )
 
-            return {"content": [{"type": "text", "text": response_text}]}
+            return tool_success(response_text)
 
         tools.append(complete_tool)
 
@@ -309,7 +301,7 @@ def _create_read_lore_guidelines_tool(ctx: ToolContext):
     async def read_lore_guidelines(_args: dict[str, Any]):
         """Return the lore writing guidelines for world creation."""
         ReadLoreGuidelinesInput()  # Validate input (no-op)
-        return {"content": [{"type": "text", "text": lore_guidelines_content}]}
+        return tool_success(lore_guidelines_content)
 
     return read_lore_guidelines
 
@@ -362,22 +354,14 @@ def _create_draft_world_tool(ctx: ToolContext):
             logger.info(f"✅ World draft created for '{world_name}'")
             logger.info(f"Genre: {validated.genre}, Theme: {validated.theme}")
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"World draft created. Genre: {validated.genre}, Theme: {validated.theme}. "
-                        f"Sub-agents can now start with this context.",
-                    }
-                ],
-            }
+            return tool_success(
+                f"World draft created. Genre: {validated.genre}, Theme: {validated.theme}. "
+                f"Sub-agents can now start with this context."
+            )
 
         except Exception as e:
             logger.error(f"Failed to create world draft: {e}", exc_info=True)
-            return {
-                "content": [{"type": "text", "text": f"Error creating world draft: {e}"}],
-                "is_error": True,
-            }
+            return tool_error(f"Error creating world draft: {e}")
 
     return draft_world
 
@@ -458,21 +442,13 @@ def _create_persist_world_tool(ctx: ToolContext):
             WorldService.save_lore(world_name, new_lore)
             logger.info(f"✅ World persisted for '{world_name}'")
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"World persisted successfully. Stats: {len(validated.stat_system.stats)}, "
-                        f"Lore: {len(validated.lore)} characters",
-                    }
-                ],
-            }
+            return tool_success(
+                f"World persisted successfully. Stats: {len(validated.stat_system.stats)}, "
+                f"Lore: {len(validated.lore)} characters"
+            )
 
         except Exception as e:
             logger.error(f"Failed to persist world: {e}", exc_info=True)
-            return {
-                "content": [{"type": "text", "text": f"Error persisting world: {e}"}],
-                "is_error": True,
-            }
+            return tool_error(f"Error persisting world: {e}")
 
     return persist_world
