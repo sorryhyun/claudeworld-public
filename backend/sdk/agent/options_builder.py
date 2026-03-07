@@ -91,6 +91,7 @@ def build_agent_options(
         "DISABLE_TELEMETRY": "true",
         "CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK": "true",
         "CLAUDE_CODE_DISABLE_BUILTIN_AGENTS": "true",
+        "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING": "true"
     }
 
     # Add tracing environment variables if enabled (requires patched CLI with observability)
