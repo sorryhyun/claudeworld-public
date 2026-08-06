@@ -71,10 +71,16 @@ def pytest_collection_modifyitems(items):
 
 
 @pytest.fixture(autouse=True)
-def cleanup_after_test():
-    """Run garbage collection after each test to free memory."""
+def cleanup_after_test(request):
+    """Run garbage collection after memory-intensive tests.
+
+    A full gc.collect() costs ~40ms once the SDK/SQLAlchemy/FastAPI heaps are
+    loaded. Only the `db`, `sdk`, and `integration` tests allocate enough to
+    justify that; running it after every test dominated the suite's runtime.
+    """
     yield
-    gc.collect()
+    if any(request.node.get_closest_marker(m) for m in ("db", "sdk", "integration")):
+        gc.collect()
 
 
 # ============================================================================

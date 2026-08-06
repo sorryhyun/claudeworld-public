@@ -175,7 +175,7 @@ User Action → Action_Manager (hidden) → narration + suggest_options
 **AgentManager (`sdk/agent/agent_manager.py`):**
 - Client management via ClientPool with TaskIdentifier keys
 - Response generation with stream parsing
-- Model: `claude-opus-4-6` (or Sonnet with `USE_SONNET=true`)
+- Model: `claude-opus-5` (or `claude-sonnet-5` with `USE_SONNET=true`)
 
 **MCP Tools:**
 - **Action Tools:** `skip`, `memorize`, `recall`

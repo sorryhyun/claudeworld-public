@@ -108,10 +108,13 @@ def build_agent_options(
         logger.info("CLI tracing enabled - traces will be written to stderr")
 
     options = ClaudeAgentOptions(
-        model="claude-opus-4-6" if not USE_SONNET else "claude-sonnet-4-6",
+        model="claude-opus-5" if not USE_SONNET else "claude-sonnet-5",
         system_prompt=system_prompt,
         permission_mode="bypassPermissions",
-        max_thinking_tokens=32768,
+        # Adaptive thinking replaces the deprecated max_thinking_tokens budget.
+        # display="summarized" is required: these models omit thinking text by
+        # default, and the UI renders it (ThinkingPreview).
+        thinking={"type": "adaptive", "display": "summarized"},
         mcp_servers=mcp_config.mcp_servers,
         allowed_tools=mcp_config.allowed_tool_names + ["Task", "TaskOutput"],
         tools=mcp_config.allowed_tool_names + ["Task", "TaskOutput"],
