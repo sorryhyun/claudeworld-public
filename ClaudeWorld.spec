@@ -62,6 +62,7 @@ config_dir = backend_dir / 'sdk' / 'config'
 
 # Data files to include
 logging_config_dir = backend_dir / 'infrastructure' / 'logging'
+alembic_dir = backend_dir / 'infrastructure' / 'database' / 'alembic'
 
 assets_dir = project_root / 'assets'
 
@@ -74,6 +75,11 @@ datas = [
     (str(config_dir), 'backend/sdk/config'),
     # Logging/debug config
     (str(logging_config_dir), 'backend/infrastructure/logging'),
+    # Alembic env.py and revision scripts. These MUST ship as data files, not
+    # as hidden imports: Alembic discovers revisions by scanning the versions
+    # directory on disk, so a bundled-but-unlisted module is invisible to it and
+    # the app starts against an un-upgraded database.
+    (str(alembic_dir), 'backend/infrastructure/database/alembic'),
     # Application icon (for pywebview window)
     (str(assets_dir / 'icon.ico'), 'assets'),
     # .env.example as template
@@ -82,6 +88,8 @@ datas = [
 
 # Collect ruamel.yaml data files (required for proper YAML handling)
 datas += collect_data_files('ruamel.yaml')
+# Alembic loads its runtime pieces dynamically; PyInstaller cannot see them.
+datas += collect_data_files('alembic')
 
 # Collect all ruamel.yaml submodules
 ruamel_hiddenimports = collect_submodules('ruamel.yaml')
@@ -113,12 +121,17 @@ def collect_backend_modules(backend_path):
 
 backend_modules = collect_backend_modules(backend_dir)
 
+# Alembic imports its dialect and command modules by name at runtime.
+alembic_hiddenimports = collect_submodules('alembic')
+
 # Hidden imports that PyInstaller might miss
 hiddenimports = [
     # Local backend modules
     *backend_modules,
     # ruamel.yaml submodules (collected dynamically)
     *ruamel_hiddenimports,
+    # Alembic submodules (collected dynamically)
+    *alembic_hiddenimports,
     # Uvicorn internals
     'uvicorn.logging',
     'uvicorn.loops',

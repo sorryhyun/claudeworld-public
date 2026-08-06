@@ -9,14 +9,25 @@ This module provides a centralized cache manager for frequently accessed data:
 
 All caches support TTL (time-to-live) and manual invalidation.
 
-Threading model:
-- Synchronous methods use threading.Lock for thread safety
-- Async methods use asyncio.Lock to avoid blocking the event loop
+Concurrency model:
+- ONE ``threading.Lock`` guards all mutable state, taken by sync and async
+  methods alike. There used to be two locks -- a ``threading.Lock`` in the sync
+  methods and a separate ``asyncio.Lock`` in the async ones -- guarding the same
+  dict. Two locks that do not exclude each other are no lock at all; that was
+  only latent because the app runs on a single event-loop thread today, and it
+  would have become a live race the first time anyone added a sync endpoint
+  (FastAPI runs those in a threadpool) or a worker thread.
+- Every critical section is pure dict work with no ``await`` inside, so holding
+  a blocking lock never stalls the event loop.
+- The one place that must await (``get_or_set_async``'s factory) runs *outside*
+  the lock and is deduplicated with a per-key future, so N concurrent misses
+  compute the value once instead of N times.
 """
 
 import asyncio
 import logging
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Callable, Dict, Optional, TypeVar
@@ -24,6 +35,13 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 logger = logging.getLogger("Cache")
 
 T = TypeVar("T")
+
+# Cap on live entries. Keys are per-room and per-agent, so the cache grows with
+# world count; without a cap it only ever shrinks when an expired key happens to
+# be read again or the 5-minute scheduler sweep runs.
+DEFAULT_MAX_SIZE = 2000
+
+_MISSING = object()
 
 
 @dataclass
@@ -40,28 +58,65 @@ class CacheEntry:
 
 class CacheManager:
     """
-    Thread-safe in-memory cache with TTL support.
+    Thread-safe, async-safe in-memory cache with TTL support.
 
     Features:
     - TTL-based expiration
+    - Bounded size with LRU eviction
     - Manual invalidation by key or pattern
-    - Automatic cleanup of expired entries
-    - Thread-safe operations (sync methods use threading.Lock)
-    - Async-safe operations (async methods use asyncio.Lock)
+    - Single-flight ``get_or_set_async``: concurrent misses compute once
     """
 
-    def __init__(self):
-        """Initialize cache manager with empty storage."""
-        self._cache: Dict[str, CacheEntry] = {}
-        self._lock = Lock()  # For synchronous operations
-        self._async_lock: Optional[asyncio.Lock] = None  # Lazy-init for async operations
-        self._stats = {"hits": 0, "misses": 0, "invalidations": 0}
+    def __init__(self, max_size: int = DEFAULT_MAX_SIZE):
+        """Initialize cache manager with empty storage.
 
-    def _get_async_lock(self) -> asyncio.Lock:
-        """Get or create the async lock (must be called from async context)."""
-        if self._async_lock is None:
-            self._async_lock = asyncio.Lock()
-        return self._async_lock
+        Args:
+            max_size: Maximum live entries before least-recently-used eviction.
+        """
+        # OrderedDict, not dict: the insertion order doubles as LRU recency,
+        # maintained by move_to_end() on every hit.
+        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self._lock = Lock()
+        self._max_size = max_size
+        # Per-key in-flight computations for get_or_set_async (single-flight).
+        self._inflight: Dict[str, "asyncio.Future[Any]"] = {}
+        self._stats = {"hits": 0, "misses": 0, "invalidations": 0, "evictions": 0}
+
+    # -- internals ---------------------------------------------------------
+
+    def _lookup_locked(self, key: str) -> Any:
+        """Read a live entry, dropping it if expired. Caller must hold the lock.
+
+        Returns ``_MISSING`` on miss so a cached ``None`` stays distinguishable
+        from "not cached" -- callers that conflate the two would re-run the
+        factory on every read of a legitimately-None value.
+        """
+        entry = self._cache.get(key)
+        if entry is None:
+            self._stats["misses"] += 1
+            return _MISSING
+
+        if entry.is_expired():
+            del self._cache[key]
+            self._stats["misses"] += 1
+            logger.debug(f"Cache expired: {key}")
+            return _MISSING
+
+        self._cache.move_to_end(key)  # mark as recently used
+        self._stats["hits"] += 1
+        return entry.value
+
+    def _store_locked(self, key: str, value: Any, ttl_seconds: float) -> None:
+        """Insert an entry and enforce the size cap. Caller must hold the lock."""
+        self._cache[key] = CacheEntry(value=value, expires_at=time.time() + ttl_seconds)
+        self._cache.move_to_end(key)
+
+        while len(self._cache) > self._max_size:
+            evicted_key, _ = self._cache.popitem(last=False)  # least recently used
+            self._stats["evictions"] += 1
+            logger.debug(f"Cache evicted (size cap {self._max_size}): {evicted_key}")
+
+    # -- public API --------------------------------------------------------
 
     def get(self, key: str) -> Optional[Any]:
         """
@@ -74,20 +129,8 @@ class CacheManager:
             Cached value or None if not found/expired
         """
         with self._lock:
-            if key not in self._cache:
-                self._stats["misses"] += 1
-                return None
-
-            entry = self._cache[key]
-
-            if entry.is_expired():
-                del self._cache[key]
-                self._stats["misses"] += 1
-                logger.debug(f"Cache expired: {key}")
-                return None
-
-            self._stats["hits"] += 1
-            return entry.value
+            value = self._lookup_locked(key)
+        return None if value is _MISSING else value
 
     def set(self, key: str, value: Any, ttl_seconds: float = 60):
         """
@@ -99,9 +142,8 @@ class CacheManager:
             ttl_seconds: Time to live in seconds (default: 60)
         """
         with self._lock:
-            expires_at = time.time() + ttl_seconds
-            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
-            logger.debug(f"Cache set: {key} (TTL: {ttl_seconds}s)")
+            self._store_locked(key, value, ttl_seconds)
+        logger.debug(f"Cache set: {key} (TTL: {ttl_seconds}s)")
 
     def invalidate(self, key: str) -> bool:
         """
@@ -129,32 +171,36 @@ class CacheManager:
             pattern: Key prefix to match
         """
         with self._lock:
-            keys_to_delete = [k for k in self._cache.keys() if k.startswith(pattern)]
+            keys_to_delete = [k for k in self._cache if k.startswith(pattern)]
             for key in keys_to_delete:
                 del self._cache[key]
                 self._stats["invalidations"] += 1
 
-            if keys_to_delete:
-                logger.debug(f"Cache invalidated pattern '{pattern}': {len(keys_to_delete)} keys")
+        if keys_to_delete:
+            logger.debug(f"Cache invalidated pattern '{pattern}': {len(keys_to_delete)} keys")
 
     def clear(self):
         """Clear all cache entries."""
         with self._lock:
             count = len(self._cache)
             self._cache.clear()
-            logger.info(f"Cache cleared: {count} entries removed")
+        logger.info(f"Cache cleared: {count} entries removed")
 
     def cleanup_expired(self):
-        """Remove all expired entries from cache."""
+        """Remove all expired entries from cache.
+
+        Called every 5 minutes by the background scheduler (``_cleanup_cache``).
+        The LRU cap bounds the cache regardless; this reclaims entries that
+        expired and were never read again, before they reach the cap.
+        """
         with self._lock:
             current_time = time.time()
             expired_keys = [key for key, entry in self._cache.items() if entry.expires_at < current_time]
-
             for key in expired_keys:
                 del self._cache[key]
 
-            if expired_keys:
-                logger.debug(f"Cache cleanup: {len(expired_keys)} expired entries removed")
+        if expired_keys:
+            logger.debug(f"Cache cleanup: {len(expired_keys)} expired entries removed")
 
     def get_or_set(self, key: str, factory: Callable[[], T], ttl_seconds: float = 60) -> T:
         """
@@ -168,18 +214,21 @@ class CacheManager:
         Returns:
             Cached or computed value
         """
-        cached_value = self.get(key)
-        if cached_value is not None:
-            return cached_value
+        with self._lock:
+            value = self._lookup_locked(key)
+        if value is not _MISSING:
+            return value
 
-        value = factory()
-        self.set(key, value, ttl_seconds)
-
-        return value
+        computed = factory()
+        self.set(key, computed, ttl_seconds)
+        return computed
 
     async def get_async(self, key: str) -> Optional[Any]:
         """
-        Async version of get using asyncio.Lock to avoid blocking the event loop.
+        Async-callable version of :meth:`get`.
+
+        The lock is a plain threading.Lock held only across dict operations,
+        so this never yields and never stalls the event loop.
 
         Args:
             key: Cache key
@@ -187,39 +236,31 @@ class CacheManager:
         Returns:
             Cached value or None if not found/expired
         """
-        async with self._get_async_lock():
-            if key not in self._cache:
-                self._stats["misses"] += 1
-                return None
-
-            entry = self._cache[key]
-
-            if entry.is_expired():
-                del self._cache[key]
-                self._stats["misses"] += 1
-                logger.debug(f"Cache expired: {key}")
-                return None
-
-            self._stats["hits"] += 1
-            return entry.value
+        return self.get(key)
 
     async def set_async(self, key: str, value: Any, ttl_seconds: float = 60):
         """
-        Async version of set using asyncio.Lock to avoid blocking the event loop.
+        Async-callable version of :meth:`set`.
 
         Args:
             key: Cache key
             value: Value to cache
             ttl_seconds: Time to live in seconds (default: 60)
         """
-        async with self._get_async_lock():
-            expires_at = time.time() + ttl_seconds
-            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
-            logger.debug(f"Cache set: {key} (TTL: {ttl_seconds}s)")
+        self.set(key, value, ttl_seconds)
 
     async def get_or_set_async(self, key: str, factory: Callable[[], Any], ttl_seconds: float = 60) -> Any:
         """
-        Async version of get_or_set using asyncio.Lock to avoid blocking the event loop.
+        Get value from cache or await ``factory()`` to compute it.
+
+        Single-flight: if several callers miss the same key at once, exactly one
+        runs the factory and the rest await its result. Without this, N
+        concurrent requests for an uncached room each issued their own database
+        query.
+
+        If the leading caller is cancelled, waiters see ``CancelledError`` too
+        and a later call re-leads; if it raises, every waiter sees that
+        exception and nothing is cached.
 
         Args:
             key: Cache key
@@ -229,34 +270,72 @@ class CacheManager:
         Returns:
             Cached or computed value
         """
-        async with self._get_async_lock():
-            if key in self._cache:
-                entry = self._cache[key]
-                if not entry.is_expired():
-                    self._stats["hits"] += 1
-                    return entry.value
-                else:
-                    del self._cache[key]
-                    self._stats["misses"] += 1
+        with self._lock:
+            value = self._lookup_locked(key)
+            if value is not _MISSING:
+                return value
+
+            existing = self._inflight.get(key)
+            if existing is None:
+                pending: "asyncio.Future[Any]" = asyncio.get_running_loop().create_future()
+                # Retrieve the exception on completion so a failed computation
+                # with no waiters does not log "exception was never retrieved".
+                pending.add_done_callback(_consume_future_exception)
+                self._inflight[key] = pending
             else:
-                self._stats["misses"] += 1
+                pending = None  # type: ignore[assignment]
 
-        value = await factory()
+        if pending is None:
+            return await existing  # another caller is already computing this key
 
-        async with self._get_async_lock():
-            expires_at = time.time() + ttl_seconds
-            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
-            logger.debug(f"Cache set: {key} (TTL: {ttl_seconds}s)")
+        try:
+            computed = await factory()
+        except asyncio.CancelledError:
+            self._finish_inflight(key, pending, cancel=True)
+            raise
+        except BaseException as exc:
+            self._finish_inflight(key, pending, exception=exc)
+            raise
 
-        return value
+        with self._lock:
+            self._store_locked(key, computed, ttl_seconds)
+        logger.debug(f"Cache set: {key} (TTL: {ttl_seconds}s)")
 
-    def get_stats(self) -> Dict[str, int]:
+        self._finish_inflight(key, pending, result=computed)
+        return computed
+
+    def _finish_inflight(
+        self,
+        key: str,
+        pending: "asyncio.Future[Any]",
+        *,
+        result: Any = None,
+        exception: Optional[BaseException] = None,
+        cancel: bool = False,
+    ) -> None:
+        """Release a single-flight slot and wake its waiters."""
+        with self._lock:
+            if self._inflight.get(key) is pending:
+                del self._inflight[key]
+
+        if pending.done():
+            return
+        if cancel:
+            pending.cancel()
+        elif exception is not None:
+            pending.set_exception(exception)
+        else:
+            pending.set_result(result)
+
+    def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
         with self._lock:
-            total = self._stats["hits"] + self._stats["misses"]
-            hit_rate = (self._stats["hits"] / total * 100) if total > 0 else 0
+            stats = dict(self._stats)
+            size = len(self._cache)
 
-            return {**self._stats, "total_requests": total, "hit_rate": round(hit_rate, 2), "size": len(self._cache)}
+        total = stats["hits"] + stats["misses"]
+        hit_rate = (stats["hits"] / total * 100) if total > 0 else 0
+        return {**stats, "total_requests": total, "hit_rate": round(hit_rate, 2), "size": size}
 
     def log_stats(self):
         """Log current cache statistics."""
@@ -264,8 +343,14 @@ class CacheManager:
         logger.info(
             f"Cache stats: {stats['hits']} hits, {stats['misses']} misses, "
             f"{stats['hit_rate']}% hit rate, {stats['size']} entries, "
-            f"{stats['invalidations']} invalidations"
+            f"{stats['invalidations']} invalidations, {stats['evictions']} evictions"
         )
+
+
+def _consume_future_exception(future: "asyncio.Future[Any]") -> None:
+    """Retrieve a finished future's exception so asyncio does not warn about it."""
+    if not future.cancelled():
+        future.exception()
 
 
 # Global cache instance

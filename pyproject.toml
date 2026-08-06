@@ -43,6 +43,7 @@ dependencies = [
     "sse-starlette>=2.0.0",
     "watchfiles>=1.0.0",
     "pywebview>=5.0.0",
+    "alembic>=1.13",
 ]
 
 [dependency-groups]
@@ -118,13 +119,20 @@ frontend-lint = { shell = "cd frontend && npm run lint", help = "Lint frontend c
 frontend-preview = { shell = "cd frontend && npm run preview", help = "Preview frontend production build" }
 
 # Testing (default: unit tests without SDK to save memory)
-test = { shell = "cd backend && pytest", help = "Run unit tests (excludes SDK tests)" }
-test-sdk = { shell = "cd backend && pytest -m 'unit and sdk' --tb=short", help = "Run SDK tests (high memory)" }
-test-unit-all = { shell = "cd backend && pytest -m unit --tb=short", help = "Run all unit tests including SDK" }
-test-integration = { shell = "cd backend && pytest -m integration --tb=short", help = "Run integration tests" }
-test-all = { shell = "cd backend && pytest -m 'unit or integration' --tb=short", help = "Run ALL tests (high memory)" }
-test-cov = { shell = "cd backend && pytest --cov=backend --cov-report=term-missing", help = "Run tests with coverage" }
-test-verbose = { shell = "cd backend && pytest -v", help = "Run tests verbose" }
+# All tasks run from the repo root so they pick up [tool.pytest.ini_options]
+# above -- the single pytest config. Do not reintroduce `cd backend`.
+test = { shell = "pytest", help = "Run unit tests (excludes SDK tests)" }
+test-sdk = { shell = "pytest -m 'unit and sdk'", help = "Run SDK tests (high memory)" }
+test-unit-all = { shell = "pytest -m unit", help = "Run all unit tests including SDK" }
+test-integration = { shell = "pytest -m integration", help = "Run integration tests" }
+test-all = { shell = "pytest -m 'unit or integration'", help = "Run ALL tests (high memory)" }
+test-cov = { shell = "pytest --cov=backend --cov-report=term-missing", help = "Run tests with coverage" }
+test-verbose = { shell = "pytest -v", help = "Run tests verbose" }
+
+# Migrations (Alembic; there is no alembic.ini -- see scripts/alembic_cli.py)
+migration = { shell = "python scripts/alembic_cli.py", help = "Run an Alembic command (e.g. `poe migration -- history`)" }
+migration-new = { shell = "python scripts/alembic_cli.py revision --autogenerate", help = "Autogenerate a revision from models.py (add -m '<message>')" }
+migration-check = { shell = "rm -f .migration-check.db && DATABASE_URL=sqlite+aiosqlite:///.migration-check.db python scripts/alembic_cli.py upgrade head && DATABASE_URL=sqlite+aiosqlite:///.migration-check.db python scripts/alembic_cli.py check; status=$?; rm -f .migration-check.db; exit $status", help = "Fail if models.py has drifted from the migrations" }
 
 # Installation
 install-all = { shell = "uv sync && cd frontend && npm install", help = "Install all dependencies (backend + frontend)" }
@@ -151,6 +159,11 @@ reportUnknownMemberType = false
 reportCallIssue = "none"
 
 [tool.pytest.ini_options]
+# THE pytest config. There used to be a second one in backend/pytest.ini; because
+# the poe tasks did `cd backend && pytest`, the ini won and this block was dead
+# config that silently ignored edits. The ini is gone and every task now runs
+# from the repo root, so this is the only file to edit.
+#
 # Use auto mode for pytest-asyncio (no need for @pytest.mark.asyncio on every test)
 asyncio_mode = "auto"
 # Default asyncio fixture loop scope
@@ -158,6 +171,7 @@ asyncio_default_fixture_loop_scope = "function"
 # Test discovery
 testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
+python_classes = ["Test*"]
 python_functions = ["test_*"]
 # Default options: run unit tests (skip sdk tests which are memory intensive)
 # Use `uv run pytest -m "unit and not sdk"` for unit tests (default)
@@ -168,16 +182,21 @@ python_functions = ["test_*"]
 # --dist loadfile keeps a file's tests on one worker, which matters because
 #   several modules hold process-wide singletons (settings, cache, mcp_registry).
 # --timeout: a hung test kills its worker and reports instead of wedging the run.
-addopts = "-m 'unit and not sdk' --tb=short -n 4 --dist loadfile --timeout=60 --timeout-method=thread"
+# --strict-markers: a typo'd marker is an error, not a silently-never-selected test.
+addopts = "-m 'unit and not sdk' --strict-markers --tb=short -q -n 4 --dist loadfile --timeout=60 --timeout-method=thread"
 # Custom markers
 markers = [
     "unit: Unit tests (fast, no external dependencies)",
     "integration: Integration tests (may use database, more memory)",
     "db: Tests that use database fixtures (memory intensive)",
-    "sdk: Tests that use Claude Agent SDK (very memory intensive)",
+    "sdk: Tests that use Claude Agent SDK (very memory intensive, may spawn subprocesses)",
     "api: API endpoint tests",
     "crud: CRUD operation tests",
     "auth: Authentication tests",
+    "utils: Utility function tests",
+    "services: Service layer tests",
+    "orchestration: Chat orchestration tests",
+    "slow: Slow-running tests",
 ]
 # Suppress common warnings
 filterwarnings = [

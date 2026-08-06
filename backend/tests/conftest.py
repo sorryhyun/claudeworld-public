@@ -9,6 +9,7 @@ to avoid loading the entire app for tests that don't need it.
 """
 
 import gc
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +18,25 @@ import pytest
 
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Baseline auth environment for the whole suite.
+#
+# get_jwt_secret() calls sys.exit(1) when JWT_SECRET is unset, which turns every
+# fixture that mints a token into a collection-time SystemExit. That made the
+# integration suite pass only on machines with a populated .env and fail
+# everywhere else (including CI). Set it unconditionally so the suite does not
+# depend on developer environment; individual tests still override via
+# monkeypatch (see mock_env_vars).
+os.environ["JWT_SECRET"] = "test_secret_key_for_testing_only"
+# bcrypt hash of "test_password"
+os.environ["API_KEY_HASH"] = "$2b$12$H0fCIM9buSuQsCFErTRi0Omz//QVZxCKJW5Dapi2u3ealuUFzvF9O"
+
+# connection.py reads DATABASE_URL at import time and defaults to PostgreSQL.
+# Unset, DATABASE_TYPE was "postgresql" under test, which turns retry_on_db_lock
+# and serialized_write() into no-op passthroughs -- so every test covering them
+# silently skipped. SQLite is what ships (see `make dev`), so test against it.
+# Must be set before anything imports infrastructure.database.connection.
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 # Type hints only - not imported at runtime
 if TYPE_CHECKING:

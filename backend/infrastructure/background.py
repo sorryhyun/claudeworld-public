@@ -47,6 +47,41 @@ def spawn_background(coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Ta
     return task
 
 
+async def run_uninterruptible(coro: Coroutine[Any, Any, Any]) -> Any:
+    """Run ``coro`` to completion even if the caller is cancelled, then re-raise.
+
+    Use for a write that must not be torn in half -- persisting an agent
+    response the user already watched stream in, say. Orchestration tasks are
+    cancelled routinely (a new player action interrupts the previous turn), and
+    a cancellation landing between the INSERT and the COMMIT loses the message.
+
+    Note this is deliberately *not* a bare ``asyncio.shield``. Shield re-raises
+    CancelledError in the caller immediately and leaves the shielded coroutine
+    running loose; the enclosing ``background_session()`` would then close the
+    session out from under the still-running write. Here the cancellation is
+    absorbed until the write has actually landed, and only then re-raised, so
+    the caller's teardown never overtakes it.
+    """
+    task = asyncio.ensure_future(coro)
+    cancelled = False
+
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if task.cancelled():
+                raise
+            cancelled = True  # ours, not the task's -- keep waiting
+        except Exception:
+            break  # the task's own failure; re-raised by task.result() below
+
+    if cancelled:
+        # The write landed. Now honour the cancellation the caller asked for.
+        raise asyncio.CancelledError()
+
+    return task.result()
+
+
 def pending_background_tasks() -> set[asyncio.Task]:
     """Return the tasks that have not finished yet (for tests and diagnostics)."""
     return {task for task in _background_tasks if not task.done()}

@@ -46,7 +46,7 @@ backend/
 │   ├── services/          # Pure domain logic (rules, validation)
 │   └── value_objects/     # Enums, contexts, identifiers
 ├── infrastructure/        # Cross-cutting infrastructure
-│   ├── database/          # SQLAlchemy setup, models, migrations, write_queue
+│   ├── database/          # SQLAlchemy setup, models, migrations
 │   ├── logging/           # PerfLogger, debug logging
 │   ├── auth.py            # JWT authentication
 │   ├── cache.py           # In-memory caching
@@ -92,9 +92,15 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full layer diagram and dependency
 
 ### 2. Database Layer
 
-**Database:** SQLite with aiosqlite, async sessions, single-writer queue
+**Database:** SQLite with aiosqlite, async sessions, writes serialized through
+`serialized_write()` / `serialized_commit()` in `connection.py`
 
-**Automatic Migrations:** Schema changes handled automatically via `infrastructure/database/migrations.py`
+**Migrations:** Alembic. Revisions live in `infrastructure/database/alembic/versions/`
+and are applied on startup by `init_db()`. Generate one with
+`uv run poe migration-new -- -m "<message>"`; `uv run poe migration-check` fails if
+`models.py` has drifted from them. `infrastructure/database/migrations.py` is the
+frozen one-time catch-up for databases created before Alembic was adopted -- do not
+add to it.
 
 **Models (`infrastructure/database/models.py`):**
 - `Room`: Chat rooms with agent associations, world linkage
@@ -266,7 +272,7 @@ DELETE /rooms/{id}/messages        # Clear room messages
 
 **Add game state field:**
 1. Update `infrastructure/database/models.py` (World, Location, or PlayerState)
-2. Add migration in `infrastructure/database/migrations.py`
+2. Generate a migration: `uv run poe migration-new -- -m "add <field>"`
 3. Update `schemas/` and relevant `crud/` module (`worlds.py`, `locations.py`, or `player_state.py`)
 4. Restart
 

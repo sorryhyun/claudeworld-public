@@ -160,8 +160,9 @@ backend/
 │   ├── database/              # Database infrastructure
 │   │   ├── connection.py      # Engine, session maker, Base
 │   │   ├── models.py          # ORM models (Room, Agent, Message, World, etc.)
-│   │   ├── migrations.py      # Automatic schema migrations
-│   │   └── write_queue.py     # Single-writer SQLite queue
+│   │   ├── alembic/           # Alembic env.py + versions/
+│   │   ├── alembic_runner.py  # Programmatic Alembic driver + drift gate
+│   │   └── migrations.py      # Legacy pre-Alembic catch-up (frozen)
 │   └── logging/               # Logging infrastructure
 │       ├── agent_logger.py    # Agent debug logger
 │       ├── formatters.py      # Log formatters
@@ -222,7 +223,7 @@ backend/
                                  │
         ┌────────────────────────▼──────────────────────────────┐
         │               Infrastructure                          │
-        │  database/{connection, models, migrations, write_queue}│
+        │  database/{connection, models, migrations}             │
         │  auth, cache, locking, scheduler, sse, sse_ticket     │
         └───────────────────────────────────────────────────────┘
                                  │
@@ -264,10 +265,13 @@ The filesystem is the source of truth; the database is a cache for fast queries:
 
 ### Single-Writer SQLite Pattern
 
-SQLite doesn't support concurrent writes. The `write_queue` module serializes all writes:
-- All DB writes go through `infrastructure/database/write_queue.py`
-- Reads happen directly via async sessions
-- Ensures no `database is locked` errors under concurrent agent processing
+SQLite doesn't support concurrent writes. Writes are serialized by primitives in
+`infrastructure/database/connection.py`:
+- `serialized_write()` / `serialized_commit()` take a process-wide `asyncio.Lock`
+  so only one write is in flight at a time
+- `@retry_on_db_lock` retries with exponential backoff if SQLite reports a lock anyway
+- Both are transparent no-ops when `DATABASE_URL` points at PostgreSQL
+- Reads happen directly via async sessions, outside the lock
 
 ### Tape-Based Turn Scheduling
 

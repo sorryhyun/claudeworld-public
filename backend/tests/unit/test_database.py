@@ -94,6 +94,100 @@ class TestRetryOnDbLock:
         with pytest.raises(Exception, match="database is locked"):
             await mock_operation()
 
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "account is locked",  # application error that merely says "locked"
+            "deadlocked while processing",  # contains "locked" as a substring
+            "the record is locked by another user",
+        ],
+    )
+    async def test_non_sqlite_lock_messages_are_not_retried(self, message):
+        """Only SQLite's own lock messages retry.
+
+        A blanket `"locked" in str(exc)` match swallowed unrelated application
+        errors into 5 attempts and ~3s of pointless backoff before surfacing.
+        """
+        if DATABASE_TYPE != "sqlite":
+            pytest.skip("retry logic only active for SQLite")
+
+        call_count = 0
+
+        @retry_on_db_lock(max_retries=5, initial_delay=10)  # would take ~150s if retried
+        async def mock_operation():
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError(message)
+
+        with pytest.raises(RuntimeError, match=message):
+            await mock_operation()
+
+        assert call_count == 1
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_matches_wrapped_dbapi_error(self):
+        """The lock check unwraps SQLAlchemy's `.orig` to read the driver's message."""
+        if DATABASE_TYPE != "sqlite":
+            pytest.skip("retry logic only active for SQLite")
+
+        import sqlite3
+
+        from sqlalchemy.exc import OperationalError
+
+        call_count = 0
+
+        @retry_on_db_lock(max_retries=3, initial_delay=0.01)
+        async def mock_operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise OperationalError(
+                    "INSERT INTO rooms ...", {}, sqlite3.OperationalError("database is locked")
+                )
+            return "success"
+
+        assert await mock_operation() == "success"
+        assert call_count == 2
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_rolls_back_session_between_attempts(self):
+        """A lock failure mid-transaction poisons the session; retrying needs a rollback."""
+        if DATABASE_TYPE != "sqlite":
+            pytest.skip("retry logic only active for SQLite")
+
+        from unittest.mock import AsyncMock
+
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        session = AsyncMock(spec=AsyncSession)
+        call_count = 0
+
+        @retry_on_db_lock(max_retries=3, initial_delay=0.01)
+        async def mock_operation(db):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise Exception("database is locked")
+            return "success"
+
+        assert await mock_operation(session) == "success"
+        assert call_count == 3
+        # One rollback per failed attempt, none after the successful one.
+        assert session.rollback.await_count == 2
+
+    @pytest.mark.unit
+    def test_rejects_nonpositive_max_retries(self):
+        """max_retries below 1 used to fall through the loop and `raise None`."""
+        if DATABASE_TYPE != "sqlite":
+            pytest.skip("retry logic only active for SQLite")
+
+        with pytest.raises(ValueError, match="max_retries"):
+            retry_on_db_lock(max_retries=0)
+
 
 class TestSerializedWrite:
     """Tests for serialized_write context manager."""

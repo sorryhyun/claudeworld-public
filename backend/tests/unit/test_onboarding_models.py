@@ -211,26 +211,39 @@ class TestCompleteOnboardingInput:
     """Test CompleteOnboardingInput model.
 
     Note: genre, theme, and lore are now handled by draft_world and persist_world tools.
-    CompleteOnboardingInput only handles the final phase transition with player_name.
+    CompleteOnboardingInput handles the final phase transition: player_name plus the
+    starting_location the location_designer created, and an optional starting_hour.
     """
 
     def test_valid_complete_input(self):
         """Test creating a valid complete input."""
-        input_data = CompleteOnboardingInput(player_name="Hero")
+        input_data = CompleteOnboardingInput(player_name="Hero", starting_location="village_square")
         assert input_data.player_name == "Hero"
+        assert input_data.starting_location == "village_square"
+        assert input_data.starting_hour == 8
 
     def test_complete_input_strips_whitespace(self):
         """Test that whitespace is stripped from player_name."""
-        input_data = CompleteOnboardingInput(player_name="  Captain  ")
+        input_data = CompleteOnboardingInput(player_name="  Captain  ", starting_location="bridge")
         assert input_data.player_name == "Captain"
 
     def test_complete_input_rejects_empty_player_name(self):
         """Test that empty or whitespace-only player_name is rejected."""
         with pytest.raises(ValidationError):
-            CompleteOnboardingInput(player_name="")
+            CompleteOnboardingInput(player_name="", starting_location="bridge")
 
         with pytest.raises(ValidationError):
-            CompleteOnboardingInput(player_name="   ")  # whitespace only
+            CompleteOnboardingInput(player_name="   ", starting_location="bridge")  # whitespace only
+
+    def test_complete_input_requires_starting_location(self):
+        """Test that starting_location is required (it drives the player's first room)."""
+        with pytest.raises(ValidationError):
+            CompleteOnboardingInput(player_name="Hero")
+
+    def test_complete_input_rejects_out_of_range_hour(self):
+        """Test that starting_hour must be a valid hour of day."""
+        with pytest.raises(ValidationError):
+            CompleteOnboardingInput(player_name="Hero", starting_location="bridge", starting_hour=24)
 
     def test_complete_input_missing_player_name(self):
         """Test that missing player_name causes validation error."""

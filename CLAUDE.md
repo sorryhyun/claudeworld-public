@@ -29,8 +29,11 @@ cd backend && DATABASE_URL=sqlite+aiosqlite:///../claudeworld.db uv run uvicorn 
 # Frontend only
 cd frontend && npm run dev
 
-# Testing
-uv run poe test                                    # Run all tests (fast, no coverage)
+# Testing (always run from the repo root -- pytest is configured only in
+# pyproject.toml's [tool.pytest.ini_options])
+uv run poe test                                    # Unit tests, excluding SDK (fast, no coverage)
+uv run poe test-unit-all                           # Unit tests including the SDK suite
+uv run poe test-integration                        # Integration tests
 uv run poe test-cov                                # Run tests with coverage
 uv run pytest backend/tests/unit/test_auth.py     # Run single test file
 uv run pytest -k "test_login"                     # Run tests matching pattern
@@ -81,8 +84,9 @@ backend/
     ├── database/          # Database infrastructure
     │   ├── connection.py  # Engine, session maker, Base, utilities
     │   ├── models.py      # ORM models (Room, Agent, Message, World, etc.)
-    │   ├── migrations.py  # Schema migrations
-    │   └── write_queue.py # SQLite write queue
+    │   ├── alembic/       # Alembic env.py + versions/ (schema migrations)
+    │   ├── alembic_runner.py  # Programmatic Alembic driver + drift gate
+    │   └── migrations.py  # Legacy one-time catch-up for pre-Alembic databases
     └── logging/           # Logging infrastructure
 ```
 
@@ -310,7 +314,15 @@ Creates `dist/ClaudeWorld.exe` with:
 
 ### General Tasks
 
-**Add database field:** Update `models.py`, add migration in `backend/infrastructure/database/migrations.py`, update `schemas.py` and `crud.py`, restart
+**Add database field:**
+1. Update `models.py`
+2. Generate a migration: `uv run poe migration-new -- -m "add <field> to <table>"`
+3. Review the generated file in `backend/infrastructure/database/alembic/versions/`
+4. Update `schemas.py` and `crud.py`, restart (migrations apply on startup)
+
+Do **not** hand-edit `migrations.py` — it is the frozen one-time catch-up for
+databases that predate Alembic. `uv run poe migration-check` fails if `models.py`
+has drifted from the migrations; it runs in CI.
 
 **Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud.py` or `crud/game.py`, add endpoint in `main.py` or `routers/game.py`
 

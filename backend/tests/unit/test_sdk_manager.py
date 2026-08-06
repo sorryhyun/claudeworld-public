@@ -6,31 +6,22 @@ interruption handling, and response generation.
 """
 
 import asyncio
-from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from claude_agent_sdk.types import (
+    AssistantMessage,
+    ResultMessage,
+    SystemMessage,
+    TextBlock,
+)
 from domain.entities.agent_config import AgentConfigData
 from domain.value_objects.contexts import AgentResponseContext
 from domain.value_objects.task_identifier import TaskIdentifier
 from sdk import AgentManager, ClientPool
 from sdk.agent.options_builder import build_agent_options
-
-
-@dataclass
-class MockTextMessage:
-    """Mock message with text attribute only."""
-
-    text: str
-
-
-# Create a proper class named SystemMessage so __class__.__name__ works correctly
-class SystemMessage:
-    """Mock SystemMessage class for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self.data = data
+from sdk.client.client_pool import PooledClient
 
 
 class TestAgentManagerInit:
@@ -166,7 +157,10 @@ class TestBuildAgentOptions:
                 assert options.system_prompt == "System prompt"
                 # Model is hardcoded to opus in options_builder.py (or sonnet if USE_SONNET)
                 assert options.model is not None and "claude" in options.model
-                assert options.max_thinking_tokens == 32768
+                # Adaptive thinking replaced the deprecated max_thinking_tokens budget.
+                # display="summarized" is load-bearing: the models omit thinking text
+                # without it, and ThinkingPreview in the UI renders it.
+                assert options.thinking == {"type": "adaptive", "display": "summarized"}
                 assert isinstance(options.mcp_servers, dict)
                 assert "guidelines" in options.mcp_servers
                 assert "action" in options.mcp_servers
@@ -193,6 +187,69 @@ class TestBuildAgentOptions:
                 assert options.resume == "test_session_123"
 
 
+class _CancellingQueue:
+    """Stands in for PooledClient.msg_queue and cancels the consumer.
+
+    Mirrors what interrupt_room does in production: the response task is parked
+    on ``await pooled.msg_queue.get()`` when it gets cancelled.
+    """
+
+    async def get(self):
+        raise asyncio.CancelledError()
+
+
+def _pooled(messages: list[Any] | None = None, *, queue: Any = None) -> tuple[Any, Any]:
+    """Build a (PooledClient, mock_client) pair for generate_sdk_response.
+
+    generate_sdk_response does not read ``client.receive_response()`` -- a pump
+    task in ClientPool drains the client into ``pooled.msg_queue`` and the
+    generator reads only from that queue. So the queue is what tests must fill,
+    and it needs to be a real asyncio.Queue (or a stub with an async ``get``):
+    an AsyncMock queue hands back a fresh MagicMock forever, which is neither the
+    ``None`` sentinel nor a ResultMessage, so the read loop never terminates.
+    """
+    mock_client = AsyncMock()
+
+    if queue is None:
+        queue = asyncio.Queue()
+        for message in messages or []:
+            queue.put_nowait(message)
+        # End sentinel, in case no ResultMessage terminates the loop first.
+        queue.put_nowait(None)
+
+    return PooledClient(client=mock_client, config_hash="test_hash", msg_queue=queue), mock_client
+
+
+def _context(**overrides) -> AgentResponseContext:
+    """Build an AgentResponseContext with test defaults."""
+    defaults = dict(
+        system_prompt="Test prompt",
+        user_message="Hello",
+        agent_name="TestAgent",
+        config=AgentConfigData(in_a_nutshell="Test"),
+        room_id=1,
+        agent_id=1,
+        session_id=None,
+        task_id=TaskIdentifier(room_id=1, agent_id=1),
+    )
+    defaults.update(overrides)
+    return AgentResponseContext(**defaults)
+
+
+def _result_message(**overrides) -> ResultMessage:
+    """Terminal message that ends generate_sdk_response's read loop."""
+    defaults = dict(
+        subtype="result",
+        duration_ms=0,
+        duration_api_ms=0,
+        is_error=False,
+        num_turns=1,
+        session_id="session123",
+    )
+    defaults.update(overrides)
+    return ResultMessage(**defaults)
+
+
 class TestGenerateSDKResponse:
     """Tests for generate_sdk_response async generator."""
 
@@ -200,120 +257,93 @@ class TestGenerateSDKResponse:
     async def test_generate_response_basic_flow(self):
         """Test basic response generation flow."""
         manager = AgentManager()
+        context = _context()
 
-        config = AgentConfigData(in_a_nutshell="Test")
-        context = AgentResponseContext(
-            system_prompt="Test prompt",
-            user_message="Hello",
-            agent_name="TestAgent",
-            config=config,
-            room_id=1,
-            agent_id=1,
-            session_id=None,
-            task_id=TaskIdentifier(room_id=1, agent_id=1),
-        )
-
-        # Mock client
-        mock_client = AsyncMock()
-
-        # Mock streaming response
-        async def mock_receive_response():
-            # Simulate streaming messages
-            # Text message (using dataclass to avoid Mock attribute issues)
-            yield MockTextMessage(text="Hello")
-
-            # System message with session ID (using named class so __class__.__name__ works)
-            yield SystemMessage(data={"session_id": "session123"})
-
-        mock_client.receive_response = mock_receive_response
-        mock_client.query = AsyncMock()
+        pooled, _ = _pooled([
+            SystemMessage(subtype="init", data={"session_id": "session123"}),
+            AssistantMessage(content=[TextBlock(text="Hello")], model="test"),
+            _result_message(),
+        ])
 
         with (
-            patch.object(manager.client_pool, "get_or_create", return_value=(mock_client, True, AsyncMock())),
+            patch.object(manager.client_pool, "get_or_create", return_value=(pooled, True, asyncio.Lock())),
             patch("sdk.agent.agent_manager.write_debug_log"),
             patch("sdk.agent.agent_manager.append_response_to_debug_log"),
         ):
-            events = []
-            async for event in manager.generate_sdk_response(context):
-                events.append(event)
+            events = [event async for event in manager.generate_sdk_response(context)]
 
-            # Should have stream_start and stream_end events
-            assert events[0]["type"] == "stream_start"
-            assert events[-1]["type"] == "stream_end"
-            assert events[-1]["session_id"] == "session123"
+        # Should have stream_start and stream_end events
+        assert events[0]["type"] == "stream_start"
+        assert events[-1]["type"] == "stream_end"
+        assert events[-1]["session_id"] == "session123"
+        assert events[-1]["response_text"] == "Hello"
+        assert events[-1]["skipped"] is False
 
-            # Client should be registered and unregistered
-            assert TaskIdentifier(room_id=1, agent_id=1) not in manager.active_clients
+        # Client should be registered and unregistered
+        assert TaskIdentifier(room_id=1, agent_id=1) not in manager.active_clients
+        # The new session is written back to the pooled client for the next turn
+        assert pooled.session_id == "session123"
+
+    @pytest.mark.asyncio
+    async def test_generate_response_stops_at_end_sentinel(self):
+        """A None sentinel from the pump ends the stream even without a ResultMessage."""
+        manager = AgentManager()
+        context = _context()
+
+        pooled, _ = _pooled([AssistantMessage(content=[TextBlock(text="Partial")], model="test")])
+
+        with (
+            patch.object(manager.client_pool, "get_or_create", return_value=(pooled, True, asyncio.Lock())),
+            patch("sdk.agent.agent_manager.write_debug_log"),
+            patch("sdk.agent.agent_manager.append_response_to_debug_log"),
+        ):
+            events = [event async for event in manager.generate_sdk_response(context)]
+
+        assert events[-1]["type"] == "stream_end"
+        assert events[-1]["response_text"] == "Partial"
 
     @pytest.mark.asyncio
     async def test_generate_response_handles_cancellation(self):
         """Test response generation handles cancellation."""
         manager = AgentManager()
+        context = _context()
 
-        config = AgentConfigData(in_a_nutshell="Test")
-        context = AgentResponseContext(
-            system_prompt="Test prompt",
-            user_message="Hello",
-            agent_name="TestAgent",
-            config=config,
-            room_id=1,
-            agent_id=1,
-            task_id=TaskIdentifier(room_id=1, agent_id=1),
-        )
-
-        mock_client = AsyncMock()
-
-        # Mock streaming that raises CancelledError
-        async def mock_receive_response():
-            raise asyncio.CancelledError()
-            yield  # Never reached
-
-        mock_client.receive_response = mock_receive_response
-        mock_client.query = AsyncMock()
+        pooled, _ = _pooled(queue=_CancellingQueue())
 
         with (
-            patch.object(manager.client_pool, "get_or_create", return_value=(mock_client, True, AsyncMock())),
+            patch.object(manager.client_pool, "get_or_create", return_value=(pooled, True, asyncio.Lock())),
             patch("sdk.agent.agent_manager.write_debug_log"),
             patch("sdk.agent.agent_manager.append_response_to_debug_log"),
         ):
-            events = []
-            async for event in manager.generate_sdk_response(context):
-                events.append(event)
+            events = [event async for event in manager.generate_sdk_response(context)]
 
-            # Should yield stream_end with skipped=True
-            assert events[-1]["type"] == "stream_end"
-            assert events[-1]["skipped"] is True
+        # Should yield stream_end with skipped=True
+        assert events[-1]["type"] == "stream_end"
+        assert events[-1]["skipped"] is True
+        assert events[-1]["response_text"] is None
+        # Cancellation must still unregister the client
+        assert TaskIdentifier(room_id=1, agent_id=1) not in manager.active_clients
 
     @pytest.mark.asyncio
     async def test_generate_response_handles_errors(self):
         """Test response generation handles errors gracefully."""
         manager = AgentManager()
+        context = _context()
 
-        config = AgentConfigData(in_a_nutshell="Test")
-        context = AgentResponseContext(
-            system_prompt="Test prompt",
-            user_message="Hello",
-            agent_name="TestAgent",
-            config=config,
-            room_id=1,
-            agent_id=1,
-            task_id=TaskIdentifier(room_id=1, agent_id=1),
-        )
-
-        mock_client = AsyncMock()
-
-        # Mock client that raises error
+        pooled, mock_client = _pooled([_result_message()])
+        # The failure has to be on the pooled client -- that is what the
+        # generator calls (`pooled.client.query`).
         mock_client.query.side_effect = Exception("Connection error")
 
         with (
-            patch.object(manager.client_pool, "get_or_create", return_value=(mock_client, True, AsyncMock())),
+            patch.object(manager.client_pool, "get_or_create", return_value=(pooled, True, asyncio.Lock())),
             patch("sdk.agent.agent_manager.write_debug_log"),
             patch("sdk.agent.agent_manager.append_response_to_debug_log"),
         ):
-            events = []
-            async for event in manager.generate_sdk_response(context):
-                events.append(event)
+            events = [event async for event in manager.generate_sdk_response(context)]
 
-            # Should yield error in stream_end
-            assert events[-1]["type"] == "stream_end"
-            assert "Error" in events[-1]["response_text"]
+        # Should yield error in stream_end
+        assert events[-1]["type"] == "stream_end"
+        assert "Error" in events[-1]["response_text"]
+        assert "Connection error" in events[-1]["response_text"]
+        assert TaskIdentifier(room_id=1, agent_id=1) not in manager.active_clients

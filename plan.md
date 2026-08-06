@@ -253,6 +253,22 @@ Three related defects in the same module:
 
 ## P1-1 — Cancellation during DB I/O on a shared session
 
+**Status: FIXED** (2026-08-06). Most of "give the background task its own
+session" already fell out of P0-1, as anticipated. What remained:
+`background_session()` now **invalidates** rather than closes on cancellation
+(`connection.py`), because a normal `close()` issues a ROLLBACK on a connection
+that may be part-way through a statement; and `run_uninterruptible()`
+(`infrastructure/background.py`) wraps the two response-persistence writes in
+`response_generator.py` so an interrupt cannot land between the INSERT and the
+COMMIT. Note that helper is deliberately *not* a bare `asyncio.shield` — shield
+re-raises in the caller immediately and leaves the write running loose, which
+the enclosing `background_session()` would then close out from under. Covered by
+`tests/unit/test_background_tasks.py`.
+
+**Not addressed:** concurrent agent coroutines within one tape still share
+`orch_context.db`. That is a separate defect from the cancellation one and
+fixing it means re-plumbing ORM objects across sessions.
+
 **Severity:** medium · **Confidence:** medium · **Effort:** ~1 day
 
 `orchestration/orchestrator.py:275` (and `trpg_orchestrator.py:212`,
@@ -278,6 +294,17 @@ operation on a fresh session succeeds.
 ---
 
 ## P1-2 — `retry_on_db_lock` matches too broadly and retries a poisoned session
+
+**Status: FIXED** (2026-08-06) in `connection.py`. Matching is now restricted to
+SQLite's own `"database is locked"` / `"database table is locked"`, read from the
+DBAPI exception under SQLAlchemy's wrapper (`.orig`). The decorator finds the
+`AsyncSession` in the call arguments and rolls it back between attempts, and
+`max_retries < 1` raises `ValueError` at decoration time instead of `raise None`
+at call time. Covered by `tests/unit/test_database.py`.
+
+**Also found:** those tests were all *skipping*. `DATABASE_URL` is unset under
+test, so `DATABASE_TYPE` defaulted to `postgresql` and the decorator was a no-op
+passthrough. `tests/conftest.py` now pins SQLite, which is what ships.
 
 **Severity:** medium · **Confidence:** high · **Effort:** ~2 hours
 
@@ -314,6 +341,20 @@ raised immediately rather than retried.
 **Severity:** low today, medium if threading is ever introduced ·
 **Confidence:** high (design), corrected on live impact · **Effort:** ~half a day
 
+**Status: FIXED** (2026-08-06). `infrastructure/cache.py` now uses a single
+`threading.Lock` for all state, sync and async alike — correct under both
+threading and asyncio, and every critical section is pure dict work with no
+`await` inside, so it never stalls the loop. (Making every method async was the
+other option, but `Agent.get_config_data()` in `models.py` is a sync ORM method
+that calls `cache.get`/`cache.set`, so that would have forced a much wider
+refactor.) Storage is an `OrderedDict` with LRU eviction at `max_size=2000`, and
+`get_or_set_async` is single-flight via a per-key `asyncio.Future`. Covered by
+the new `tests/unit/test_cache.py` — there were no cache tests at all before.
+
+**Correction:** "`cleanup_expired` has no caller" is wrong. It is called by
+`infrastructure/scheduler.py:220` (`_cleanup_cache`) every 5 minutes. The
+unbounded-growth concern stands anyway between sweeps, hence the LRU cap.
+
 `infrastructure/cache.py` protects `self._cache` with a `threading.Lock` in the
 sync methods (`:76`, `:101`, `:116`, `:131`) and a separate `asyncio.Lock` in the
 async ones (`:190`, `:215`, `:232`). **The two do not exclude each other.**
@@ -345,6 +386,37 @@ await the same computation.
 ---
 
 ## P2 — Migrations are hand-rolled, unversioned, and run on every boot
+
+**Status: FIXED** (2026-08-06). Alembic adopted, configured programmatically in
+`infrastructure/database/alembic_runner.py` — there is no `alembic.ini`, so the
+URL and target metadata have one definition and the `.exe` has one fewer data
+file. `init_db()` now branches three ways: empty database → run the revisions;
+tables but no `alembic_version` → run the legacy catch-up once, verify, stamp;
+stamped → upgrade. CLI is `scripts/alembic_cli.py` (`poe migration`,
+`poe migration-new`, `poe migration-check`).
+
+**Deviation from step 3 of the plan below:** the 929 lines were *not* ported to
+per-table revisions, deliberately. Every database that needs those ALTERs is
+pre-Alembic by definition and is handled by the catch-up path; every database
+that does not already matches the baseline revision. Porting them would have
+produced revisions that never run for anyone. `migrations.py` is now frozen and
+documented as such, and can be deleted once no supported upgrade path starts
+from a pre-Alembic database.
+
+**On the blanket `except Exception` (step 5):** kept, because several of them
+guard DDL that legitimately may not apply (constraint names that vary by
+database age, `DROP COLUMN` on older SQLite). What makes them safe is
+`verify_schema_matches_models()`, which diffs the finished schema against
+models.py before stamping and raises on a missing table or column — so anything
+they swallow surfaces as a hard error rather than a half-migrated schema.
+Cosmetic diffs (types, server defaults, index naming) warn instead, since a
+database grown through years of ALTERs differs harmlessly in those ways and
+hard-failing would brick real upgrades.
+
+`_sync_agents_from_filesystem` is now `sync_agents_from_filesystem`, called by
+`init_db` in its own transaction (step 4). Drift check runs in CI (step 2);
+verified it exits non-zero when a column is added to models.py without a
+revision. Covered by `tests/unit/test_alembic_migrations.py`.
 
 **Severity:** medium (operational) · **Confidence:** high · **Effort:** 2-3 days
 
@@ -381,6 +453,41 @@ transaction (`:41-64`).
 ---
 
 ## P2 — Test and config hygiene
+
+**Status: FIXED** (2026-08-06), all three items, plus two things found on the way.
+
+- **(#1)** Deleted `backend/pytest.ini`; the root `pyproject.toml` block is the
+  only config and every `poe` task now runs from the repo root (`cd backend` was
+  also silently breaking `test-cov`, whose `--cov=backend` resolved to a
+  nonexistent `backend/backend`). Marker list merged, `--strict-markers` kept,
+  `-p no:warnings` dropped in favour of `filterwarnings`.
+- **(#2)** *Three* tests hung, not one — the whole of `TestGenerateSDKResponse`.
+  They were written against a `receive_response()` architecture the code no
+  longer uses: a pump task in `ClientPool` drains the client into
+  `pooled.msg_queue`, and `get_or_create` returns `(PooledClient, is_new, Lock)`,
+  not the client. The AsyncMock queue returned a fresh MagicMock forever, which
+  is neither the `None` sentinel nor a `ResultMessage`, so the read loop spun
+  without end. Rewritten around a real `PooledClient` with a real
+  `asyncio.Queue`. The four outright failures were all stale assertions, not
+  regressions: `starting_location` became required on `CompleteOnboardingInput`;
+  `max_thinking_tokens` was replaced by adaptive thinking; `StreamParser` now
+  deliberately ignores a trailing `AssistantMessage` TextBlock once deltas have
+  accumulated (it holds the whole turn, so appending duplicated the response).
+  All 133 now pass.
+- **(#3)** Stale `write_queue.py` references were in five files, not two:
+  `CLAUDE.md`, `AGENTS.md`, `backend/README.md`, `backend/ARCHITECTURE.md`,
+  `.claude/agents/backend-dev.md`.
+
+**Found while wiring CI:** there was no test workflow at all
+(`.github/workflows/` had only the two Claude actions and the release build), so
+`-m sdk` was not the only thing unguarded — nothing ran. `tests.yml` now runs
+ruff, `-m unit` (SDK included), `-m integration`, and the schema drift check.
+
+**Found while wiring CI (2):** the integration suite was *entirely broken* — 39
+of 43 tests errored at setup. `get_jwt_secret()` calls `sys.exit(1)` when
+`JWT_SECRET` is unset, so the suite passed only on a machine with a populated
+`.env`. `tests/conftest.py` now pins `JWT_SECRET`, `API_KEY_HASH` and
+`DATABASE_URL` at import. All 43 pass.
 
 Cheap, and reduces the chance of everything above regressing.
 
@@ -431,8 +538,8 @@ Recorded so they are not re-litigated later.
 | Order | Item | Why first |
 |---|---|---|
 | 1 | ~~P0-1~~ done | Highest user-visible impact; unblocks P1-1 |
-| 2 | P2 test hygiene (#1, #2) | Need a trustworthy suite before touching more |
+| 2 | ~~P2 test hygiene~~ done | Need a trustworthy suite before touching more |
 | 3 | ~~P0-2~~ done | Isolated to one module; ships in the Windows build |
-| 4 | P1-1 | Mostly falls out of P0-1 |
-| 5 | P1-2, P1-3 | Small and independent |
-| 6 | P2 migrations | Largest; do it with the suite green |
+| 4 | ~~P1-1~~ done | Mostly falls out of P0-1 |
+| 5 | ~~P1-2, P1-3~~ done | Small and independent |
+| 6 | ~~P2 migrations~~ done | Largest; do it with the suite green |

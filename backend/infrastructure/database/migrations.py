@@ -1,9 +1,28 @@
 """
-Database migration utilities for claudeworld (SQLite and PostgreSQL).
+Legacy one-time schema catch-up for pre-Alembic databases.
 
-This module provides automatic schema migration functionality to handle
-database upgrades without requiring manual deletion of the database.
-Supports both SQLite (development) and PostgreSQL (production) databases.
+**Do not add migrations here.** Alembic owns forward schema changes; see
+``alembic_runner.py`` and ``alembic/versions/``. Generate a revision with::
+
+    uv run python scripts/alembic_cli.py revision --autogenerate -m "<description>"
+
+This module used to run on every boot, checking every column of every table
+against a hand-written list. It now runs at most once per database, and only for
+databases created before Alembic was adopted: ``init_db`` calls it to bring such
+a database up to the baseline revision, verifies the result against models.py,
+and stamps it. After that it is dead weight for that installation, and can be
+deleted outright once no supported upgrade path starts from a pre-Alembic
+database.
+
+The best-effort ``except Exception`` blocks below are kept deliberately -- they
+guard DDL that legitimately may not apply (constraints under names that vary by
+database age, ``DROP COLUMN`` on SQLite builds too old to support it). What
+makes them safe now is that ``init_db`` diffs the finished schema against
+models.py before stamping, so anything they swallowed surfaces there as a hard
+error instead of silently persisting.
+
+The agent filesystem sync (``sync_agents_from_filesystem``) is a data migration,
+not a schema one; it is called separately by ``init_db`` in its own transaction.
 """
 
 import logging
@@ -30,14 +49,14 @@ async def get_database_type(conn) -> str:
         return "sqlite"
 
 
-async def run_migrations(engine: AsyncEngine):
-    """
-    Run all database migrations to ensure schema is up-to-date.
+async def run_legacy_migrations(engine: AsyncEngine):
+    """Bring a pre-Alembic database up to the baseline revision. Runs once.
 
-    This function checks for missing columns and adds them with appropriate
-    defaults, allowing seamless upgrades from older database versions.
+    Called only from ``init_db`` when a database has tables but no
+    ``alembic_version``. The caller verifies the result against models.py before
+    stamping, so a step that quietly fails here is caught rather than baked in.
     """
-    logger.info("🔄 Running database migrations...")
+    logger.info("🔄 Running legacy schema catch-up...")
 
     async with engine.begin() as conn:
         # Enum type migrations - must run FIRST before table migrations
@@ -61,10 +80,7 @@ async def run_migrations(engine: AsyncEngine):
         # Timezone-aware migration
         await _migrate_to_timezone_aware(conn)
 
-        # Data migrations - sync data from filesystem
-        await _sync_agents_from_filesystem(conn)
-
-    logger.info("✅ Database migrations completed")
+    logger.info("✅ Legacy schema catch-up completed")
 
 
 # =============================================================================
@@ -506,8 +522,14 @@ async def _add_indexes(conn):
 # =============================================================================
 
 
-async def _sync_agents_from_filesystem(conn):
-    """Sync agent data from filesystem (paths, groups, profile pics, system prompts)."""
+async def sync_agents_from_filesystem(conn):
+    """Sync agent data from filesystem (paths, groups, profile pics, system prompts).
+
+    A data migration, not a schema one. Called by ``init_db`` in its own
+    transaction: it does filesystem I/O for every agent, and running that inside
+    the DDL transaction meant a slow or failing read could roll back the schema
+    work alongside it.
+    """
 
     from domain.entities.agent_config import AgentConfigData
     from i18n.korean import format_with_particles

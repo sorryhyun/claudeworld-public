@@ -23,8 +23,8 @@ ClaudeWorld is a turn-based text adventure (TRPG) where AI agents collaborate to
 - `backend/main.py` - FastAPI app entry point, middleware, lifespan
 - `backend/infrastructure/database/models.py` - All ORM models (Room, Agent, Message, World, etc.)
 - `backend/infrastructure/database/connection.py` - Engine, session maker, Base
-- `backend/infrastructure/database/migrations.py` - Schema migrations
-- `backend/infrastructure/database/write_queue.py` - SQLite write queue
+- `backend/infrastructure/database/alembic/versions/` - Alembic schema migrations
+- `backend/infrastructure/database/migrations.py` - Legacy pre-Alembic catch-up (frozen; do not add to it)
 - `backend/schemas/` - Pydantic request/response models
 - `backend/domain/` - Domain models, enums, exceptions
 
@@ -55,13 +55,13 @@ ClaudeWorld is a turn-based text adventure (TRPG) where AI agents collaborate to
 - **CRUD layer is pure**: No business logic in `crud/`, only database queries
 - **Cached CRUD**: `crud/cached.py` wraps CRUD with in-memory caching
 - **Pydantic schemas**: Separate request/response models in `schemas/`
-- **Write queue**: SQLite writes go through `write_queue.py` to prevent concurrent write issues
+- **Write serialization**: SQLite writes go through `serialized_write()` / `serialized_commit()` in `connection.py` to prevent concurrent write issues
 
 ### Database Conventions
 - Models inherit from `Base` in `connection.py`
 - Use `mapped_column()` with type annotations
 - Relationships use `relationship()` with `back_populates`
-- Migrations are manual in `migrations.py`
+- Migrations are Alembic revisions: `uv run poe migration-new -- -m "<message>"`
 
 ## Development Commands
 

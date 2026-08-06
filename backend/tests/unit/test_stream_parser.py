@@ -144,13 +144,26 @@ class TestStreamParser:
 
         assert result.session_id is None
 
-    def test_parse_accumulated_text(self):
-        message = _assistant([TextBlock(text=" more text")])
+    def test_parse_assistant_text_does_not_duplicate_streamed_text(self):
+        """An AssistantMessage TextBlock holds the whole turn, not a delta.
+
+        Once StreamEvent deltas have accumulated text, the trailing
+        AssistantMessage must be ignored or the response is emitted twice.
+        """
+        message = _assistant([TextBlock(text="Previous more text")])
 
         result = StreamParser.parse_message(message, "Previous", "Existing thinking")
 
-        assert result.response_text == "Previous more text"
+        assert result.response_text == "Previous"
         assert result.thinking_text == "Existing thinking"
+
+    def test_parse_assistant_text_used_when_nothing_streamed(self):
+        """With no accumulated text (no partial messages), the TextBlock is the response."""
+        message = _assistant([TextBlock(text="Full turn text")])
+
+        result = StreamParser.parse_message(message, "", "")
+
+        assert result.response_text == "Full turn text"
 
     def test_parse_mixed_content_blocks(self):
         message = _assistant([

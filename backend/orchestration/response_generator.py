@@ -23,6 +23,7 @@ from domain.value_objects.contexts import (
 )
 from domain.value_objects.enums import ConversationMode, MessageRole, WorldPhase
 from i18n.timezone import format_kst_timestamp
+from infrastructure.background import run_uninterruptible
 from infrastructure.logging.perf_logger import get_perf_logger
 from services.player_service import PlayerService
 from services.prompt_builder import build_runtime_system_prompt
@@ -429,8 +430,10 @@ class ResponseGenerator:
                     chat_session_id=orch_context.chat_session_id,
                 )
                 # Don't update room activity for skip messages
-                await crud.create_message(
-                    orch_context.db, orch_context.room_id, skip_message, update_room_activity=False
+                await run_uninterruptible(
+                    crud.create_message(
+                        orch_context.db, orch_context.room_id, skip_message, update_room_activity=False
+                    )
                 )
             return (False, "") if hidden else False
 
@@ -461,8 +464,10 @@ class ResponseGenerator:
             chat_session_id=msg_context.chat_session_id,
             game_time_snapshot=msg_context.game_time_snapshot,
         )
-        saved_message = await crud.create_message(
-            msg_context.db, msg_context.room_id, agent_message, update_room_activity=True
+        # The user already watched this response stream in; an interrupt landing
+        # between the INSERT and the COMMIT would lose it.
+        saved_message = await run_uninterruptible(
+            crud.create_message(msg_context.db, msg_context.room_id, agent_message, update_room_activity=True)
         )
 
         # Broadcast new_message via SSE for real-time delivery
