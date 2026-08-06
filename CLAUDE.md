@@ -243,7 +243,18 @@ Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법
 
    Login with the password you used to generate the hash.
 
-## Windows Deployment
+## Distribution
+
+End users install via release-hosted scripts in `scripts/install/`, attached to every GitHub release so the `latest/download/` URLs resolve:
+
+- `install.ps1` — Windows; downloads `ClaudeWorld.exe` to `%LOCALAPPDATA%\ClaudeWorld` with shortcuts
+- `install.sh` — macOS/Linux/WSL; source install to `~/.claudeworld` plus a `claudeworld` launcher
+
+Both upgrade in place and preserve `.env`, `claudeworld.db`, `worlds/` and edited agents. `.gitattributes` pins `*.sh` to LF because the Windows release runner checks out with `core.autocrlf=true`.
+
+Releases are cut with `gh release create <tag> --target master --generate-notes`; `.github/workflows/release.yml` builds on `published` and attaches all four assets.
+
+### Windows Executable
 
 ClaudeWorld can be packaged as a standalone executable with a native desktop window:
 

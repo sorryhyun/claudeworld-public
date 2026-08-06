@@ -2,6 +2,20 @@
 
 This guide explains how to build and deploy ClaudeWorld as a standalone Windows executable.
 
+> **Just want to install it?** End users don't build anything — they run one of the release-hosted install scripts:
+>
+> ```powershell
+> # Windows (PowerShell)
+> irm https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.ps1 | iex
+> ```
+>
+> ```bash
+> # macOS / Linux / WSL
+> curl -fsSL https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.sh | bash
+> ```
+>
+> See [Install Scripts](#install-scripts) for how these are published and what they do. The rest of this guide covers building the executable they download.
+
 ## Overview
 
 ClaudeWorld can be packaged into a single Windows `.exe` file using PyInstaller. The executable runs as a **standalone desktop application** with a native window (powered by pywebview + Edge WebView2) instead of opening in the default browser.
@@ -97,14 +111,42 @@ The `backend/launcher.py` script:
 
 ### What to Distribute
 
-After building, distribute the entire `dist/` directory:
-```
-dist/
-├── ClaudeWorld.exe     # Main executable
-└── (PyInstaller may create additional files depending on configuration)
+Distribution happens through GitHub releases. A published release carries four assets:
+
+| Asset | Purpose |
+|-------|---------|
+| `ClaudeWorld.exe` | The standalone executable, fetched by `install.ps1` |
+| `ClaudeWorld-Windows.zip` | Same exe, zipped — kept for manual downloads and older installers |
+| `install.ps1` | Windows installer |
+| `install.sh` | macOS / Linux / WSL installer |
+
+The spec file produces a single self-contained executable, so `dist/ClaudeWorld.exe` is the only build output that needs shipping.
+
+### Install Scripts
+
+Both installers live in `scripts/install/` and are attached to every release, which is what makes the `latest/download/` one-liners work — GitHub serves release assets at a stable URL that always points at the newest published release.
+
+**`install.ps1`** (Windows) downloads `ClaudeWorld.exe` into `%LOCALAPPDATA%\ClaudeWorld`, creates Start Menu and Desktop shortcuts, and adds the directory to the user PATH. It refuses to overwrite a running instance. Because user data lives next to the exe, replacing the exe is a complete upgrade — nothing else is touched. If a release has no bare `.exe` asset it falls back to extracting `ClaudeWorld-Windows.zip`, so it still works against pre-`beta.5` releases.
+
+Options (download the script first to pass them): `-Version`, `-InstallDir`, `-Repo`, `-NoShortcut`, `-NoPath`.
+
+**`install.sh`** (macOS / Linux / WSL) does a source install, since there is no prebuilt binary for these platforms. It checks for Node and installs `uv` if missing, downloads the tagged source tarball to `~/.claudeworld`, runs `uv sync` and `npm install`, runs the `.env` wizard, and writes a `claudeworld` launcher to `~/.local/bin`:
+
+```bash
+claudeworld              # make dev (SQLite + frontend)
+claudeworld postgresql   # make dev-postgresql
+claudeworld perf         # make dev-perf
+claudeworld setup        # re-run the .env wizard
+claudeworld stop         # stop servers
+claudeworld update       # re-run the installer in place
+claudeworld dir version help
 ```
 
-For a single-file distribution, the current spec file creates a self-contained executable.
+Options: `--dir`, `--version`, `--repo`, `--bin-dir`, `--no-uv`, `--no-env`, `--no-launcher`. Environment: `CLAUDEWORLD_HOME`, `CLAUDEWORLD_BIN_DIR`, `CLAUDEWORLD_REPO`.
+
+Re-running `install.sh` upgrades in place. It preserves `.env`, `.env.bak`, `claudeworld.db` and `worlds/`, merges `agents/` so edits to shipped agents and user-created characters survive while new agents from the release still land, and carries over `.venv` and `frontend/node_modules` rather than rebuilding them. The installed version is recorded in `.claudeworld-version`.
+
+> **`.gitattributes` matters here.** The release workflow runs on `windows-latest`, which checks out with `core.autocrlf=true`. Without `*.sh text eol=lf`, the attached `install.sh` would ship with CRLF line endings and fail to run under any shell.
 
 ### User Setup Experience
 
@@ -304,24 +346,28 @@ ClaudeWorld includes a GitHub Actions workflow (`.github/workflows/release.yml`)
 
 #### Automated Release Builds
 
-When you create a GitHub release, the workflow:
-1. Builds the frontend
+The workflow fires when a release is **published** (not merely created, so drafts don't trigger a build). It then:
+1. Generates the icon and builds the frontend
 2. Packages everything with PyInstaller
 3. Creates a ZIP archive
-4. Uploads `ClaudeWorld-Windows.zip` to the release
+4. Uploads `ClaudeWorld.exe`, `ClaudeWorld-Windows.zip`, `install.sh` and `install.ps1` to the release
 
-**To create a release with automatic build:**
+**To cut a release:**
 
 ```bash
-# Create and push a tag
-git tag v1.0.0
-git push origin v1.0.0
-
-# Create release on GitHub
-# The workflow will automatically build and attach the executable
+gh release create <tag> --title "<title>" --target master --generate-notes
 ```
 
-Or create the release via GitHub UI at: `https://github.com/YOUR_USERNAME/YOUR_REPO/releases/new`
+The workflow attaches all four assets a few minutes later. Verify with:
+
+```bash
+gh release view <tag> --json assets --jq '.assets[].name'
+curl -fsSL https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.sh | head -5
+```
+
+Or create the release via the GitHub UI at `https://github.com/sorryhyun/claudeworld-public/releases/new` — publishing it there triggers the same build.
+
+Note that a release ships the `install.sh` / `install.ps1` from **its own tag**, so installer changes only reach users once a release is published from a commit containing them.
 
 #### Manual Workflow Trigger
 
