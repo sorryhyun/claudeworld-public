@@ -2,20 +2,24 @@
 """
 Interactive .env setup wizard for ClaudeWorld.
 
-This script creates a properly configured .env file by:
+On a fresh checkout it creates a properly configured .env file by:
 1. Prompting for a password and generating a bcrypt hash
 2. Generating a secure JWT secret
 3. Asking for an optional display name
 4. Creating the .env file with all required values
 
+When .env already exists it offers to change the login password, rewriting only
+API_KEY_HASH and leaving every other setting alone.
+
 Usage:
-    python scripts/setup/setup_env.py           # Interactive setup
-    python scripts/setup/setup_env.py --force   # Force re-setup even if .env exists
+    python scripts/setup/setup_env.py           # Interactive setup / password change
+    python scripts/setup/setup_env.py --force   # Skip the confirmation prompt
     python scripts/setup/setup_env.py --check   # Just check if .env is configured
 """
 
 import argparse
 import getpass
+import re
 import secrets
 import sys
 from pathlib import Path
@@ -47,16 +51,8 @@ def is_env_configured(env_file: Path) -> bool:
     return has_valid_hash and has_valid_jwt
 
 
-def run_setup_wizard() -> dict:
-    """Run interactive setup wizard. Returns config dict."""
-    print("=" * 60)
-    print("ClaudeWorld - Initial Setup")
-    print("=" * 60)
-    print()
-    print("Welcome! Let's set up your application.")
-    print()
-
-    # Get password from user
+def prompt_password_hash() -> str:
+    """Prompt for a password (with confirmation) and return its bcrypt hash."""
     while True:
         password = getpass.getpass("Enter password: ")
         if len(password) < 4:
@@ -76,9 +72,21 @@ def run_setup_wizard() -> dict:
 
         break
 
-    # Generate password hash
     salt = bcrypt.gensalt()
-    password_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+
+def run_setup_wizard() -> dict:
+    """Run interactive setup wizard. Returns config dict."""
+    print("=" * 60)
+    print("ClaudeWorld - Initial Setup")
+    print("=" * 60)
+    print()
+    print("Welcome! Let's set up your application.")
+    print()
+
+    # Get password from user
+    password_hash = prompt_password_hash()
 
     # Generate JWT secret
     jwt_secret = secrets.token_hex(32)
@@ -131,12 +139,50 @@ DEBUG_AGENTS=false
     print(f"\nConfiguration saved: {env_file}")
 
 
+def _set_env_var(content: str, key: str, value: str) -> str:
+    """Replace an uncommented `KEY=...` line, or append it if absent."""
+    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+    if pattern.search(content):
+        return pattern.sub(lambda _: f"{key}={value}", content, count=1)
+
+    separator = "" if content.endswith("\n") or not content else "\n"
+    return f"{content}{separator}{key}={value}\n"
+
+
+def update_existing_env(env_file: Path):
+    """Prompt for a new password and update API_KEY_HASH in place.
+
+    All other settings in the existing .env (API keys, database URL, ...) are
+    preserved -- only the password hash is rewritten.
+    """
+    print("=" * 60)
+    print("ClaudeWorld - Change Password")
+    print("=" * 60)
+    print()
+    print(f"Updating the login password in {env_file}")
+    print("(all other settings are left untouched)")
+    print()
+
+    password_hash = prompt_password_hash()
+
+    content = env_file.read_text(encoding="utf-8")
+    content = _set_env_var(content, "API_KEY_HASH", password_hash)
+
+    # A .env without a usable JWT secret cannot issue tokens -- fill one in.
+    if not re.search(r"^JWT_SECRET=(?!your-random-secret|.*key-here$).+$", content, re.MULTILINE):
+        content = _set_env_var(content, "JWT_SECRET", secrets.token_hex(32))
+        print("Generated a missing JWT_SECRET.")
+
+    env_file.write_text(content, encoding="utf-8")
+    print(f"\nPassword updated: {env_file}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="ClaudeWorld .env setup wizard")
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force re-setup even if .env is already configured",
+        help="Skip the confirmation prompt when .env is already configured",
     )
     parser.add_argument(
         "--check",
@@ -157,19 +203,23 @@ def main():
             print("❌ .env is not configured")
             sys.exit(1)
 
-    # Check if already configured
-    if is_env_configured(env_file) and not args.force:
-        print("✅ .env is already configured!")
-        print(f"   Location: {env_file}")
-        print()
-        print("To reconfigure, run with --force flag:")
-        print("   uv run python scripts/setup/setup_env.py --force")
-        return
-
-    # Run setup wizard
     try:
-        config = run_setup_wizard()
-        create_env_file(env_file, config)
+        if is_env_configured(env_file):
+            # Already set up: offer to change the password, keeping everything else.
+            if not args.force:
+                print("✅ .env is already configured!")
+                print(f"   Location: {env_file}")
+                print()
+                answer = input("Change the login password? (y/N): ").strip().lower()
+                if answer not in ("y", "yes"):
+                    print("Nothing changed.")
+                    return
+                print()
+            update_existing_env(env_file)
+        else:
+            config = run_setup_wizard()
+            create_env_file(env_file, config)
+
         print()
         print("=" * 60)
         print("✅ Setup complete!")

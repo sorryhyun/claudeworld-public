@@ -29,7 +29,7 @@ def get_api_key_hash_from_env() -> str:
     Get the hashed API key from environment variable.
 
     The API_KEY_HASH should be a bcrypt hash generated from your password.
-    Use the generate_hash.py script to create one.
+    Use `make setup` to create one.
 
     Raises:
         SystemExit: If API_KEY_HASH is not set in production
@@ -42,7 +42,7 @@ def get_api_key_hash_from_env() -> str:
     # API_KEY_HASH is required
     logger.error("❌ ERROR: API_KEY_HASH is not set in environment variables!")
     logger.error("❌ Authentication cannot work without a password configured.")
-    logger.error("💡 To fix: Run 'python generate_hash.py' to create a hash, then add it to .env")
+    logger.error("💡 To fix: Run 'make setup' to configure a password in .env")
     sys.exit(1)
 
 
@@ -51,7 +51,7 @@ def get_guest_password_hash_from_env() -> str | None:
     Get the hashed guest password from environment variable.
 
     The GUEST_PASSWORD_HASH should be a bcrypt hash generated from your guest password.
-    Use the generate_hash.py script to create one.
+    Use `make setup` to create one.
 
     Returns:
         str | None: The guest password hash if set, None otherwise

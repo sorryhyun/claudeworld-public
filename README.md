@@ -52,10 +52,10 @@ make install
 ### 2. Configure Authentication
 
 ```bash
-make generate-hash  # Generate password hash
-python -c "import secrets; print(secrets.token_hex(32))"  # Generate JWT secret
-cp .env.example .env  # Add API_KEY_HASH and JWT_SECRET to .env
+make setup  # Prompts for your password, then writes .env
 ```
+
+Re-run `make setup` any time to change the password; every other `.env` setting is preserved.
 
 ### 3. Run & Access
 

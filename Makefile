@@ -1,4 +1,4 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-hash generate-icon build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-icon build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -22,8 +22,7 @@ help:
 	@echo "  make diagnose-traces   - Analyze trace file for bottlenecks (FILE=traces.jsonl)"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make setup             - Run .env setup wizard (or re-run with --force)"
-	@echo "  make generate-hash     - Generate password hash for authentication"
+	@echo "  make setup             - Set up .env: prompts for your password (re-run to change it)"
 	@echo ""
 	@echo "Deployment (Cloudflare tunnels for remote access):"
 	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
@@ -58,11 +57,7 @@ install:
 
 setup:
 	@echo "Running .env setup wizard..."
-	@if [ "$(FORCE)" = "1" ]; then \
-		uv run python scripts/setup/setup_env.py --force; \
-	else \
-		uv run python scripts/setup/setup_env.py; \
-	fi
+	uv run python scripts/setup/setup_env.py
 
 run-backend:
 	@echo "Starting backend server (PostgreSQL)..."
@@ -195,10 +190,6 @@ clean:
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules/.vite
 	@echo "Clean complete!"
-
-generate-hash:
-	@echo "Generating password hash..."
-	uv run python scripts/setup/generate_hash.py
 
 generate-icon:
 	@echo "Generating application icon..."

@@ -222,17 +222,12 @@ Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법
 
 2. **Configure authentication:**
    ```bash
-   # Generate password hash
-   make generate-hash
-   # Enter your desired password when prompted
-
-   # Generate JWT secret
-   python -c "import secrets; print(secrets.token_hex(32))"
-
-   # Copy and configure .env in project root
-   cp .env.example .env
-   # Edit .env and add API_KEY_HASH and JWT_SECRET
+   # Prompts for a password, then writes .env with API_KEY_HASH + JWT_SECRET
+   make setup
    ```
+
+   Re-run `make setup` to change the password later — only `API_KEY_HASH` is
+   rewritten, every other `.env` setting is preserved.
 
 3. **Run development servers:**
    ```bash
@@ -263,7 +258,7 @@ Creates `dist/ClaudeWorld.exe` with bundled backend/frontend, setup wizard, and 
 ### Backend Environment Variables (`.env`)
 
 **Required:**
-- `API_KEY_HASH` - Bcrypt hash of your password (generate with `make generate-hash`)
+- `API_KEY_HASH` - Bcrypt hash of your password (generate with `make setup`)
 - `JWT_SECRET` - Secret key for signing JWT tokens
 
 **Optional:**
