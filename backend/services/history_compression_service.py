@@ -217,10 +217,7 @@ Your consolidated summary here..."""
         return response_text.strip() if response_text else None
 
     except Exception as e:
-        logger.error(f"Error generating compressed section: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.exception(f"Error generating compressed section: {e}")
         return None
 
 

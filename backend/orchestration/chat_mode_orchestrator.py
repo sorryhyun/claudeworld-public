@@ -198,10 +198,7 @@ class ChatModeOrchestrator:
             return False
 
         except Exception as e:
-            logger.error(f"[ChatMode] Error processing message | Room: {room_id} | Error: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(f"[ChatMode] Error processing message | Room: {room_id} | Error: {e}")
             return False
 
         finally:

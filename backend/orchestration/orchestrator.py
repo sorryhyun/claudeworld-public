@@ -299,10 +299,7 @@ class ChatOrchestrator:
             logger.info(f"❌ AGENT PROCESSING CANCELLED | Room: {room_id}")
             pass
         except Exception as e:
-            logger.error(f"💥 ERROR IN AGENT PROCESSING | Room: {room_id} | Error: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(f"💥 ERROR IN AGENT PROCESSING | Room: {room_id} | Error: {e}")
         finally:
             # Clean up task tracking (task may already be removed via pop() in interrupt)
             self.active_room_tasks.pop(room_id, None)

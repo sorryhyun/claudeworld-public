@@ -11,7 +11,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
-from infrastructure.database.connection import get_db, init_db
+from infrastructure.background import drain_background_tasks
+from infrastructure.database.connection import background_session, get_db, init_db
 from infrastructure.scheduler import BackgroundScheduler
 from infrastructure.sse import EventBroadcaster
 from infrastructure.sse_ticket import SSETicketManager
@@ -95,9 +96,8 @@ def create_app() -> FastAPI:
         app.state.sse_ticket_manager = sse_ticket_manager
 
         # Seed agents from config files
-        async for db in get_db():
+        async with background_session() as db:
             await AgentFactory.seed_from_configs(db)
-            break
 
         # Start background scheduler
         background_scheduler.start()
@@ -110,6 +110,7 @@ def create_app() -> FastAPI:
         logger.info("🛑 Application shutdown...")
         event_broadcaster.shutdown()  # Signal SSE connections to close first
         background_scheduler.stop()
+        await drain_background_tasks()  # Let in-flight agent turns finish writing
         await agent_manager.shutdown()
 
         logger.info("✅ Application shutdown complete")

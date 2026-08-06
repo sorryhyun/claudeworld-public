@@ -110,19 +110,13 @@ class BackgroundScheduler:
                     else:
                         await self._process_room_for_background_job(room)
                 except Exception as e:
-                    logger.error(f"❌ Error processing room {room.id}: {e}")
-                    import traceback
-
-                    traceback.print_exc()
+                    logger.exception(f"❌ Error processing room {room.id}: {e}")
 
             # Process all active rooms concurrently with a small cap
             await asyncio.gather(*[process_with_error_handling(room) for room in active_rooms])
 
         except Exception as e:
-            logger.error(f"💥 Error in _process_active_rooms: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(f"💥 Error in _process_active_rooms: {e}")
 
     @asynccontextmanager
     async def _session_scope(self):

@@ -4,7 +4,6 @@ Player action routes.
 Endpoints for submitting player actions and getting action suggestions.
 """
 
-import asyncio
 import logging
 
 import crud
@@ -18,6 +17,7 @@ from domain.services.access_control import AccessControl
 from domain.value_objects.enums import MessageRole, ParticipantType, WorldPhase
 from domain.value_objects.slash_commands import SlashCommandType, parse_slash_command
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.background import spawn_background
 from infrastructure.database.connection import get_db
 from orchestration.trpg_orchestrator import get_trpg_orchestrator
 from sdk import AgentManager
@@ -165,9 +165,9 @@ async def submit_action(
     # Trigger TRPG agent responses in background
     async def trigger_trpg_responses():
         """Background task to trigger TRPG agent responses with its own DB session."""
-        from infrastructure.database.connection import get_db as get_db_generator
+        from infrastructure.database.connection import background_session
 
-        async for task_db in get_db_generator():
+        async with background_session() as task_db:
             try:
                 # Ensure gameplay agents are in the location room
                 # (they might be missing if location was created before agents were seeded)
@@ -187,14 +187,9 @@ async def submit_action(
                         world=task_world,
                     )
             except Exception as e:
-                logger.error(f"Error triggering TRPG responses: {e}")
-                import traceback
+                logger.exception(f"Error triggering TRPG responses: {e}")
 
-                traceback.print_exc()
-            finally:
-                break  # Only use first session
-
-    asyncio.create_task(trigger_trpg_responses())
+    spawn_background(trigger_trpg_responses(), name=f"trigger_trpg_responses:world={world_id}")
     logger.info(f"Action submitted for world {world_id}: {action.text[:50]}...")
 
     return {

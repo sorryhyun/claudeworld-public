@@ -8,7 +8,6 @@ Contains tools for location navigation and management:
 
 """
 
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -16,6 +15,8 @@ import crud
 import schemas
 from claude_agent_sdk import tool
 from domain.value_objects.enums import MessageRole
+from infrastructure.background import spawn_background
+from infrastructure.database.connection import background_session
 from infrastructure.logging.perf_logger import track_perf
 from services.location_storage import LocationStorage
 from services.persistence_manager import PersistenceManager
@@ -196,27 +197,33 @@ def create_location_tools(ctx: ToolContext) -> list:
                     if ctx.agent_manager and destination_location_id:
 
                         async def pre_connect_destination_chars():
-                            try:
-                                dest_chars = await crud.get_characters_at_location(
-                                    db, destination_location_id, exclude_system_agents=True
-                                )
-                                # Limit to 5 characters to avoid resource exhaustion
-                                for char in dest_chars[:5]:
-                                    await ctx.agent_manager.pre_connect(
-                                        db=db,
-                                        room_id=new_room.id,
-                                        agent_id=char.id,
-                                        agent_name=char.name,
-                                        world_name=world_name,
-                                        world_id=world_id,
-                                        config_file=char.config_file,
-                                        group_name=char.group,
+                            # Own session: this outlives the caller's request, so
+                            # borrowing `db` would use a session already closed.
+                            async with background_session() as task_db:
+                                try:
+                                    dest_chars = await crud.get_characters_at_location(
+                                        task_db, destination_location_id, exclude_system_agents=True
                                     )
-                            except Exception as e:
-                                logger.debug(f"Pre-connect chars failed (non-critical): {e}")
+                                    # Limit to 5 characters to avoid resource exhaustion
+                                    for char in dest_chars[:5]:
+                                        await ctx.agent_manager.pre_connect(
+                                            db=task_db,
+                                            room_id=new_room.id,
+                                            agent_id=char.id,
+                                            agent_name=char.name,
+                                            world_name=world_name,
+                                            world_id=world_id,
+                                            config_file=char.config_file,
+                                            group_name=char.group,
+                                        )
+                                except Exception as e:
+                                    logger.debug(f"Pre-connect chars failed (non-critical): {e}")
 
                         # Fire-and-forget background task
-                        asyncio.create_task(pre_connect_destination_chars())
+                        spawn_background(
+                            pre_connect_destination_chars(),
+                            name=f"pre_connect_destination_chars:room={new_room.id}",
+                        )
 
                     await crud.set_current_location(db, world_id, matching_location.id)
 

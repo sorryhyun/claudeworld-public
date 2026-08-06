@@ -21,8 +21,14 @@ from core.dependencies import (
 from domain.services.localization import Localization
 from domain.value_objects.enums import Language, MessageRole, WorldPhase
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from infrastructure.background import spawn_background
 from infrastructure.database import models
-from infrastructure.database.connection import async_session_maker, get_db, serialized_write
+from infrastructure.database.connection import (
+    async_session_maker,
+    background_session,
+    get_db,
+    serialized_write,
+)
 from orchestration import get_trpg_orchestrator
 from sdk import AgentManager
 from services.location_storage import LocationStorage
@@ -221,8 +227,6 @@ async def start_onboarding(
     Called by frontend after SSE connection is established, so that
     thinking stream is visible from the very first message.
     """
-    import asyncio
-
     world = await crud.get_world(db, world_id)
     if not world:
         raise HTTPException(status_code=404, detail="World not found")
@@ -234,7 +238,7 @@ async def start_onboarding(
     onboarding_content = Localization.get_onboarding_message(world.language)
 
     async def trigger():
-        async with async_session_maker() as session:
+        async with background_session() as session:
             trpg_orchestrator = get_trpg_orchestrator()
             task_world = await crud.get_world(session, world_id)
             if task_world:
@@ -246,7 +250,7 @@ async def start_onboarding(
                     world=task_world,
                 )
 
-    asyncio.create_task(trigger())
+    spawn_background(trigger(), name=f"start_onboarding:world={world_id}")
     return {"status": "started"}
 
 

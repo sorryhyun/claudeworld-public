@@ -4,7 +4,6 @@ Chat mode route handlers.
 Handles /chat and /end commands for free-form NPC conversations.
 """
 
-import asyncio
 import logging
 from typing import Optional
 
@@ -15,7 +14,9 @@ from domain.entities.agent_config import AgentConfigData
 from domain.value_objects.contexts import AgentResponseContext
 from domain.value_objects.enums import MessageRole, ParticipantType
 from domain.value_objects.task_identifier import TaskIdentifier
+from infrastructure.background import spawn_background
 from infrastructure.database import models
+from infrastructure.database.connection import background_session
 from orchestration import get_chat_mode_orchestrator
 from sdk import AgentManager
 from sdk.agent.options_builder import build_agent_options
@@ -38,9 +39,7 @@ async def _warm_chat_summarizer(room_id: int, agent_manager: AgentManager) -> No
         room_id: Room ID for the client pool key
         agent_manager: AgentManager instance with client pool
     """
-    from infrastructure.database.connection import get_db as get_db_generator
-
-    async for db in get_db_generator():
+    async with background_session() as db:
         try:
             # Get the Chat_Summarizer agent
             summarizer = await _get_chat_summarizer_agent(db)
@@ -84,8 +83,6 @@ async def _warm_chat_summarizer(room_id: int, agent_manager: AgentManager) -> No
 
         except Exception as e:
             logger.warning(f"Failed to warm Chat_Summarizer client: {e}")
-        finally:
-            break  # Only use first session
 
 
 async def handle_chat_command(
@@ -144,7 +141,10 @@ async def handle_chat_command(
     )
 
     # Warm the Chat_Summarizer client in background (reduces /end latency)
-    asyncio.create_task(_warm_chat_summarizer(room_id, agent_manager))
+    spawn_background(
+        _warm_chat_summarizer(room_id, agent_manager),
+        name=f"warm_chat_summarizer:room={room_id}",
+    )
 
     logger.info(
         f"Entered chat mode for world {world_id}, start_message_id={start_message_id}, chat_session_id={chat_session_id}"
@@ -208,9 +208,7 @@ async def handle_chat_mode_action(
     # Trigger chat mode NPC responses in background
     async def trigger_chat_responses():
         """Background task to trigger chat mode NPC responses."""
-        from infrastructure.database.connection import get_db as get_db_generator
-
-        async for task_db in get_db_generator():
+        async with background_session() as task_db:
             try:
                 chat_orchestrator = get_chat_mode_orchestrator()
                 await chat_orchestrator.handle_chat_message(
@@ -224,14 +222,9 @@ async def handle_chat_mode_action(
                     chat_session_id=chat_session_id,
                 )
             except Exception as e:
-                logger.error(f"Error triggering chat mode responses: {e}")
-                import traceback
+                logger.exception(f"Error triggering chat mode responses: {e}")
 
-                traceback.print_exc()
-            finally:
-                break  # Only use first session
-
-    asyncio.create_task(trigger_chat_responses())
+    spawn_background(trigger_chat_responses(), name=f"trigger_chat_responses:world={world_id}")
     logger.info(f"Chat mode message submitted for world {world_id}: {text[:50]}...")
 
     return {
@@ -315,7 +308,7 @@ async def handle_end_command(
     )
 
     # Background task: summarize the conversation and continue gameplay
-    asyncio.create_task(
+    spawn_background(
         _summarize_and_continue(
             world_id=world_id,
             _world_name=world.name,
@@ -324,7 +317,8 @@ async def handle_end_command(
             agent_manager=agent_manager,
             user_name=world.user_name or "The player",
             world_genre=world.genre,
-        )
+        ),
+        name=f"summarize_and_continue:world={world_id}",
     )
 
     logger.info(f"Exited chat mode for world {world_id}, summarizing conversation...")
@@ -435,10 +429,7 @@ Write in past tense, third person (e.g., "The player discussed...", "They agreed
         return response_text.strip() if response_text else None
 
     except Exception as e:
-        logger.error(f"Error generating AI summary: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.exception(f"Error generating AI summary: {e}")
         return None
 
 
@@ -460,12 +451,11 @@ async def _summarize_and_continue(
 
     If no chat interaction happened, skips summarization entirely.
     """
-    from infrastructure.database.connection import get_db as get_db_generator
     from orchestration import get_trpg_orchestrator
 
     trpg_orchestrator = get_trpg_orchestrator()
 
-    async for db in get_db_generator():
+    async with background_session() as db:
         try:
             # Ensure gameplay agents are in the location room
             # (they might be missing if location was created before agents were seeded)
@@ -547,11 +537,7 @@ async def _summarize_and_continue(
                 )
 
         except Exception as e:
-            logger.error(f"Error in summarize_and_continue: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(f"Error in summarize_and_continue: {e}")
         finally:
             # Ensure sub-agent status is cleared even on error
             trpg_orchestrator.set_sub_agent_inactive(room_id)
-            break  # Only use first session

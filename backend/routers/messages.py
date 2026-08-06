@@ -1,6 +1,5 @@
 """Message-related routes for polling, sending, and listing messages."""
 
-import asyncio
 import logging
 from typing import List
 
@@ -15,7 +14,8 @@ from core.dependencies import (
 )
 from domain.exceptions import RoomNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Request
-from infrastructure.database.connection import get_db
+from infrastructure.background import spawn_background
+from infrastructure.database.connection import background_session, get_db
 from orchestration import ChatOrchestrator
 from sdk import AgentManager
 from slowapi import Limiter
@@ -145,8 +145,6 @@ async def send_message(
     Returns:
         The saved user message
     """
-    from infrastructure.database.connection import get_db as get_db_generator
-
     logger.info(
         f"[send_message] Received message for room {room_id}: content='{message.content[:50]}...', participant_type={message.participant_type}"
     )
@@ -214,7 +212,7 @@ async def send_message(
     # Trigger agent responses in background (non-blocking)
     async def trigger_agent_responses():
         """Background task to trigger agent responses with its own DB session"""
-        async for task_db in get_db_generator():
+        async with background_session() as task_db:
             try:
                 if is_game_room:
                     # Use TRPGOrchestrator for game/world rooms
@@ -246,14 +244,8 @@ async def send_message(
                         saved_user_message_id=saved_message.id,
                     )
             except Exception as e:
-                logger.error(f"Error triggering agent responses: {e}")
-                import traceback
+                logger.exception(f"Error triggering agent responses: {e}")
 
-                traceback.print_exc()
-            finally:
-                pass  # Session cleanup handled by generator
-            break  # Only use first (and only) session
-
-    asyncio.create_task(trigger_agent_responses())
+    spawn_background(trigger_agent_responses(), name=f"trigger_agent_responses:room={room_id}")
 
     return saved_message

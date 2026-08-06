@@ -2,6 +2,8 @@ import asyncio
 import functools
 import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -80,6 +82,20 @@ Base = declarative_base()
 
 async def get_db():
     """Yield a database session for dependency injection."""
+    async with async_session_maker() as session:
+        yield session
+
+
+@asynccontextmanager
+async def background_session() -> AsyncIterator[AsyncSession]:
+    """Yield a database session for work that outlives a request.
+
+    Do NOT use ``get_db()`` for this. It is a FastAPI dependency generator: its
+    cleanup runs when the generator is closed, and breaking out of
+    ``async for ... in get_db()`` never closes it. Finalization is then deferred
+    to the event loop's async-generator hooks at GC time, so the session (and,
+    under SQLite's NullPool, its connection) leaks until then.
+    """
     async with async_session_maker() as session:
         yield session
 
