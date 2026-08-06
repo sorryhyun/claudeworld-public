@@ -17,7 +17,31 @@ A turn-based text adventure (TRPG) powered by Claude AI agents that collaborate 
 **Backend:** FastAPI, SQLAlchemy (async), SQLite/PostgreSQL, Anthropic Claude Agent SDK
 **Frontend:** React, TypeScript, Vite, Tailwind CSS
 
-## Quick Start
+## Install
+
+**Windows (PowerShell)** — installs the standalone `ClaudeWorld.exe` with Start Menu shortcuts:
+
+```powershell
+irm https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.ps1 | iex
+```
+
+**macOS / Linux / WSL** — installs to `~/.claudeworld` and adds a `claudeworld` command:
+
+```bash
+curl -fsSL https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.sh | bash
+```
+
+Both installers set up dependencies and walk you through `.env` on first run. Re-running upgrades in place and keeps your `.env`, database, agents and worlds.
+
+```bash
+claudeworld          # Start backend + frontend
+claudeworld update   # Upgrade to the latest release
+claudeworld help     # All commands
+```
+
+Then open http://localhost:5173 and log in with your password.
+
+## Build from Source
 
 ### 1. Install Dependencies
 
