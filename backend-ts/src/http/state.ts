@@ -2,6 +2,8 @@ import type { Context } from 'hono'
 
 import type { Db } from '../db'
 import { getLogger } from '../infrastructure/logging/logger'
+import { EventBroadcaster } from '../infrastructure/sse'
+import { SSETicketManager } from '../infrastructure/sse-ticket'
 import { RoomOrchestrator } from '../orchestration/room-orchestrator'
 import type { GameplayServices } from '../orchestration/gameplay-context'
 import { SessionPool } from '../sdk/client/session-pool'
@@ -64,6 +66,10 @@ export interface AppState {
   reset: WorldResetService
   /** Drives the History_Summarizer over `history.md`. */
   history: HistoryCompressionService
+  /** Per-room SSE fan-out; the streaming half of the chat surface. */
+  broadcaster: EventBroadcaster
+  /** Single-use tickets, because `EventSource` cannot send a header. */
+  tickets: SSETicketManager
   projectRoot: string
   shutdown(): Promise<void>
 }
@@ -161,6 +167,8 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     agentConfigs,
   )
 
+  const broadcaster = new EventBroadcaster()
+
   const orchestrator = new RoomOrchestrator({
     db: options.db,
     pool,
@@ -184,8 +192,14 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     items,
     reset,
     history,
+    broadcaster,
+    tickets: new SSETicketManager(),
     projectRoot,
     async shutdown() {
+      // First: an open stream holds a request alive, and every one of them has
+      // to be told to finish before the turns that feed them stop existing.
+      logger.info('Closing SSE streams...')
+      broadcaster.shutdown()
       logger.info('Stopping in-flight turns...')
       await orchestrator.shutdown()
       logger.info('Closing agent sessions...')

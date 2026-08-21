@@ -42,3 +42,21 @@ export function assertWorldAccess(
     throw new HttpError(403, detail)
   }
 }
+
+/**
+ * Throw unless the caller may touch this room.
+ *
+ * Rooms use the same rule as worlds — admins reach everything, everyone else
+ * reaches only what they own — but the `detail` differs from the world checks
+ * and is Python's (`routers/rooms.py` and `routers/messages.py` both say this),
+ * so it is spelled out rather than borrowed from {@link assertWorldAccess}.
+ *
+ * `ownerId` is nullable because `rooms.owner_id` is: rows written before the
+ * column existed carry NULL, and Python's `room.owner_id != identity.user_id`
+ * treats that as "belongs to nobody", which no non-admin matches.
+ */
+export function assertRoomAccess(identity: Identity, ownerId: string | null): void {
+  if (identity.role === 'admin') return
+  if (ownerId !== null && ownerId === identity.userId) return
+  throw new HttpError(403, 'You do not have access to this room')
+}

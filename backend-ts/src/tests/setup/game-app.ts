@@ -24,6 +24,8 @@ import type { AppEnv } from '../../http/types'
 import { generateJwtToken } from '../../auth/jwt'
 import { resetSettings } from '../../config/settings'
 import { getCache } from '../../infrastructure/cache'
+import { EventBroadcaster } from '../../infrastructure/sse'
+import { SSETicketManager } from '../../infrastructure/sse-ticket'
 import { openDb, type Db } from '../../db'
 import { RoomOrchestrator } from '../../orchestration/room-orchestrator'
 import type { ExecutionResult } from '../../orchestration/tape/models'
@@ -51,11 +53,13 @@ const JWT_SECRET = 'game-routes-test-secret'
 
 /** One recorded call to a turn implementation. */
 export interface RecordedTurn {
-  kind: 'gameplay' | 'chat'
+  kind: 'gameplay' | 'chat' | 'chatRoom'
   roomId: number
   action: string
-  worldId: number
+  /** Absent for `chatRoom`: a plain chat room belongs to no world. */
+  worldId?: number
   chatSessionId?: number | null
+  mentionedAgentIds?: number[] | null
 }
 
 export interface GameAppHarness {
@@ -137,6 +141,12 @@ export async function createGameApp(
     interruptRoom: (): Promise<string[]> => Promise.resolve([]),
     agentsInRoom: (roomId: number): number[] => busyAgents.get(roomId) ?? [],
     evictRoom: (): Promise<void> => Promise.resolve(),
+    // Needed by the agent- and room-agent delete routes, which evict an agent's
+    // sessions by key. No session is ever opened here, so there is nothing to
+    // return and nothing to evict — but the methods have to exist, or the
+    // deletion path throws a TypeError instead of doing the cleanup.
+    keysForAgent: (): string[] => [],
+    evict: (): Promise<void> => Promise.resolve(),
   } as unknown as SessionPool
 
   const serverDeps = {
@@ -179,6 +189,17 @@ export async function createGameApp(
         })
         return Promise.resolve(emptyResult())
       },
+      chatRoom: (_deps, input) => {
+        // No `worldId`: a plain chat room has none, which is the whole point of
+        // this turn kind. Tests assert on the absence.
+        turns.push({
+          kind: 'chatRoom',
+          roomId: input.roomId,
+          action: input.action,
+          mentionedAgentIds: input.mentionedAgentIds ?? null,
+        })
+        return Promise.resolve(emptyResult())
+      },
     },
   })
 
@@ -186,6 +207,10 @@ export async function createGameApp(
     db,
     pool,
     orchestrator,
+    // Real instances, not stubs: both are pure in-memory bookkeeping with no
+    // I/O, and the SSE route tests drive them directly.
+    broadcaster: new EventBroadcaster(),
+    tickets: new SSETicketManager(),
     services,
     serverDeps,
     mcp,

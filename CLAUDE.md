@@ -136,6 +136,47 @@ sdk/
 - **SQLite `DateTime` columns are text, not integers** (`2026-08-06 04:14:54.931812`).
   `src/db/columns.ts` reproduces the format; Drizzle's default timestamp mode would not.
 
+### Chat Rooms
+
+`/rooms` and `/agents` are the chat half of the app — the part that predates the TRPG mode and that
+`usePolling.ts` / `useSSE.ts` drive. Ported in full:
+
+```
+http/routes/rooms/     rooms.ts (CRUD, pause/resume) · agents.ts (membership)
+                       messages.ts (list, poll, send, chatting-agents) · sse.ts (ticket, stream)
+http/routes/agents/    index.ts (CRUD, configs, reload, direct-room) · profile-pic.ts
+infrastructure/        sse.ts (EventBroadcaster) · sse-ticket.ts (SSETicketManager)
+orchestration/tape/    chat-room-tape.ts (the chat-room scheduler)
+```
+
+**Load-bearing details:**
+
+- **A chat room has no world.** `rooms.world_id IS NULL`, so there is no player state, no location
+  and no Action Manager. `ResponderContext.world` in `orchestration/turn.ts` is therefore
+  `World | null`, and the non-world path falls back to `settings.userName` for the user's display
+  name. `runChatRoomTurn` is the entry point; `RoomOrchestrator.handleChatRoomMessage` tracks it
+  with the same interrupt and supersede rules a world turn gets, because both are properties of the
+  *room*.
+- **The chat-room tape is a loop, not a tape.** An initial round (interrupt agents answer the user,
+  then priority agents sequentially, then the rest *concurrently*), followed by up to
+  `MAX_FOLLOW_UP_ROUNDS` rounds in which the agents answer each other. A round where everyone skips
+  marks the room finished. This is a different scheduler from both game tapes — see
+  `tape/chat-room-tape.ts`.
+- **SSE authenticates with a ticket, not the JWT.** `EventSource` cannot send a header, so the
+  client POSTs for a 60-second single-use ticket bound to one room. `middleware/auth.ts` excludes
+  `GET /rooms/{id}/stream` *because* `sse.ts` authenticates it instead — the exclusion and the
+  `validateTicket` call are two halves of one check.
+- **Route order is load-bearing in two places.** `GET /agents/configs` must precede
+  `GET /agents/:agent_id`, or "configs" parses as an id and the picker 422s — the same hazard
+  `/worlds/importable` has. Python gets this from mounting `agent_management` before `agents`.
+- **The profile-pic route is unauthenticated** (an `<img src>` cannot send a header), so the agent
+  name validation in `profile-pic.ts` is a security control, not a nicety.
+
+**Known gap:** `thinking_text` and `response_text` on `/rooms/{id}/chatting-agents` are always
+empty, and the SSE stream does not replay catch-up events on connect. Both need a per-room registry
+of partially-streamed responses; the TypeScript SDK keeps that state on the turn instead. The same
+gap is documented in `routes/game/polling.ts`.
+
 ### Single-Port Serving
 
 The frontend and the API share one origin in both run modes, so the app only ever
@@ -455,9 +496,12 @@ migration's rollback story depends on it staying green until cutover. Treat it a
 - The SQLite schema is shared and byte-compatible in both directions — one `claudeworld.db` opens
   under either backend, and a fresh TypeScript install stamps the Alembic head so Python can adopt it.
 - The REST contract is frozen: the React app ships unchanged across the cutover.
-- Phase 3 routers not yet ported (`agents`, `rooms`, `messages`, `sse`, `debug`, `readme`), the
-  background scheduler, the agent-file watcher, i18n and image/WebP conversion still live only in
-  the Python tree.
+- Still Python-only: the `debug`, `readme` and `mcp_tools` routers, the background scheduler
+  (autonomous rounds), the agent-file watcher, i18n, and image/WebP conversion.
+
+`rooms`, `room_agents`, `messages`, `sse`, `agents` and `agent_management` are **ported** — see
+[Chat rooms](#chat-rooms). Verified against a running Python backend over the same database file:
+the read endpoints, the created-agent system prompt and every error body are byte-identical.
 
 [docs/ts-migration-plan.md](docs/ts-migration-plan.md) tracks phase status, the parity contract,
 the known gotchas table, and the open decisions — including five live Python bugs that were

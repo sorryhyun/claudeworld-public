@@ -56,3 +56,5 @@ dist/
 __pycache__/
 *.manifest
 *.spec~
+claudeworld.db-shm
+claudeworld.db-wal

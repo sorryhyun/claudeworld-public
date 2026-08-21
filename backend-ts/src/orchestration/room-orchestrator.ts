@@ -2,7 +2,14 @@ import type { World } from '../db/schema'
 import { getLogger } from '../infrastructure/logging/logger'
 import type { SessionPool } from '../sdk/client/session-pool'
 import type { ExecutionResult } from './tape/models'
-import { preConnectLocation, runChatTurn, runGameplayTurn, runMemoryRound, type TurnDeps } from './turn'
+import {
+  preConnectLocation,
+  runChatRoomTurn,
+  runChatTurn,
+  runGameplayTurn,
+  runMemoryRound,
+  type TurnDeps,
+} from './turn'
 
 /**
  * One turn at a time per room, and a way to stop it.
@@ -80,6 +87,8 @@ interface ActiveTurn {
 export interface TurnImplementations {
   gameplay: typeof runGameplayTurn
   chat: typeof runChatTurn
+  /** Plain chat rooms — no world, no location, follow-up rounds. */
+  chatRoom: typeof runChatRoomTurn
 }
 
 export interface RoomOrchestratorDeps extends Omit<TurnDeps, 'isSuperseded'> {
@@ -95,6 +104,14 @@ export interface PlayerActionInput {
 
 export interface ChatMessageInput extends PlayerActionInput {
   chatSessionId: number | null
+}
+
+/** A message in a plain chat room, which has no world to act on. */
+export interface ChatRoomMessageInput {
+  roomId: number
+  action: string
+  /** Agent ids from `@mentions`, or null for everyone in the room. */
+  mentionedAgentIds?: number[] | null
 }
 
 export class RoomOrchestrator {
@@ -115,7 +132,11 @@ export class RoomOrchestrator {
   private readonly turns: TurnImplementations
 
   constructor(private readonly deps: RoomOrchestratorDeps) {
-    this.turns = deps.turns ?? { gameplay: runGameplayTurn, chat: runChatTurn }
+    this.turns = deps.turns ?? {
+      gameplay: runGameplayTurn,
+      chat: runChatTurn,
+      chatRoom: runChatRoomTurn,
+    }
     this.turnDeps = {
       ...deps,
       isSuperseded: (roomId, startedAt) => (this.lastUserMessageAt.get(roomId) ?? 0) > startedAt,
@@ -159,6 +180,27 @@ export class RoomOrchestrator {
   }
 
   /**
+   * Run a user message in a plain chat room.
+   *
+   * Tracked exactly like a world turn — same interrupt path, same supersede
+   * rule — because the reasons for both are properties of the *room*, not of
+   * the world it may or may not belong to.
+   */
+  async handleChatRoomMessage(input: ChatRoomMessageInput): Promise<TurnOutcome> {
+    logger.info(
+      `[ChatRoom] Message | Room: ${input.roomId} | Text: ${input.action.slice(0, 50)}...`,
+    )
+    return this.runTracked(input.roomId, null, (signal) =>
+      this.turns.chatRoom(this.turnDeps, {
+        roomId: input.roomId,
+        action: input.action,
+        mentionedAgentIds: input.mentionedAgentIds,
+        signal,
+      }),
+    )
+  }
+
+  /**
    * Stamp the room, start the turn, and keep a handle on it.
    *
    * The timestamp is taken here rather than in the caller so that it is always
@@ -168,11 +210,14 @@ export class RoomOrchestrator {
    */
   private async runTracked(
     roomId: number,
-    world: World,
+    /** Null for a plain chat room, which belongs to no world. */
+    world: World | null,
     run: (signal: AbortSignal) => Promise<ExecutionResult>,
   ): Promise<TurnOutcome> {
     this.lastUserMessageAt.set(roomId, Date.now())
-    this.worldOfRoom.set(roomId, world)
+    // Only worlds go in the map — `currentWorld()` reads it to find a world to
+    // run a memory round against, and a chat room has none to offer.
+    if (world !== null) this.worldOfRoom.set(roomId, world)
 
     const controller = new AbortController()
     const done = run(controller.signal).then(

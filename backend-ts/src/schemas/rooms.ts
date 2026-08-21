@@ -123,12 +123,32 @@ export function toRoom(row: RoomResponseSource): Room {
   }
 }
 
+/**
+ * The columns the two room responses actually serialize.
+ *
+ * A `Pick` rather than the whole `RoomRow` so that `crud/rooms.ts::getRooms`,
+ * which projects the listing down to these eight fields, can be handed straight
+ * to {@link toRoomSummary} without inventing values for `lastReadAt` and
+ * `worldId` that the summary does not carry anyway.
+ */
+export type RoomResponseFieldsSource = Pick<
+  RoomRow,
+  | 'id'
+  | 'name'
+  | 'ownerId'
+  | 'maxInteractions'
+  | 'isPaused'
+  | 'isFinished'
+  | 'createdAt'
+  | 'lastActivityAt'
+>
+
 /** Drizzle row → `RoomSummary` response. */
-export function toRoomSummary(row: RoomRow): RoomSummary {
+export function toRoomSummary(row: RoomResponseFieldsSource): RoomSummary {
   return { name: row.name, ...toRoomResponseFields(row) }
 }
 
-function toRoomResponseFields(row: RoomRow) {
+function toRoomResponseFields(row: RoomResponseFieldsSource) {
   return {
     id: row.id,
     owner_id: row.ownerId,

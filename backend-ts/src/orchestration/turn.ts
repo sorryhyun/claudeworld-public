@@ -1,6 +1,8 @@
 import { and, count, eq } from 'drizzle-orm'
 
-import { getAgentsInRoom, getRoom } from '../crud/rooms'
+import { getSettings } from '../config/settings'
+
+import { getAgentsInRoom, getRoom, markRoomAsFinished } from '../crud/rooms'
 import { getCharactersAtLocation, getLocation } from '../crud/locations'
 import { createMessage, getMessagesAfterAgentResponse } from '../crud/messages'
 import { getPlayerState } from '../crud/player-state'
@@ -22,7 +24,9 @@ import type { McpTools } from '../sdk/mcp'
 import type { ToolContext } from '../sdk/handlers/context'
 import { parseAgentConfig } from '../sdk/parsing/agent-config'
 import { buildSystemPrompt } from '../services/prompt-builder'
+import { separateInterruptAgents } from './agent-ordering'
 import { buildConversationContext } from './conversation-context'
+import { createChatRoomTapes } from './tape/chat-room-tape'
 import {
   buildActionManagerSystemPrompt,
   buildActionManagerUserMessage,
@@ -233,6 +237,163 @@ export async function runChatTurn(
 }
 
 // ============================================================================
+// Chat rooms
+// ============================================================================
+
+/** Follow-up rounds after the initial one — Python's `MAX_FOLLOW_UP_ROUNDS`. */
+export const MAX_FOLLOW_UP_ROUNDS = 5
+
+/** Runaway guard across every round of one turn — Python's `MAX_TOTAL_MESSAGES`. */
+export const MAX_TOTAL_MESSAGES_CHAT_ROOM = 30
+
+export interface RunChatRoomTurnInput {
+  roomId: number
+  action: string
+  /**
+   * Agent ids parsed out of `@mentions`, or null for "everyone".
+   *
+   * Ids not in the room are dropped with a warning rather than failing the
+   * turn: the mention came from a client-side parse of free text, and a stale
+   * roster there should not cost the user their message.
+   */
+  mentionedAgentIds?: number[] | null
+  signal?: AbortSignal
+}
+
+/**
+ * Run one user message in a plain chat room — port of
+ * `ChatOrchestrator._process_agent_responses`.
+ *
+ * A chat room has no world, no location and no Action Manager; the agents in
+ * the room simply talk, first to the user and then to each other. That second
+ * half is what makes this different from every other turn in the system: it is
+ * a *loop* of tapes, not one tape.
+ *
+ * The loop stops on the first of: pause, interruption, the room's
+ * `max_interactions` ceiling, {@link MAX_FOLLOW_UP_ROUNDS}, or a round in which
+ * every agent skipped — which is read as the conversation having run its course
+ * and marks the room finished.
+ */
+export async function runChatRoomTurn(
+  deps: TurnDeps,
+  input: RunChatRoomTurnInput,
+): Promise<ExecutionResult> {
+  const { db, roomId } = { db: deps.db, roomId: input.roomId }
+
+  const roster = getAgentsInRoom(db, roomId)
+  const selected = filterMentioned(roster, input.mentionedAgentIds ?? null, roomId)
+  if (selected.length === 0) {
+    logger.info(`[ChatRoom] No agents to respond in room ${roomId}`)
+    return emptyResult()
+  }
+
+  const [interruptAgents, plainAgents] = separateInterruptAgents(selected)
+  const tapes = createChatRoomTapes(plainAgents, interruptAgents)
+  const byId = new Map(selected.map((agent) => [agent.id, agent]))
+
+  const executor = new TapeExecutor({
+    ...roomGuards(db, roomId),
+    respond: makeResponder(deps, {
+      // No world: see `ResponderContext.world`.
+      world: null,
+      roomId,
+      locationName: null,
+      byId,
+      chatSessionId: null,
+      timings: new SubagentTimings(),
+      runner: new TurnRunner(deps.pool),
+    }),
+  })
+
+  const total = await executor.execute(tapes.initial(), {
+    userMessage: input.action,
+    signal: input.signal,
+    maxTotalMessages: MAX_TOTAL_MESSAGES_CHAT_ROOM,
+  })
+
+  if (total.wasPaused || total.wasInterrupted || total.reachedLimit) return total
+
+  /** What is left of the cumulative runaway budget after the rounds so far. */
+  const budget = (): number => Math.max(0, MAX_TOTAL_MESSAGES_CHAT_ROOM - total.totalResponses)
+
+  // A one-agent room has nobody to talk *to*, so there is nothing to follow up.
+  const allAgents = tapes.allAgents
+  if (allAgents.length <= 1) return total
+
+  // A room whose only interrupt agents are transparent has no visible reactor,
+  // and Python skips the follow-up entirely rather than running rounds nobody
+  // sees.
+  if (interruptAgents.length > 0 && interruptAgents.every((a) => (a.transparent ?? false))) {
+    logger.info('[ChatRoom] All interrupt agents are transparent, skipping follow-up rounds')
+    return total
+  }
+
+  for (let round = 0; round < MAX_FOLLOW_UP_ROUNDS; round++) {
+    const tape = tapes.followUp(round)
+    if (tape === null) break
+
+    const result = await executor.execute(tape, {
+      // No user message: the agents are answering each other now.
+      userMessage: '',
+      signal: input.signal,
+      // The guard is cumulative across rounds — Python threads `current_total`
+      // into the executor for this; subtracting from the budget is the same sum.
+      maxTotalMessages: budget(),
+    })
+
+    total.totalResponses += result.totalResponses
+    total.totalSkips += result.totalSkips
+    total.cellsExecuted += result.cellsExecuted
+    total.wasInterrupted = result.wasInterrupted
+    total.wasPaused = result.wasPaused
+    total.reachedLimit = result.reachedLimit
+
+    if (result.wasPaused || result.wasInterrupted || result.reachedLimit) break
+
+    if (result.allSkipped) {
+      logger.info(`[ChatRoom] All agents skipped in room ${roomId}. Marking as finished.`)
+      markRoomAsFinished(db, roomId)
+      total.allSkipped = true
+      break
+    }
+  }
+
+  return total
+}
+
+/**
+ * Narrow the roster to the mentioned agents, if any were mentioned.
+ *
+ * An empty intersection means every mention was stale, and Python treats that
+ * as "no filter" rather than "nobody responds" — the message still gets an
+ * answer instead of vanishing into a silent room.
+ */
+function filterMentioned<T extends { id: number; name: string }>(
+  roster: T[],
+  mentionedAgentIds: number[] | null,
+  roomId: number,
+): T[] {
+  if (!mentionedAgentIds || mentionedAgentIds.length === 0) return roster
+
+  const mentioned = new Set(mentionedAgentIds)
+  const inRoom = new Set(roster.map((agent) => agent.id))
+  const valid = [...mentioned].filter((id) => inRoom.has(id))
+
+  if (valid.length !== mentioned.size) {
+    const invalid = [...mentioned].filter((id) => !inRoom.has(id))
+    logger.warning(`⚠️ Invalid @mentions (not in room ${roomId}): ${invalid.join(', ')}`)
+  }
+  if (valid.length === 0) return roster
+
+  const validSet = new Set(valid)
+  const filtered = roster.filter((agent) => validSet.has(agent.id))
+  logger.info(
+    `🎯 MENTION FILTER | Room: ${roomId} | Only responding: ${filtered.map((a) => a.name).join(', ')}`,
+  )
+  return filtered
+}
+
+// ============================================================================
 // Turn side effects
 // ============================================================================
 
@@ -409,7 +570,14 @@ function roomGuards(
 }
 
 interface ResponderContext {
-  world: World
+  /**
+   * The world this room belongs to, or null for a plain chat room.
+   *
+   * Chat rooms (`rooms.world_id IS NULL`) predate the TRPG mode and still have
+   * no world, no player state and no location. Everything below that reads a
+   * world field therefore has a non-world fallback; see {@link buildAgentTurn}.
+   */
+  world: World | null
   roomId: number
   locationName: string | null
   byId: Map<number, Agent>
@@ -505,7 +673,12 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       // Read at save time rather than turn start: a tool may have advanced the
       // clock during the turn, and the stamp should say when the line was
       // spoken, not when the turn began.
-      gameTimeSnapshot: deps.services.players.loadPlayerState(ctx.world.name)?.gameTime ?? null,
+      // A chat room has no world and therefore no clock; the column stays NULL,
+      // which is what every message written before the TRPG mode existed has.
+      gameTimeSnapshot:
+        ctx.world === null
+          ? null
+          : (deps.services.players.loadPlayerState(ctx.world.name)?.gameTime ?? null),
     })
 
     return { responded: true, responseText, agentName: agent.name }
@@ -560,7 +733,8 @@ function emptyResult(): ExecutionResult {
 // ============================================================================
 
 interface BuildTurnInput {
-  world: World
+  /** Null for a plain chat room. See {@link ResponderContext.world}. */
+  world: World | null
   agent: Agent
   roomId: number
   locationName: string | null
@@ -601,8 +775,11 @@ function buildAgentTurn(
     configFile: agent.configFile ?? undefined,
     groupName: agent.group ?? undefined,
     roomId: input.roomId,
-    worldName: world.name,
-    worldId: world.id,
+    // Both optional on `ToolContext`, and absent for a chat room. The tools a
+    // character is offered (skip, memorize, recall, guidelines) read the agent's
+    // own folder, not the world, so none of them needs these.
+    worldName: world?.name,
+    worldId: world?.id,
     longTermMemoryIndex: config?.longTermMemoryIndex ?? {},
     npcReactions: input.npcReactions,
     getDb: () => db,
@@ -622,6 +799,12 @@ function buildAgentTurn(
   let message: string
 
   if (asActionManager) {
+    // Unreachable for a chat room: the Action Manager is a gameplay agent and
+    // is never a member of one. Asserted rather than defaulted, because a world
+    // silently substituted here would produce narration against the wrong one.
+    if (world === null) {
+      throw new Error(`${agent.name} requires a world; room ${input.roomId} has none`)
+    }
     const contextInput = {
       worldName: world.name,
       userName: world.userName,
@@ -669,8 +852,11 @@ function buildAgentTurn(
       })),
       agentId: agent.id,
       agentName: agent.name,
-      worldUserName: world.userName,
-      worldLanguage: world.language,
+      // A chat room has no world to name the user, so the global `USER_NAME`
+      // stands in — which is the setting Python's chat rooms have always used
+      // for exactly this, and the language falls back to the prompt default.
+      worldUserName: world?.userName ?? getSettings().userName,
+      worldLanguage: world?.language ?? null,
       includeResponseInstruction: true,
       keepOnlyLatestActionManager: !conversational,
       keepOnlyLatestUser: !conversational,

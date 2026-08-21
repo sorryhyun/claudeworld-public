@@ -19,6 +19,8 @@ import { getCorsOrigins, getSettings } from '../config/settings'
 import { getLogger } from '../infrastructure/logging/logger'
 import { authMiddleware } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
+import { createAgentRoutes } from './routes/agents'
+import { createChatRoutes } from './routes/rooms'
 import { createGameRoutes } from './routes/game'
 import { HttpError } from './errors'
 import { createFrontendMiddleware } from './static'
@@ -117,4 +119,7 @@ function mountGameRoutes(app: Hono<AppEnv>, state: AppState): void {
   // which a sub-app mounted at `/worlds` cannot express. See
   // `routes/game/index.ts`.
   app.route('/', createGameRoutes(state))
+  // Same story for `/rooms` and `/agents`.
+  app.route('/', createChatRoutes(state))
+  app.route('/', createAgentRoutes(state))
 }
