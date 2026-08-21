@@ -25,7 +25,7 @@ These make the migration invisible to users and keep rollback cheap:
 | Concern | Python (current) | TypeScript (target) | Notes |
 |---|---|---|---|
 | Runtime | uvicorn / CPython | Bun | |
-| HTTP framework | FastAPI | **Hono** | Small, fast, first-class Bun support, SSE streaming helper. (Elysia is the alternative; Hono chosen for portability and maturity.) |
+| HTTP framework | FastAPI | **Hono** (confirmed 2026-08-21) | Small, fast, first-class Bun support, SSE streaming helper. Elysia was the alternative; its headline feature is end-to-end type safety into the frontend, which is worth nothing here because the parity contract says the React app ships unchanged. Routing overhead is not a factor either — a turn spawns CLI subprocesses and waits tens of seconds on the model. Hono wins on ecosystem breadth for the pieces actually needed: SSE, static serving, rate limiting. |
 | ORM / migrations | SQLAlchemy + Alembic | **Drizzle** + `bun:sqlite` | Baseline generated from the current schema; Alembic history is not replayed. `bun:sqlite` is synchronous — fine for SQLite, removes the aiosqlite/greenlet layer entirely. |
 | Validation / schemas | Pydantic | **Zod 4** | Same lib as yaar; schemas shared with tool definitions. |
 | Agent SDK | `claude-agent-sdk` 0.2.131 | `@anthropic-ai/claude-agent-sdk` **≥0.3.233** | Match or exceed yaar's pin. ≥0.3.144 required for `extractFromBunfs()` (single-exe support). |
@@ -191,5 +191,5 @@ completing any layer. What is marked partial below is genuinely partial, not "do
 
 1. Native window vs. browser-only for the packaged exe (Phase 5; recommend browser-only first).
 2. Whether to fold `frontend/` into the Bun workspace (recommend yes at cutover — one `bun install` for the whole repo — but not before).
-3. Hono confirmed over Elysia? (Cheap to swap before Phase 1; expensive after.) **Still open and still cheap** — Phase 0 built no HTTP layer at all, so nothing yet depends on the choice.
-4. New, from Phase 0: `to_system_prompt_markdown` hardcodes the Korean particle `이` in the memory-index heading instead of using `format_with_particles`, so vowel-final names read wrong (`크리스이 가진` should be `크리스가 가진`). Reproduced verbatim in the port. Fixing it changes every Korean agent's prompt, so it needs a deliberate call rather than a silent correction.
+3. ~~Hono confirmed over Elysia?~~ **Settled 2026-08-21: Hono.** Reasoning recorded in the Target Stack table.
+4. From Phase 0: `to_system_prompt_markdown` hardcodes the Korean particle `이` in the memory-index heading instead of using `format_with_particles`, so vowel-final names read wrong (`크리스이 가진` should be `크리스가 가진`). Reproduced verbatim in the port. Fixing it changes every Korean agent's prompt, so it needs a deliberate call rather than a silent correction.
