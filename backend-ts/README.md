@@ -4,8 +4,11 @@ The in-progress TypeScript/Bun port of `../backend`. See
 [`../docs/ts-migration-plan.md`](../docs/ts-migration-plan.md) for the plan and the
 phase status.
 
-The Python backend on `master` is untouched and remains the one that runs. Nothing
-here is wired into `make dev` yet.
+The Python backend on `master` is untouched and still serves the whole game.
+
+`make dev` on this branch runs **this** backend plus the frontend, so only
+`/auth/*` answers — enough to log in, then 404s. `make dev-python` is the Python
+backend and the playable game.
 
 ## What exists
 

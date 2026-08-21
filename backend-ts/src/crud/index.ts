@@ -6,6 +6,7 @@
  */
 
 export * from './agents'
+export * from './cached'
 export * from './locations'
 export * from './messages'
 export * from './player-state'

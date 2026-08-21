@@ -1,7 +1,10 @@
 /**
  * Transient runtime state (`worlds/{name}/_state.json`).
  *
- * Ported from `backend/services/room_mapping_service.py`.
+ * Ported from `backend/services/room_mapping_service.py`, minus
+ * `validate_state`, `rebuild_room_mappings_from_db` and
+ * `get_room_ids_for_world` — none of the three has a call site in
+ * `routers/game/` or `orchestration/`.
  *
  * This file is the bridge between the filesystem world and the database: it
  * maps room keys to DB room ids, and carries state that must survive a restart
@@ -16,6 +19,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { LocationStorage } from './location-storage'
 import { WorldService } from './world-service'
 import { getLogger } from '../infrastructure/logging/logger'
 
@@ -120,9 +124,16 @@ function emptyState(): TransientState {
 
 export class RoomMappingService {
   private readonly worlds: WorldService
+  private readonly locations: LocationStorage
 
   constructor(worldsDir: string) {
     this.worlds = new WorldService(worldsDir)
+    // Only reached by {@link RoomMappingService.findLocationRoomKeyFuzzy}'s
+    // last tier. Python imports `LocationStorage` inside that function to
+    // dodge a circular import (`room_mapping_service.py:340`); here
+    // `location-storage.ts` does not import this module, so there is no cycle
+    // to dodge.
+    this.locations = new LocationStorage(worldsDir)
   }
 
   private stateFile(worldName: string): string {
@@ -286,9 +297,251 @@ export class RoomMappingService {
     return this.loadState(worldName).rooms
   }
 
+  /**
+   * Ensure a room key is mapped, and repair it when it is mapped wrong.
+   * `true` when the mapping was created, `false` when it already existed.
+   *
+   * The repair is the interesting half: `_state.json` and the database drift
+   * apart whenever one is restored, copied or hand-edited without the other,
+   * and the caller here holds the id the database just gave it. Trusting that
+   * id over the file is what makes the path self-healing rather than a guard.
+   *
+   * The file is left alone when the mapping is already correct, so the common
+   * case does not restamp `last_updated` on every call.
+   */
+  ensureRoomMappingExists(
+    worldName: string,
+    roomKey: string,
+    dbRoomId: number,
+    agents: string[] = [],
+  ): boolean {
+    const state = this.loadState(worldName)
+    const existing = state.rooms[roomKey]
+
+    if (existing !== undefined) {
+      if (existing.dbRoomId !== dbRoomId) {
+        logger.warning(
+          `Room mapping mismatch for ${roomKey}: _state.json=${existing.dbRoomId}, ` +
+            `expected=${dbRoomId}. Updating.`,
+        )
+        existing.dbRoomId = dbRoomId
+        this.saveState(worldName, state)
+      }
+      return false
+    }
+
+    state.rooms[roomKey] = { dbRoomId, agents, createdAt: localIsoNow() }
+    this.saveState(worldName, state)
+
+    logger.info(`Created missing room mapping: ${worldName}/${roomKey} -> room_id=${dbRoomId}`)
+    return true
+  }
+
+  /**
+   * Forget a room key. `false` when it was not mapped.
+   *
+   * Clearing `current_room` when it pointed at the deleted key is what stops
+   * the next turn resolving a room id that no longer exists.
+   */
+  deleteRoomMapping(worldName: string, roomKey: string): boolean {
+    const state = this.loadState(worldName)
+    if (state.rooms[roomKey] === undefined) return false
+
+    delete state.rooms[roomKey]
+    if (state.currentRoom === roomKey) state.currentRoom = null
+    this.saveState(worldName, state)
+
+    logger.info(`Deleted room mapping ${roomKey} from world ${worldName}`)
+    return true
+  }
+
+  // --------------------------------------------------------------------
+  // Room occupancy
+  // --------------------------------------------------------------------
+
+  /**
+   * Record an agent as present in a room. `false` when the agent was already
+   * there or the room could not be resolved — in both cases nothing is
+   * written.
+   *
+   * Two fallbacks, because the caller is usually a character-movement tool
+   * naming a location the way the model wrote it: an unmapped `location:` key
+   * is retried through {@link findLocationRoomKeyFuzzy}, and a still-unmapped
+   * one is auto-created with `db_room_id: 0`. A zero id is a placeholder, not
+   * a valid room — {@link ensureRoomMappingExists} overwrites it once the
+   * database row exists, and the agent list is what had to survive until then.
+   */
+  addAgentToRoom(worldName: string, roomKey: string, agentName: string): boolean {
+    const state = this.loadState(worldName)
+    let key = roomKey
+    let mapping = state.rooms[key]
+
+    if (mapping === undefined) {
+      const fuzzy = this.resolveFuzzyLocationKey(worldName, key)
+      if (fuzzy !== null) {
+        key = fuzzy
+        mapping = state.rooms[key]
+      }
+    }
+
+    if (mapping === undefined) {
+      if (!key.startsWith(LOCATION_PREFIX)) {
+        logger.warning(`Room ${key} not found in world ${worldName}`)
+        return false
+      }
+      mapping = { dbRoomId: 0, agents: [], createdAt: null }
+      state.rooms[key] = mapping
+      logger.info(`Auto-created room mapping for ${key} in world ${worldName}`)
+    }
+
+    if (mapping.agents.includes(agentName)) return false
+
+    mapping.agents.push(agentName)
+    this.saveState(worldName, state)
+
+    logger.info(`Added agent ${agentName} to room ${key} in world ${worldName}`)
+    return true
+  }
+
+  /**
+   * Remove an agent from a room. `false` when the room is unmapped or the
+   * agent was not in it.
+   *
+   * Same fuzzy retry as {@link addAgentToRoom} but no auto-create: there is
+   * nothing to remove from a room that does not exist.
+   */
+  removeAgentFromRoom(worldName: string, roomKey: string, agentName: string): boolean {
+    const state = this.loadState(worldName)
+    let key = roomKey
+    let mapping = state.rooms[key]
+
+    if (mapping === undefined) {
+      const fuzzy = this.resolveFuzzyLocationKey(worldName, key)
+      if (fuzzy !== null) {
+        key = fuzzy
+        mapping = state.rooms[key]
+      }
+    }
+
+    if (mapping === undefined) {
+      logger.warning(`Room ${key} not found in world ${worldName}`)
+      return false
+    }
+
+    const index = mapping.agents.indexOf(agentName)
+    if (index === -1) return false
+
+    mapping.agents.splice(index, 1)
+    this.saveState(worldName, state)
+
+    logger.info(`Removed agent ${agentName} from room ${key} in world ${worldName}`)
+    return true
+  }
+
+  /**
+   * The shared prelude of the two occupancy methods: retry an unmapped
+   * `location:` key through fuzzy matching, logging the substitution.
+   * `null` when the key is not a location key or nothing matched.
+   */
+  private resolveFuzzyLocationKey(worldName: string, roomKey: string): string | null {
+    const locationName = RoomMappingService.roomKeyToLocation(roomKey)
+    if (locationName === null) return null
+
+    const fuzzyKey = this.findLocationRoomKeyFuzzy(worldName, locationName)
+    if (fuzzyKey === null) return null
+
+    logger.info(`Fuzzy matched room key: '${roomKey}' -> '${fuzzyKey}'`)
+    return fuzzyKey
+  }
+
+  // --------------------------------------------------------------------
+  // Current room
+  // --------------------------------------------------------------------
+
   /** The room the player is currently in, or `null` before one is chosen. */
   getCurrentRoom(worldName: string): string | null {
     return this.loadState(worldName).currentRoom
+  }
+
+  /**
+   * Point the world at a room. The key is stored as given — an unmapped key
+   * is accepted, matching Python, and reads back as a `null` room id.
+   */
+  setCurrentRoom(worldName: string, roomKey: string): void {
+    const state = this.loadState(worldName)
+    state.currentRoom = roomKey
+    this.saveState(worldName, state)
+
+    logger.info(`Set current room for ${worldName} to ${roomKey}`)
+  }
+
+  /** DB room id of the current room; `null` when there is none, or it is unmapped. */
+  getCurrentRoomId(worldName: string): number | null {
+    const current = this.getCurrentRoom(worldName)
+    if (!current) return null
+    return this.getRoomId(worldName, current)
+  }
+
+  // --------------------------------------------------------------------
+  // Room key resolution
+  // --------------------------------------------------------------------
+
+  /**
+   * Resolve a location name to a mapped room key, tolerantly.
+   *
+   * The input comes from a model writing a place name into a tool call, so it
+   * arrives capitalised differently, translated, abbreviated or padded with a
+   * definite article. Six tiers run in order, each a complete pass over the
+   * mapped location keys before the next begins — so a case-insensitive hit
+   * always beats a prefix hit, and a prefix hit always beats a substring one.
+   * Tier order *is* the disambiguation policy; within a tier the first mapped
+   * key wins, which is insertion order in `_state.json`.
+   *
+   * The last tier leaves `_state.json` for the filesystem, and can therefore
+   * return a key that is not mapped at all. That is intentional and its
+   * callers handle it: {@link addAgentToRoom} auto-creates the mapping.
+   *
+   * Mirrors `room_mapping_service.py:302-347`.
+   */
+  findLocationRoomKeyFuzzy(worldName: string, locationName: string): string | null {
+    const state = this.loadState(worldName)
+    const search = locationName.toLowerCase()
+
+    // 1. Exact.
+    const exactKey = RoomMappingService.locationToRoomKey(locationName)
+    if (state.rooms[exactKey] !== undefined) return exactKey
+
+    // An empty location name (the bare key `location:`) is skipped by every
+    // remaining tier, matching Python's `if loc_name and ...` guard.
+    const candidates = Object.keys(state.rooms)
+      .map((key) => ({ key, name: RoomMappingService.roomKeyToLocation(key) }))
+      .filter((entry): entry is { key: string; name: string } => Boolean(entry.name))
+      .map((entry) => ({ key: entry.key, name: entry.name.toLowerCase() }))
+
+    // 2. Case-insensitive exact.
+    for (const { key, name } of candidates) if (name === search) return key
+
+    // 3. Prefix: 'old' finds 'old_mill'.
+    for (const { key, name } of candidates) if (name.startsWith(search)) return key
+
+    // 4. Contains: 'mill' finds 'old_mill'.
+    for (const { key, name } of candidates) if (name.includes(search)) return key
+
+    // 5. Reverse contains: 'the old mill, at dusk' finds 'old_mill' — the
+    //    model padding a folder name with prose.
+    for (const { key, name } of candidates) if (search.includes(name)) return key
+
+    // 6. Filesystem fallback, for a location that exists on disk but has never
+    //    had a room created for it. Note this tier is exact-or-contains only;
+    //    it has no prefix pass, matching `room_mapping_service.py:343-345`.
+    for (const folder of Object.keys(this.locations.loadAllLocations(worldName))) {
+      const folderLower = folder.toLowerCase()
+      if (folderLower === search || folderLower.includes(search)) {
+        return RoomMappingService.locationToRoomKey(folder)
+      }
+    }
+
+    return null
   }
 
   /** `old_mill` -> `location:old_mill`. */

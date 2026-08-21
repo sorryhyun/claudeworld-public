@@ -27,6 +27,8 @@ interface Manifest {
   root: string
   dbPath: string
   worldName: string
+  /** Absent in manifests written before the owner was published; see below. */
+  ownerId?: string
   roomId: number
   npcs: Array<{ name: string; id: number }>
 }
@@ -46,7 +48,10 @@ const PLAYER_ACTION =
   'I shake the rain off my coat and ask whether anyone here has seen the Fennick caravan.'
 
 const db = openDb({ path: manifest.dbPath })
-const world = getWorldByName(db, manifest.worldName)
+// `ownerId` is required now that `getWorldByName` no longer scans across owners.
+// The fallback keeps manifests seeded before that change usable — `seed-pilot`
+// has always stamped every row `admin` (seed-pilot.ts:112).
+const world = getWorldByName(db, manifest.worldName, manifest.ownerId ?? 'admin')
 if (!world) {
   console.error(`World "${manifest.worldName}" is missing from ${manifest.dbPath}`)
   process.exit(1)

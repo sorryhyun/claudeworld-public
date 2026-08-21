@@ -1,6 +1,6 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
-**Status:** Phases 0 and 1 complete (2026-08-21). Work lives in `backend-ts/` on branch `ts-migration-phase0`; the Python backend on `master` is untouched and is still the one that runs.
+**Status:** Phases 0 and 1 complete (2026-08-21). Work lives in `backend-ts/` on branch `ts-migration-phase0`; the Python backend on `master` is untouched. On this branch `make dev` runs the TS backend (auth only) and `make dev-python` runs the Python one.
 **Next:** Phase 2 — the game core: finish `domain/`/`crud/`/`services/`, chat mode, the interrupt path, and the `routers/game/` surface.
 **Goal:** Replace the Python/FastAPI backend with a TypeScript backend running on Bun, using `@anthropic-ai/claude-agent-sdk`, so the whole personal ecosystem (ClaudeWorld + yaar) shares one language, one toolchain, and one packaging pipeline.
 

@@ -10,34 +10,19 @@
  */
 
 import { DEFAULT_FALLBACK_PROMPT } from '../../config/settings'
+import { isActionManager, isOnboardingManager } from '../../domain/agent'
 import { getGuidelinesConfig } from './yaml-config'
 import { getLogger } from '../../infrastructure/logging/logger'
 
 const logger = getLogger('Guidelines')
 
 /**
- * Agent-name patterns, from `domain/value_objects/enums.py`.
- *
- * Matching is substring-based on a lowercased, space-to-underscore-normalized
- * name, so "Action Manager", "action_manager" and "TRPG_Action_Manager" all
- * hit. Kept here because the domain layer is not part of this port; move these
- * to `domain/entities/agent.ts` when it lands.
+ * The two role predicates this module selects prompts by now live in
+ * `domain/agent.ts` alongside the other four, matching Python where
+ * `guidelines.py:33` imports them from `domain.entities.agent`. Re-exported
+ * because callers already import them from here.
  */
-const ACTION_MANAGER_PATTERNS = ['action_manager', 'actionmanager', 'action manager']
-const ONBOARDING_MANAGER_PATTERNS = ['onboarding_manager', 'onboardingmanager', 'onboarding manager']
-
-function matchesPatterns(agentName: string, patterns: readonly string[]): boolean {
-  const normalized = agentName.toLowerCase().replaceAll(' ', '_')
-  return patterns.some((pattern) => normalized.includes(pattern))
-}
-
-export function isActionManager(agentName: string): boolean {
-  return matchesPatterns(agentName, ACTION_MANAGER_PATTERNS)
-}
-
-export function isOnboardingManager(agentName: string): boolean {
-  return matchesPatterns(agentName, ONBOARDING_MANAGER_PATTERNS)
-}
+export { isActionManager, isOnboardingManager }
 
 function readPrompt(config: Record<string, unknown>, key: string): string {
   const value = config[key]

@@ -26,6 +26,8 @@ if (!scratchDir || !sourceDb) {
 }
 
 export const PILOT_WORLD = 'pilot_phase0'
+/** The `owner_id` every row the seeder writes is stamped with. */
+export const PILOT_OWNER = 'admin'
 export const PILOT_LOCATION = 'old_mill'
 
 const repoRoot = resolveProjectRoot({})
@@ -320,6 +322,7 @@ const manifest = {
   root,
   dbPath,
   worldName: PILOT_WORLD,
+  ownerId: PILOT_OWNER,
   worldId,
   roomId,
   locationId,

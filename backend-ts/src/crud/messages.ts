@@ -5,9 +5,10 @@
  * decorators have no counterpart here.
  */
 
-import { and, desc, eq, gt, gte } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, isNull, type SQL } from 'drizzle-orm'
 import type { Db } from '../db'
 import { agents, messages, roomAgents, rooms, type Message, type MessageRole } from '../db/schema'
+import { getCache, roomMessagesKey } from '../infrastructure/cache'
 
 /** Participant kinds the Python `ParticipantType` enum admits. */
 export type ParticipantType = 'user' | 'character' | 'system' | 'agent'
@@ -85,8 +86,8 @@ export function createMessage(
   message: MessageCreate,
   { updateRoomActivity = true }: CreateMessageOptions = {},
 ): Message {
-  return db.transaction((tx) => {
-    const row = tx
+  const row = db.transaction((tx) => {
+    const inserted = tx
       .insert(messages)
       .values({
         roomId,
@@ -118,8 +119,21 @@ export function createMessage(
       tx.update(rooms).set({ lastActivityAt: new Date() }).where(eq(rooms.id, roomId)).run()
     }
 
-    return row
+    return inserted
   })
+
+  // `messages.py:79-83`: every message-derived cache entry for the room is
+  // dropped inline, after the commit. Missing this is directly user-visible —
+  // the poll loop runs every 2s against a 5s message cache, so a player would
+  // watch a turn's replies simply not arrive for two or three polls.
+  //
+  // Only the message pattern is swept, not `invalidateRoomCache`: Python drops
+  // exactly this one key family here, and the `last_activity_at` bump above is
+  // deliberately left to expire with the 30s room entry rather than being
+  // invalidated on every single message.
+  getCache().invalidatePattern(roomMessagesKey(roomId))
+
+  return row
 }
 
 /**
@@ -128,6 +142,10 @@ export function createMessage(
  * Note the inverted default: system messages do *not* touch the room's activity
  * timestamp, because they are bookkeeping rather than conversation and should
  * not reorder a room list.
+ *
+ * Python invalidates the message cache separately here (`messages.py:126-129`)
+ * because its `create_system_message` builds the row itself; delegating means
+ * the sweep in {@link createMessage} already covers this path.
  */
 export function createSystemMessage(
   db: Db,
@@ -171,6 +189,124 @@ export interface MessageWithAgent extends Message {
 }
 
 /**
+ * The shape every reader in `messages.py` shares: the room's messages with
+ * `Message.agent` resolved, ordered by time.
+ *
+ * Two things are folded in here rather than repeated six times.
+ *
+ * **The `id` tiebreaker.** Python orders on `timestamp` alone, which is safe
+ * *there* because `datetime.now()` has microsecond resolution and two rows
+ * written in the same turn essentially never collide. `Date` resolves to
+ * milliseconds and `sqlaDateTime` pads the microseconds with zeroes, so a burst
+ * of messages — an NPC round, a narration split across tool calls — routinely
+ * lands on byte-identical timestamps. SQLite may then return those in any
+ * order, and for the polling readers that means a player watching a scene
+ * assemble out of sequence. Ids are assigned in insert order, so adding them as
+ * a secondary key recovers exactly the ordering Python's finer clock gave.
+ *
+ * **The newest-N-then-reverse dance.** Four of the five readers want the
+ * *latest* `limit` rows in chronological order, which requires sorting
+ * descending, limiting, and reversing in memory. Sorting ascending with a LIMIT
+ * would quietly return the oldest N instead — the opposite window.
+ */
+function selectWithAgent(
+  db: Db,
+  where: SQL,
+  { newestFirst, limit }: { newestFirst: boolean; limit?: number },
+): MessageWithAgent[] {
+  const ordered = db
+    .select({ message: messages, agent: agents })
+    .from(messages)
+    .leftJoin(agents, eq(messages.agentId, agents.id))
+    .where(where)
+    .orderBy(
+      newestFirst ? desc(messages.timestamp) : asc(messages.timestamp),
+      newestFirst ? desc(messages.id) : asc(messages.id),
+    )
+
+  const rows = limit === undefined ? ordered.all() : ordered.limit(limit).all()
+  const mapped = rows.map((r) => ({ ...r.message, agent: r.agent }))
+  return newestFirst ? mapped.reverse() : mapped
+}
+
+/**
+ * Every message in a room, oldest first — `messages.py:134`.
+ *
+ * Deliberately unbounded, as in Python: the callers are full-history consumers
+ * (transcript export, history compression) rather than the polling path, which
+ * uses {@link getMessagesSince}.
+ */
+export function getMessages(db: Db, roomId: number): MessageWithAgent[] {
+  return selectWithAgent(db, eq(messages.roomId, roomId), { newestFirst: false })
+}
+
+/**
+ * Messages newer than a given id — `messages.py:145`, the polling read.
+ *
+ * `limit` is clamped to 1000 rather than validated: a client asking for more is
+ * silently given 1000, which is what Python's `min(limit, 1000)` does. The
+ * clamp exists because this endpoint is hit every 2 seconds per open room, so
+ * an unbounded page is a memory hazard rather than a correctness one.
+ *
+ * Note this one sorts *ascending* before limiting, unlike its neighbours: with
+ * `sinceId` advancing on every poll the interesting window is the oldest
+ * unseen messages, not the newest ones, or a client that fell behind would skip
+ * whatever it missed and never come back for it.
+ */
+export function getMessagesSince(
+  db: Db,
+  roomId: number,
+  sinceId: number | null = null,
+  limit = 100,
+): MessageWithAgent[] {
+  const where =
+    sinceId === null
+      ? eq(messages.roomId, roomId)
+      : and(eq(messages.roomId, roomId), gt(messages.id, sinceId))!
+
+  return selectWithAgent(db, where, { newestFirst: false, limit: Math.min(limit, 1000) })
+}
+
+/** The newest `limit` messages in a room, returned oldest first — `messages.py:175`. */
+export function getRecentMessages(db: Db, roomId: number, limit = 200): MessageWithAgent[] {
+  return selectWithAgent(db, eq(messages.roomId, roomId), { newestFirst: true, limit })
+}
+
+/**
+ * One chat session's messages — `messages.py:262`.
+ *
+ * Chat mode and gameplay share a room and a table; `chat_session_id` is the
+ * entire separation mechanism. Every message written while the player is in
+ * chat mode carries the session id, gameplay messages carry NULL, and this
+ * filter plus {@link getMessagesExcludingChat} partition the room between them.
+ * Widening either filter leaks one mode's transcript into the other's prompt,
+ * which reads to the player as an NPC suddenly knowing things it was never
+ * told.
+ */
+export function getChatSessionMessages(
+  db: Db,
+  roomId: number,
+  chatSessionId: number,
+  limit = 100,
+): MessageWithAgent[] {
+  const where = and(eq(messages.roomId, roomId), eq(messages.chatSessionId, chatSessionId))!
+  return selectWithAgent(db, where, { newestFirst: true, limit })
+}
+
+/**
+ * The gameplay half of the same partition — `messages.py:293`.
+ *
+ * `IS NULL`, not `= NULL`: Drizzle's `eq(col, null)` would render `= NULL`,
+ * which matches nothing in SQLite, so every gameplay message would vanish from
+ * the Action Manager's context. Python spells it `.is_(None)` for the same
+ * reason.
+ */
+export function getMessagesExcludingChat(db: Db, roomId: number, limit = 200): MessageWithAgent[] {
+  const where = and(eq(messages.roomId, roomId), isNull(messages.chatSessionId))!
+  return selectWithAgent(db, where, { newestFirst: true, limit })
+}
+
+/**
  * Messages posted since the agent last spoke — the agent's "what did I miss".
  *
  * Three cases, in Python's order of preference:
@@ -202,25 +338,7 @@ export function getMessagesAfterAgentResponse(
     }
   }
 
-  // Newest-first with a LIMIT keeps the *latest* N, then the result is reversed
-  // so callers get chronological order. Ordering ascending and limiting would
-  // silently hand back the oldest N instead.
-  //
-  // The `id` tiebreaker is an addition to Python's single-column sort, and it
-  // is needed rather than cosmetic: JS clocks resolve to milliseconds where
-  // Python's resolve to microseconds, so a burst of messages written in one
-  // turn routinely lands on an identical timestamp. Without the tiebreaker
-  // SQLite is free to return those in any order and the agent reads its context
-  // scrambled. Ids are assigned in insert order, so this recovers exactly the
-  // sequence the microsecond clock would have given.
-  const rows = db
-    .select({ message: messages, agent: agents })
-    .from(messages)
-    .leftJoin(agents, eq(messages.agentId, agents.id))
-    .where(where)
-    .orderBy(desc(messages.timestamp), desc(messages.id))
-    .limit(limit)
-    .all()
-
-  return rows.reverse().map((r) => ({ ...r.message, agent: r.agent }))
+  // Newest-first-then-reverse and the `id` tiebreaker both live in
+  // {@link selectWithAgent}; see its doc comment for why each is load-bearing.
+  return selectWithAgent(db, where, { newestFirst: true, limit })
 }

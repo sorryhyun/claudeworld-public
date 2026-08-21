@@ -98,11 +98,14 @@ describe('worlds', () => {
     expect(getWorld(db, 9999)).toBeNull()
   })
 
-  test('getWorldByName matches with and without an owner', () => {
-    expect(getWorldByName(db, 'asdf')?.id).toBe(WORLD_ID)
+  // The owner is required, and a non-matching owner finds nothing. The earlier
+  // version of this test asserted that omitting the owner matched any owner's
+  // world of that name — a cross-tenant read that Python never allowed, since
+  // `worlds.py:139` takes `owner_id` as a positional.
+  test('getWorldByName is scoped to the owner', () => {
     expect(getWorldByName(db, 'asdf', 'admin')?.id).toBe(WORLD_ID)
     expect(getWorldByName(db, 'asdf', 'someone-else')).toBeNull()
-    expect(getWorldByName(db, 'nope')).toBeNull()
+    expect(getWorldByName(db, 'nope', 'admin')).toBeNull()
   })
 
   test('updateWorldLastPlayed writes SQLAlchemy-formatted text', () => {

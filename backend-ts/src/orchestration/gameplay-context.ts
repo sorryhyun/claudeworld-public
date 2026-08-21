@@ -5,6 +5,7 @@ import type { PlayerService } from '../services/player-service'
 import type { RoomMappingService } from '../services/room-mapping'
 import type { WorldService } from '../services/world-service'
 import type { AgentReaction } from './tape/models'
+import { toLangKey } from '../domain/enums'
 
 /**
  * Builds what the Action Manager sees. Port of `orchestration/gameplay_context.py`.
@@ -16,13 +17,6 @@ import type { AgentReaction } from './tape/models'
  * demand through `list_inventory` and `list_characters` rather than carrying in
  * context every turn.
  */
-
-export type Language = 'en' | 'ko' | 'jp'
-
-/** Python's `Language.to_lang_key`: anything unrecognized falls back to English. */
-export function toLangKey(language: string | null | undefined): Language {
-  return language === 'ko' || language === 'jp' ? language : 'en'
-}
 
 export interface GameplayServices {
   worlds: WorldService

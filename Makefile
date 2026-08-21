@@ -1,4 +1,4 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-icon build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-ts run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-python dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-icon build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -7,12 +7,16 @@ help:
 	@echo "ClaudeWorld - Available commands:"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev               - Run backend (SQLite) + frontend (default, no PostgreSQL needed)"
-	@echo "  make dev-postgresql    - Run backend (PostgreSQL) + frontend (requires PostgreSQL installed)"
-	@echo "  make dev-perf          - Run backend (SQLite) + frontend with performance logging (outputs to latency.log)"
-	@echo "  make install           - Install all dependencies (backend + frontend)"
-	@echo "  make run-backend       - Run backend server only (PostgreSQL)"
-	@echo "  make run-backend-sqlite- Run backend server only (SQLite)"
+	@echo "  make dev               - Run TypeScript backend (SQLite) + frontend  [DEFAULT]"
+	@echo "                           NOTE: the TS backend is mid-migration and serves only"
+	@echo "                           /auth/* so far. Use 'make dev-python' for a playable game."
+	@echo "  make dev-python        - Run Python backend (SQLite) + frontend (the full game)"
+	@echo "  make dev-postgresql    - Run Python backend (PostgreSQL) + frontend (requires PostgreSQL)"
+	@echo "  make dev-perf          - Run Python backend (SQLite) + frontend with performance logging"
+	@echo "  make install           - Install all dependencies (backend + backend-ts + frontend)"
+	@echo "  make run-backend-ts    - Run TypeScript backend server only (SQLite)"
+	@echo "  make run-backend       - Run Python backend server only (PostgreSQL)"
+	@echo "  make run-backend-sqlite- Run Python backend server only (SQLite)"
 	@echo "  make run-backend-perf  - Run backend server only (SQLite) with performance logging"
 	@echo "  make run-backend-trace - Run backend server only (SQLite) with CLI tracing"
 	@echo "  make run-frontend      - Run frontend server only"
@@ -42,6 +46,12 @@ install:
 	sudo npm install -g @anthropic-ai/claude-code || echo "Warning: Failed to install Claude Code CLI globally. You may need to run with sudo."
 	@echo "Installing backend dependencies with uv..."
 	uv sync
+	@echo "Installing TypeScript backend dependencies with bun..."
+	@if command -v bun >/dev/null 2>&1; then \
+		cd backend-ts && bun install; \
+	else \
+		echo "Warning: bun not found. 'make dev' needs it: curl -fsSL https://bun.sh/install | bash"; \
+	fi
 	@echo "Installing frontend dependencies..."
 	cd frontend && npm install
 	@echo ""
@@ -67,6 +77,10 @@ run-backend-sqlite:
 	@echo "Starting backend server (SQLite)..."
 	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db uv run uvicorn main:app --host 127.0.0.1 --port 8000
 
+run-backend-ts:
+	@echo "Starting TypeScript backend server (SQLite)..."
+	cd backend-ts && HOST=127.0.0.1 PORT=8000 DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev
+
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
 	@echo "Performance metrics will be written to ./latency.log"
@@ -87,7 +101,22 @@ run-tunnel-frontend:
 
 dev:
 	@mkdir -p /tmp/claude-empty
-	@echo "Starting backend (SQLite) and frontend..."
+	@echo "Starting TypeScript backend (SQLite) and frontend..."
+	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
+	@echo "Frontend will run on http://localhost:5173"
+	@echo ""
+	@echo "⚠️  The TypeScript backend is mid-migration (Phases 0-1 of 5)."
+	@echo "   It serves /auth/login, /auth/verify and /auth/health only — the game"
+	@echo "   routes land in Phases 2-3. Expect to log in and then get 404s."
+	@echo "   Run 'make dev-python' for the full, playable backend."
+	@echo ""
+	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
+	@echo "Press Ctrl+C to stop all servers"
+	@$(MAKE) -j2 run-backend-ts run-frontend
+
+dev-python:
+	@mkdir -p /tmp/claude-empty
+	@echo "Starting Python backend (SQLite) and frontend..."
 	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
 	@echo "Frontend will run on http://localhost:5173"
 	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
@@ -175,6 +204,7 @@ prod:
 stop:
 	@echo "Stopping servers..."
 	@pkill -f "uvicorn main:app" || true
+	@pkill -f "bun.*src/main.ts" || true
 	@pkill -f "vite" || true
 	@pkill -f "cloudflared" || true
 	@echo "Servers stopped."
