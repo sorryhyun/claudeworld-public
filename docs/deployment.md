@@ -59,7 +59,7 @@ make build-exe
 ```
 
 This command will:
-1. Build the React frontend (`npm run build`)
+1. Build the React frontend (`bun run build`)
 2. Package everything with PyInstaller
 3. Create `dist/ClaudeWorld.exe`
 
@@ -69,9 +69,7 @@ If you prefer to build manually:
 
 1. **Build the frontend:**
    ```bash
-   cd frontend
-   npm run build
-   cd ..
+   bun run build
    ```
 
 2. **Run PyInstaller:**
@@ -130,7 +128,7 @@ Both installers live in `scripts/install/` and are attached to every release, wh
 
 Options (download the script first to pass them): `-Version`, `-InstallDir`, `-Repo`, `-NoShortcut`, `-NoPath`.
 
-**`install.sh`** (macOS / Linux / WSL) does a source install, since there is no prebuilt binary for these platforms. It checks for Node and installs `uv` if missing, downloads the tagged source tarball to `~/.claudeworld`, runs `uv sync` and `npm install`, runs the `.env` wizard, and writes a `claudeworld` launcher to `~/.local/bin`:
+**`install.sh`** (macOS / Linux / WSL) does a source install, since there is no prebuilt binary for these platforms. It installs `bun` and `uv` if either is missing, downloads the tagged source tarball to `~/.claudeworld`, runs `uv sync` and `bun install`, runs the `.env` wizard, and writes a `claudeworld` launcher to `~/.local/bin`:
 
 ```bash
 claudeworld              # make dev (SQLite + frontend)
@@ -175,7 +173,7 @@ User data is stored in the same directory as the executable:
 The build automatically uses `assets/icon.ico` for the executable icon and taskbar. To regenerate or customize:
 
 ```bash
-# Regenerate from the script (editable at scripts/generate_icon.py)
+# Regenerate from the script (editable at backend/scripts/generate_icon.py)
 make generate-icon
 
 # Or provide your own .ico file at assets/icon.ico

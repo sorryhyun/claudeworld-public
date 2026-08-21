@@ -129,10 +129,10 @@ test-all = { shell = "pytest -m 'unit or integration'", help = "Run ALL tests (h
 test-cov = { shell = "pytest --cov=backend --cov-report=term-missing", help = "Run tests with coverage" }
 test-verbose = { shell = "pytest -v", help = "Run tests verbose" }
 
-# Migrations (Alembic; there is no alembic.ini -- see scripts/alembic_cli.py)
-migration = { shell = "python scripts/alembic_cli.py", help = "Run an Alembic command (e.g. `poe migration -- history`)" }
-migration-new = { shell = "python scripts/alembic_cli.py revision --autogenerate", help = "Autogenerate a revision from models.py (add -m '<message>')" }
-migration-check = { shell = "rm -f .migration-check.db && DATABASE_URL=sqlite+aiosqlite:///.migration-check.db python scripts/alembic_cli.py upgrade head && DATABASE_URL=sqlite+aiosqlite:///.migration-check.db python scripts/alembic_cli.py check; status=$?; rm -f .migration-check.db; exit $status", help = "Fail if models.py has drifted from the migrations" }
+# Migrations (Alembic; there is no alembic.ini -- see backend/scripts/alembic_cli.py)
+migration = { shell = "python backend/scripts/alembic_cli.py", help = "Run an Alembic command (e.g. `poe migration -- history`)" }
+migration-new = { shell = "python backend/scripts/alembic_cli.py revision --autogenerate", help = "Autogenerate a revision from models.py (add -m '<message>')" }
+migration-check = { shell = "rm -f .migration-check.db && DATABASE_URL=sqlite+aiosqlite:///.migration-check.db python backend/scripts/alembic_cli.py upgrade head && DATABASE_URL=sqlite+aiosqlite:///.migration-check.db python backend/scripts/alembic_cli.py check; status=$?; rm -f .migration-check.db; exit $status", help = "Fail if models.py has drifted from the migrations" }
 
 # Installation
 install-all = { shell = "uv sync && cd frontend && npm install", help = "Install all dependencies (backend + frontend)" }

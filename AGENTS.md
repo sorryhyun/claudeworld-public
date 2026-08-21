@@ -27,7 +27,14 @@ make clean               # Clean build artifacts (including SQLite database)
 cd backend && DATABASE_URL=sqlite+aiosqlite:///../claudeworld.db uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Frontend only
-cd frontend && npm run dev
+bun run dev:frontend
+
+# JS workspace (root package.json is a Bun workspace over backend-ts/ + frontend/)
+bun install                                        # Install backend-ts + frontend deps
+bun run typecheck                                  # tsc in both workspaces
+bun run lint                                       # eslint in both workspaces
+bun run test                                       # bun test (backend-ts) + vitest (frontend)
+bun run --filter '@claudeworld/backend' test       # One workspace only
 
 # Testing (always run from the repo root -- pytest is configured only in
 # pyproject.toml's [tool.pytest.ini_options])

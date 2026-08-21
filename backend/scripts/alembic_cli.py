@@ -5,10 +5,10 @@ There is no ``alembic.ini`` -- the config lives in
 ``infrastructure/database/alembic_runner.py`` -- so the stock ``alembic``
 command cannot find anything. Use this instead:
 
-    uv run python scripts/alembic_cli.py revision --autogenerate -m "add foo"
-    uv run python scripts/alembic_cli.py upgrade head
-    uv run python scripts/alembic_cli.py history
-    uv run python scripts/alembic_cli.py check      # models.py vs revisions
+    uv run python backend/scripts/alembic_cli.py revision --autogenerate -m "add foo"
+    uv run python backend/scripts/alembic_cli.py upgrade head
+    uv run python backend/scripts/alembic_cli.py history
+    uv run python backend/scripts/alembic_cli.py check      # models.py vs revisions
 
 DATABASE_URL selects the database, exactly as it does for the app. Autogenerate
 and ``check`` compare ``models.py`` against whatever that URL points at, so
@@ -21,7 +21,7 @@ import os
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "backend"))
 
 # Default to the dev SQLite database rather than the app's PostgreSQL default,

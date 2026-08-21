@@ -183,7 +183,7 @@ async def verify_schema_matches_models(engine: AsyncEngine) -> None:
             "Database schema does not match models.py after migration:\n"
             f"{details}\n"
             "Refusing to start against a half-migrated schema. Generate a revision with:\n"
-            "  uv run python scripts/alembic_cli.py revision --autogenerate -m '<description>'"
+            "  uv run python backend/scripts/alembic_cli.py revision --autogenerate -m '<description>'"
         )
 
 

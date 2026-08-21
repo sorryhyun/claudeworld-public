@@ -113,8 +113,9 @@ Left sidebar with:
 ### Setup
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies. The repo root is a Bun workspace covering this package
+# and backend-ts/, so install from the root -- there is one lockfile for both.
+cd .. && bun install
 
 # Copy environment template
 cp .env.example .env
@@ -132,18 +133,19 @@ VITE_API_BASE_URL=http://localhost:8000
 ### Run Development Server
 
 ```bash
-npm run dev
+bun run dev
 # Opens on http://localhost:5173
+# From the repo root: bun run dev:frontend
 ```
 
 ### Build for Production
 
 ```bash
-npm run build
+bun run build
 # Output in dist/
 
 # Preview production build
-npm run preview
+bun run preview
 ```
 
 ## API Integration
@@ -234,10 +236,12 @@ npx shadcn@latest add [component-name]
 ## Scripts
 
 ```bash
-npm run dev       # Start development server
-npm run build     # Build for production
-npm run preview   # Preview production build
-npm run lint      # Run ESLint
+bun run dev        # Start development server
+bun run build      # Build for production
+bun run preview    # Preview production build
+bun run lint       # Run ESLint
+bun run typecheck  # tsc --noEmit
+bun run test       # Vitest, single run (bun run test:watch to watch)
 ```
 
 ## Dependencies

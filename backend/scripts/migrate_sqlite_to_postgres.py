@@ -3,7 +3,7 @@
 Migrate data from SQLite to PostgreSQL for claudeworld.
 
 Usage:
-    python scripts/migrate_sqlite_to_postgres.py
+    python backend/scripts/migrate_sqlite_to_postgres.py
 
 This script:
 1. Creates PostgreSQL tables using SQLAlchemy models
@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Add backend to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import asyncpg
 
@@ -44,7 +44,7 @@ def parse_datetime(value):
 
 
 # Configuration
-SQLITE_PATH = Path(__file__).parent.parent / "claudeworld.db"
+SQLITE_PATH = Path(__file__).parent.parent.parent / "claudeworld.db"
 POSTGRES_URL = "postgresql://postgres:postgres@localhost:5432/claudeworld"
 
 

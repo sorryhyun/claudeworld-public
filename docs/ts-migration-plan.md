@@ -1,6 +1,9 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
-**Status:** Phases 0, 1 and 2 complete (2026-08-21). Work lives in `backend-ts/`; the Python backend is untouched. `make dev` runs the TS backend and `make dev-python` runs the Python one. 1,400+ unit tests, `tsc`, `eslint` and the drift gate are clean, and `bun run smoke` boots the assembled backend against a throwaway database and exercises the real routes.
+**Status:** Phases 0, 1 and 2 complete (2026-08-21). The repo root is a Bun workspace over
+`backend-ts/` and `frontend/` (one `bun install`, one `bun.lock`), and the Python helper
+scripts have moved from `scripts/` to `backend/scripts/` so they retire with the Python
+tree; `scripts/` now holds only the release installers and the deploy shell script. Work lives in `backend-ts/`; the Python backend is untouched. `make dev` runs the TS backend and `make dev-python` runs the Python one. 1,400+ unit tests, `tsc`, `eslint` and the drift gate are clean, and `bun run smoke` boots the assembled backend against a throwaway database and exercises the real routes.
 **Next:** Phase 3 — the remaining routers (`agents`, `rooms`, `messages`, `sse`, `mcp_tools`, `debug`, `readme`), the background scheduler, the agent-file hot-reload watcher, i18n, image upload/WebP, and a frontend smoke pass.
 **Goal:** Replace the Python/FastAPI backend with a TypeScript backend running on Bun, using `@anthropic-ai/claude-agent-sdk`, so the whole personal ecosystem (ClaudeWorld + yaar) shares one language, one toolchain, and one packaging pipeline.
 
@@ -289,7 +292,14 @@ fixture is checked in under `src/tests/fixtures/worlds/`.
 ## Open Decisions
 
 1. Native window vs. browser-only for the packaged exe (Phase 5; recommend browser-only first).
-2. Whether to fold `frontend/` into the Bun workspace (recommend yes at cutover — one `bun install` for the whole repo — but not before).
+2. ~~Whether to fold `frontend/` into the Bun workspace?~~ **Settled 2026-08-21: yes, and ahead of
+   cutover.** The repo root is now a Bun workspace (`package.json` → `["backend-ts", "frontend"]`)
+   with one `bun.lock`; both npm lockfiles are gone and `make install` is a single `bun install`.
+   Bun 1.4's isolated linker gives each workspace its own `node_modules` of symlinks, so the
+   TypeScript 6 / eslint 10 the backend pins do not collide with the frontend's TypeScript 5 /
+   eslint 9. That linker also surfaced a latent bug: `src/sdk/handlers/context.ts` imported
+   `@modelcontextprotocol/sdk` without declaring it, resolving only because the flat npm-style
+   install hoisted the Agent SDK's copy. It is a declared dependency now.
 3. ~~Hono confirmed over Elysia?~~ **Settled 2026-08-21: Hono.** Reasoning recorded in the Target Stack table.
 4. From Phase 0: `to_system_prompt_markdown` hardcodes the Korean particle `이` in the memory-index heading instead of using `format_with_particles`, so vowel-final names read wrong (`크리스이 가진` should be `크리스가 가진`). Reproduced verbatim in the port. Fixing it changes every Korean agent's prompt, so it needs a deliberate call rather than a silent correction.
 5. **From Phase 2 — five live Python bugs, all reproduced rather than fixed.** Each one is

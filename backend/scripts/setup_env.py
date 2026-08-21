@@ -12,9 +12,9 @@ When .env already exists it offers to change the login password, rewriting only
 API_KEY_HASH and leaving every other setting alone.
 
 Usage:
-    python scripts/setup/setup_env.py           # Interactive setup / password change
-    python scripts/setup/setup_env.py --force   # Skip the confirmation prompt
-    python scripts/setup/setup_env.py --check   # Just check if .env is configured
+    python backend/scripts/setup_env.py           # Interactive setup / password change
+    python backend/scripts/setup_env.py --force   # Skip the confirmation prompt
+    python backend/scripts/setup_env.py --check   # Just check if .env is configured
 """
 
 import argparse

@@ -155,7 +155,7 @@ def generate_favicon_svg(output_path: Path):
 
 
 def main():
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
 
     # Create assets directory
     assets_dir = project_root / "assets"

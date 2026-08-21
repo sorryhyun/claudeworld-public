@@ -52,7 +52,10 @@ until the session pool is owned by the app rather than by a script.
 ## Running things
 
 ```bash
-bun install
+# Dependencies install from the repo root -- it is a Bun workspace over this
+# package (`@claudeworld/backend`) and `../frontend`, with one shared lockfile.
+cd .. && bun install && cd backend-ts
+
 bun run typecheck
 bun run lint
 bun test

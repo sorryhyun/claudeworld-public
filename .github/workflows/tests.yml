@@ -59,8 +59,9 @@ jobs:
         with:
           bun-version: latest
 
+      # One lockfile for the whole repo: the root package.json is a Bun
+      # workspace over backend-ts/ and frontend/, so this installs both.
       - name: Install dependencies
-        working-directory: backend-ts
         run: bun install --frozen-lockfile
 
       - name: Typecheck

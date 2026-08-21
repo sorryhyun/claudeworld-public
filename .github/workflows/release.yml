@@ -21,10 +21,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: '20'
+          bun-version: latest
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -32,18 +32,15 @@ jobs:
       - name: Install backend dependencies
         run: uv sync
 
+      # Root Bun workspace: installs frontend and backend-ts together.
       - name: Install frontend dependencies
-        run: |
-          cd frontend
-          npm install
+        run: bun install --frozen-lockfile
 
       - name: Generate application icon
-        run: uv run python scripts/generate_icon.py
+        run: uv run python backend/scripts/generate_icon.py
 
       - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
+        run: bun run build
 
       - name: Build Windows executable
         run: uv run pyinstaller ClaudeWorld.spec --noconfirm

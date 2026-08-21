@@ -1,7 +1,7 @@
 """Alembic environment for ClaudeWorld.
 
 Always driven programmatically from ``alembic_runner.py`` (and from the CLI via
-``scripts/alembic_cli.py``), never from a generated ``alembic.ini``. Keeping the
+``backend/scripts/alembic_cli.py``), never from a generated ``alembic.ini``. Keeping the
 configuration in Python means there is no extra data file for PyInstaller to
 bundle into the Windows ``.exe``, and one definition of the URL and the target
 metadata rather than two that can drift.

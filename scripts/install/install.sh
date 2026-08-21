@@ -15,13 +15,15 @@ INSTALL_DIR="${CLAUDEWORLD_HOME:-$HOME/.claudeworld}"
 BIN_DIR="${CLAUDEWORLD_BIN_DIR:-$HOME/.local/bin}"
 VERSION="latest"
 INSTALL_UV=1
+INSTALL_BUN=1
 CREATE_ENV=1
 CREATE_LAUNCHER=1
 
 # User data that survives an upgrade. Agents are merged separately.
 PRESERVE=(.env .env.bak claudeworld.db worlds)
-# Expensive to rebuild, so carried over instead of re-downloaded.
-CARRY_OVER=(.venv frontend/node_modules)
+# Expensive to rebuild, so carried over instead of re-downloaded. JS deps
+# live in one root node_modules now -- the repo is a single Bun workspace.
+CARRY_OVER=(.venv node_modules)
 
 usage() {
     cat <<'EOF'
@@ -36,6 +38,7 @@ Options:
                     Source repository (default: sorryhyun/claudeworld-public)
   --bin-dir <path>  Where to put the `claudeworld` launcher (default: ~/.local/bin)
   --no-uv           Fail instead of installing uv when it is missing
+  --no-bun          Fail instead of installing bun when it is missing
   --no-env          Skip the interactive .env setup
   --no-launcher     Skip creating the `claudeworld` launcher
   -h, --help        Show this help
@@ -56,6 +59,7 @@ while [ $# -gt 0 ]; do
         --repo)        REPO="${2:?--repo needs owner/repo}"; shift 2 ;;
         --bin-dir)     BIN_DIR="${2:?--bin-dir needs a path}"; shift 2 ;;
         --no-uv)       INSTALL_UV=0; shift ;;
+        --no-bun)      INSTALL_BUN=0; shift ;;
         --no-env)      CREATE_ENV=0; shift ;;
         --no-launcher) CREATE_LAUNCHER=0; shift ;;
         -h|--help)     usage; exit 0 ;;
@@ -79,12 +83,19 @@ case "$(uname -s)" in
 esac
 log "Platform: $PLATFORM"
 
-if ! need node || ! need npm; then
-    die "Node.js (with npm) is required for the frontend. Install Node 20+ and re-run.
-      macOS:         brew install node
-      Debian/Ubuntu: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs"
+if ! need bun; then
+    [ "$INSTALL_BUN" -eq 1 ] || die "bun is required but --no-bun was passed. See https://bun.sh/"
+    log "bun not found - installing from https://bun.sh/install"
+    curl -fsSL https://bun.sh/install | bash
+    # The installer drops bun here; pick it up for this session. Written as an
+    # `if` rather than `[ ... ] && ...` because under `set -e` a false test on
+    # the last command of the list would abort the installer.
+    if [ -x "$HOME/.bun/bin/bun" ]; then
+        PATH="$HOME/.bun/bin:$PATH"
+    fi
+    need bun || die "bun installed but not on PATH. Open a new shell and re-run this installer."
 fi
-log "Node: $(node --version)"
+log "bun: $(bun --version)"
 
 if ! need uv; then
     [ "$INSTALL_UV" -eq 1 ] || die "uv is required but --no-uv was passed. See https://docs.astral.sh/uv/"
@@ -101,7 +112,7 @@ log "uv: $(uv --version)"
 if ! need claude; then
     warn "The 'claude' CLI was not found. ClaudeWorld drives agents through it."
     warn "Install it before creating a world:"
-    warn "  npm install -g @anthropic-ai/claude-code"
+    warn "  bun add -g @anthropic-ai/claude-code"
     warn "Or set CLAUDE_API_KEY in .env to use the API directly."
 fi
 
@@ -185,8 +196,8 @@ fi
 step "Installing backend dependencies (uv sync)"
 (cd "$INSTALL_DIR" && uv sync)
 
-step "Installing frontend dependencies (npm install)"
-(cd "$INSTALL_DIR/frontend" && npm install --no-fund --no-audit)
+step "Installing JS dependencies (bun install)"
+(cd "$INSTALL_DIR" && bun install --frozen-lockfile)
 
 # ------------------------------------------------------------------ .env setup
 
@@ -194,9 +205,9 @@ if [ "$CREATE_ENV" -eq 1 ] && [ ! -f "$INSTALL_DIR/.env" ]; then
     step "Configuring .env"
     # `curl | bash` leaves stdin pointing at the pipe, so borrow the terminal.
     if [ -t 0 ]; then
-        (cd "$INSTALL_DIR" && uv run python scripts/setup/setup_env.py) || warn ".env setup did not complete."
+        (cd "$INSTALL_DIR" && uv run python backend/scripts/setup_env.py) || warn ".env setup did not complete."
     elif [ -r /dev/tty ]; then
-        (cd "$INSTALL_DIR" && uv run python scripts/setup/setup_env.py < /dev/tty) || warn ".env setup did not complete."
+        (cd "$INSTALL_DIR" && uv run python backend/scripts/setup_env.py < /dev/tty) || warn ".env setup did not complete."
     else
         warn "No terminal available - skipping .env setup."
         warn "Run it later with:  claudeworld setup"
@@ -223,7 +234,7 @@ case "\${1:-start}" in
     start)      exec make dev ;;
     postgresql) exec make dev-postgresql ;;
     perf)       exec make dev-perf ;;
-    setup)      exec uv run python scripts/setup/setup_env.py --force ;;
+    setup)      exec uv run python backend/scripts/setup_env.py --force ;;
     stop)       exec make stop ;;
     dir)        echo "\$CLAUDEWORLD_HOME" ;;
     version)    cat .claudeworld-version 2>/dev/null || echo "unknown" ;;

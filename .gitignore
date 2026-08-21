@@ -15,8 +15,10 @@ test_*.txt
 worlds
 claude_soul_doc.md
 
-# Node
-frontend/node_modules/
+# Node / Bun (single workspace at the repo root; bun's isolated
+# linker keeps the real packages under node_modules/.bun and
+# symlinks them into each workspace's own node_modules)
+node_modules/
 frontend/dist/
 frontend/.env.local
 frontend/.env.production.local

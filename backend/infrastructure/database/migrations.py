@@ -4,7 +4,7 @@ Legacy one-time schema catch-up for pre-Alembic databases.
 **Do not add migrations here.** Alembic owns forward schema changes; see
 ``alembic_runner.py`` and ``alembic/versions/``. Generate a revision with::
 
-    uv run python scripts/alembic_cli.py revision --autogenerate -m "<description>"
+    uv run python backend/scripts/alembic_cli.py revision --autogenerate -m "<description>"
 
 This module used to run on every boot, checking every column of every table
 against a hand-written list. It now runs at most once per database, and only for

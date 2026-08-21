@@ -44,8 +44,8 @@ uv run pytest -v backend/tests/
 uv run ruff check backend/
 uv run ruff check backend/ --fix
 
-# Type check frontend
-cd frontend && npx tsc --noEmit
+# Type check frontend (repo root is a Bun workspace)
+bun run --filter '@claudeworld/frontend' typecheck
 ```
 
 ### Test Patterns

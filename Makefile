@@ -46,28 +46,27 @@ install:
 	sudo npm install -g @anthropic-ai/claude-code || echo "Warning: Failed to install Claude Code CLI globally. You may need to run with sudo."
 	@echo "Installing backend dependencies with uv..."
 	uv sync
-	@echo "Installing TypeScript backend dependencies with bun..."
+	@echo "Installing JS dependencies (backend-ts + frontend) with bun..."
 	@if command -v bun >/dev/null 2>&1; then \
-		cd backend-ts && bun install; \
+		bun install; \
 	else \
-		echo "Warning: bun not found. 'make dev' needs it: curl -fsSL https://bun.sh/install | bash"; \
+		echo "Error: bun not found. Install it: curl -fsSL https://bun.sh/install | bash"; \
+		exit 1; \
 	fi
-	@echo "Installing frontend dependencies..."
-	cd frontend && npm install
 	@echo ""
 	@echo "Checking .env configuration..."
-	@if uv run python scripts/setup/setup_env.py --check 2>/dev/null; then \
+	@if uv run python backend/scripts/setup_env.py --check 2>/dev/null; then \
 		echo ""; \
 	else \
 		echo ""; \
 		echo "Running first-time setup wizard..."; \
-		uv run python scripts/setup/setup_env.py; \
+		uv run python backend/scripts/setup_env.py; \
 	fi
 	@echo "Done!"
 
 setup:
 	@echo "Running .env setup wizard..."
-	uv run python scripts/setup/setup_env.py
+	uv run python backend/scripts/setup_env.py
 
 run-backend:
 	@echo "Starting backend server (PostgreSQL)..."
@@ -79,7 +78,7 @@ run-backend-sqlite:
 
 run-backend-ts:
 	@echo "Starting TypeScript backend server (SQLite)..."
-	cd backend-ts && HOST=127.0.0.1 PORT=8000 DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev
+	HOST=127.0.0.1 PORT=8000 DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev:backend
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
@@ -89,7 +88,7 @@ run-backend-perf:
 
 run-frontend:
 	@echo "Starting frontend server..."
-	cd frontend && npm run dev
+	bun run dev:frontend
 
 run-tunnel-backend:
 	@echo "Starting Cloudflare tunnel for backend..."
@@ -182,7 +181,7 @@ diagnose-traces:
 	else \
 		THRESHOLD=$${THRESHOLD:-100}; \
 		FORMAT=$${FORMAT:-text}; \
-		uv run python scripts/diagnose_traces.py "$(FILE)" --threshold $$THRESHOLD --format $$FORMAT; \
+		uv run python backend/scripts/diagnose_traces.py "$(FILE)" --threshold $$THRESHOLD --format $$FORMAT; \
 	fi
 
 prod:
@@ -219,19 +218,20 @@ clean:
 	rm -f traces.jsonl
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules/.vite
+	rm -rf backend-ts/dist
 	@echo "Clean complete!"
 
 generate-icon:
 	@echo "Generating application icon..."
-	uv run python scripts/generate_icon.py
+	uv run python backend/scripts/generate_icon.py
 	@echo "Done! Generated assets/icon.ico and frontend/public/favicon.svg"
 
 build-exe:
 	@echo "Building standalone executable..."
 	@echo "Step 1: Generating application icon..."
-	uv run python scripts/generate_icon.py
+	uv run python backend/scripts/generate_icon.py
 	@echo "Step 2: Building frontend..."
-	cd frontend && npm run build
+	bun run build
 	@echo "Step 3: Building executable with PyInstaller..."
 	uv run pyinstaller ClaudeWorld.spec --noconfirm
 	@# Rename to add .exe suffix if not present (for cross-platform builds)

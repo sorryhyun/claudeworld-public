@@ -6,10 +6,10 @@ Analyzes JSONL traces from phase-trace and telemetry-transparency patches
 to identify performance bottlenecks in agent responses.
 
 Usage:
-    python scripts/diagnose_traces.py traces.jsonl
-    python scripts/diagnose_traces.py traces.jsonl --threshold 50
-    python scripts/diagnose_traces.py traces.jsonl --format json
-    cat traces.jsonl | python scripts/diagnose_traces.py -
+    python backend/scripts/diagnose_traces.py traces.jsonl
+    python backend/scripts/diagnose_traces.py traces.jsonl --threshold 50
+    python backend/scripts/diagnose_traces.py traces.jsonl --format json
+    cat traces.jsonl | python backend/scripts/diagnose_traces.py -
 
 Trace capture:
     CCDECOMP_PHASE_TRACE=1 CCDECOMP_PHASE_TRACE_FORMAT=jsonl \

@@ -74,14 +74,18 @@ frontend/src/
 ## Development Commands
 
 ```bash
-# Run frontend
-cd frontend && npm run dev
+# Run frontend (repo root is a Bun workspace)
+bun run dev:frontend
 
 # Type check
-cd frontend && npx tsc --noEmit
+bun run --filter '@claudeworld/frontend' typecheck
+
+# Lint / test
+bun run --filter '@claudeworld/frontend' lint
+bun run --filter '@claudeworld/frontend' test
 
 # Build
-cd frontend && npm run build
+bun run build
 ```
 
 ## Workflow
