@@ -18,9 +18,16 @@ import { PlayerService } from '../services/player-service'
 import { RoomMappingService } from '../services/room-mapping'
 import { MtimeCache, WorldService } from '../services/world-service'
 
-/** Repo root: `<root>/backend-ts/src/tests` -> `<root>`. */
-const REPO_ROOT = join(import.meta.dir, '..', '..', '..')
-const REAL_WORLDS_DIR = join(REPO_ROOT, 'worlds')
+/**
+ * The fixture worlds tree, checked in under `src/tests/fixtures/worlds/`.
+ *
+ * This used to point at the repo's own `worlds/` directory, which is
+ * `.gitignore`d — so the suite passed only on a machine that happened to have
+ * played that world locally, and failed on every fresh checkout including CI.
+ * `worlds/asdf` is reproduced here byte-for-byte instead: same fresh-world
+ * shape, same timestamps, now tracked.
+ */
+const REAL_WORLDS_DIR = join(import.meta.dir, 'fixtures', 'worlds')
 const WORLD = 'asdf'
 
 /** A writable copy of `worlds/`, recreated per test in the write suites. */
