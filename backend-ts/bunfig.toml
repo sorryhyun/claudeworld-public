@@ -1,0 +1,7 @@
+# `bun test` from this package. Preload pins the environment before any module
+# can read it: src/config/env.ts resolves paths and freezes settings at import
+# time, so a test that imports it before the preload ran would capture the
+# developer's real .env instead of the fixture one.
+[test]
+preload = ["./src/tests/setup/env.ts"]
+pathIgnorePatterns = ["**/dist/**", "**/node_modules/**"]

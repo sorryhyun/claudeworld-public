@@ -1,0 +1,74 @@
+/**
+ * Base system prompt selection.
+ *
+ * Ported from `backend/sdk/loaders/guidelines.py`.
+ *
+ * `guidelines_3rd.yaml` holds several prompt bodies plus an
+ * `active_system_prompt` key naming which one is live — an indirection so a
+ * prompt can be swapped by editing one line instead of moving a 40-line block.
+ * Two agents opt out of that selector entirely and get a dedicated prompt.
+ */
+
+import { DEFAULT_FALLBACK_PROMPT } from '../../config/settings'
+import { isActionManager, isOnboardingManager } from '../../domain/agent'
+import { getGuidelinesConfig } from './yaml-config'
+import { getLogger } from '../../infrastructure/logging/logger'
+
+const logger = getLogger('Guidelines')
+
+/**
+ * The two role predicates this module selects prompts by now live in
+ * `domain/agent.ts` alongside the other four, matching Python where
+ * `guidelines.py:33` imports them from `domain.entities.agent`. Re-exported
+ * because callers already import them from here.
+ */
+export { isActionManager, isOnboardingManager }
+
+function readPrompt(config: Record<string, unknown>, key: string): string {
+  const value = config[key]
+  return typeof value === 'string' ? value : ''
+}
+
+/**
+ * Load the base system prompt for `agentName`.
+ *
+ * - Action Manager → `system_prompt_AM`
+ * - Onboarding Manager → `system_prompt_OM`
+ * - anything else (or no name) → the key named by `active_system_prompt`
+ *
+ * The returned template still contains `{agent_name}` placeholders; run it
+ * through `formatWithParticles` before use.
+ */
+export function getBaseSystemPrompt(agentName?: string | null): string {
+  try {
+    const config = getGuidelinesConfig()
+
+    if (agentName) {
+      if (isActionManager(agentName)) {
+        const prompt = readPrompt(config, 'system_prompt_AM')
+        if (prompt) return prompt.trim()
+      } else if (isOnboardingManager(agentName)) {
+        const prompt = readPrompt(config, 'system_prompt_OM')
+        if (prompt) return prompt.trim()
+      }
+      // A missing AM/OM prompt intentionally falls through to the selector
+      // rather than erroring, so deleting the key degrades to the shared prompt.
+    }
+
+    const activeKey = readPrompt(config, 'active_system_prompt') || 'system_prompt'
+    let prompt = readPrompt(config, activeKey)
+
+    if (!prompt && activeKey !== 'system_prompt') {
+      logger.warning(`System prompt '${activeKey}' not found, falling back to 'system_prompt'`)
+      prompt = readPrompt(config, 'system_prompt')
+    }
+
+    if (prompt) return prompt.trim()
+
+    logger.warning('system_prompt not found in guidelines config, using fallback')
+    return DEFAULT_FALLBACK_PROMPT
+  } catch (error) {
+    logger.error(`Error loading system prompt: ${String(error)}`)
+    return DEFAULT_FALLBACK_PROMPT
+  }
+}
