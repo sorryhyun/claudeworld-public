@@ -1,9 +1,8 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import type { WorldService } from '../../services/world-service'
 import { formatTemplate } from '../tools/definitions'
 import { recallHistoryTool } from '../tools/gameplay'
 import { resolveTool } from '../tools/registry'
-import { requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
+import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * Reading back the compressed world history.

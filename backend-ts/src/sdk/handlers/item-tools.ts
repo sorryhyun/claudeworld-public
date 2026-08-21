@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import type { ItemService } from '../../services/item-service'
 import type { PlayerService } from '../../services/player-service'
 import { persistItemTool } from '../tools/subagent'
@@ -6,7 +5,7 @@ import type { ItemDefinitionInput } from '../tools/subagent'
 import { resolveTool } from '../tools/registry'
 import { getLogger } from '../../infrastructure/logging/logger'
 import type { PlayerMutationsPort } from './ports'
-import { requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
+import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * `persist_item` — the Item Designer sub-agent's callback.

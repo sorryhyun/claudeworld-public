@@ -30,6 +30,7 @@ import type { ExecutionResult } from '../../orchestration/tape/models'
 import type { GameplayServices } from '../../orchestration/gameplay-context'
 import type { SessionPool } from '../../sdk/client/session-pool'
 import type { ServerDeps } from '../../sdk/handlers/servers'
+import type { McpTools } from '../../sdk/mcp'
 import { AgentConfigService } from '../../services/agent-config-service'
 import { AgentFactory } from '../../services/agent-factory'
 import { AgentFilesystemService } from '../../services/agent-filesystem-service'
@@ -145,11 +146,18 @@ export async function createGameApp(
     onNarrationProduced: () => {},
   } as unknown as ServerDeps
 
+  // Same convention as `pool` above: nothing is implemented, because the turns
+  // are stubbed and nothing in a route reaches the MCP surface. A route that
+  // starts to should surface as a TypeError, not be absorbed by a mock — and it
+  // spares every route test a loopback listener it would never call.
+  const mcp = {} as unknown as McpTools
+
   const orchestrator = new RoomOrchestrator({
     db,
     pool,
     services,
     serverDeps,
+    mcp,
     projectRoot: root,
     turns: {
       gameplay: (_deps, input) => {
@@ -180,6 +188,7 @@ export async function createGameApp(
     orchestrator,
     services,
     serverDeps,
+    mcp,
     agents: new AgentService(pool, orchestrator),
     agentFiles: new AgentFilesystemService(worldsDir),
     agentFactory: new AgentFactory(new AgentConfigService(root)),

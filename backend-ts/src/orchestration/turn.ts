@@ -17,7 +17,8 @@ import {
 } from '../sdk/agent/options-builder'
 import { TurnRunner, type TurnEvent } from '../sdk/agent/turn-runner'
 import type { SessionPool } from '../sdk/client/session-pool'
-import { buildServers, type ServerDeps } from '../sdk/handlers/servers'
+import type { ServerDeps } from '../sdk/handlers/servers'
+import type { McpTools } from '../sdk/mcp'
 import type { ToolContext } from '../sdk/handlers/context'
 import { parseAgentConfig } from '../sdk/parsing/agent-config'
 import { buildSystemPrompt } from '../services/prompt-builder'
@@ -61,6 +62,15 @@ export interface TurnDeps {
   pool: SessionPool
   services: GameplayServices
   serverDeps: ServerDeps
+  /**
+   * The stateless MCP surface the spawned CLI calls back into.
+   *
+   * Every turn binds its context here before running, and the endpoint resolves
+   * that binding per tool call. It replaces the in-process servers this file
+   * used to build per turn — which a warm session silently discarded, leaving
+   * the CLI calling turn 1's closures forever. See `sdk/mcp/`.
+   */
+  mcp: McpTools
   projectRoot: string
   useSonnet?: boolean
   onEvent?: (agent: Agent, event: TurnEvent) => void
@@ -598,7 +608,10 @@ function buildAgentTurn(
     getDb: () => db,
   }
 
-  const servers = buildServers(ctx, deps.serverDeps, {
+  // Binds before the session is acquired, which the ordering here already
+  // guarantees: the caller does not touch the pool until these options exist,
+  // and the CLI's first `tools/list` cannot precede its own subprocess.
+  const servers = deps.mcp.bindTurn({ roomId: input.roomId, agentId: agent.id }, ctx, {
     role: asActionManager ? 'action_manager' : asOnboardingManager ? 'onboarding' : 'character',
     configDir: agent.configFile
       ? `${deps.projectRoot}/${agent.configFile}`.replace(/\/+/g, '/')

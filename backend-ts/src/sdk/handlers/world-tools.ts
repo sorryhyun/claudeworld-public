@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { getCharactersAtLocation, getLocation, getLocations } from '../../crud/locations'
 import { getPlayerState } from '../../crud/player-state'
 import type { LocationStorage } from '../../services/location-storage'
@@ -10,7 +9,7 @@ import {
   rollTheDiceTool,
 } from '../tools/gameplay'
 import { resolveTool } from '../tools/registry'
-import { requireWorldId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
+import { tool, requireWorldId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * Read-only world queries plus the dice.

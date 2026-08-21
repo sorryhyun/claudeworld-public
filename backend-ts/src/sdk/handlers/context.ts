@@ -1,17 +1,58 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import type { tool } from '@anthropic-ai/claude-agent-sdk'
+import type { CallToolResult } from '@modelcontextprotocol/server'
+import type { z } from 'zod'
 import type { Db } from '../../db'
 
 /**
- * What `tool()` returns, with its argument shape erased.
+ * One tool: a declaration and the function behind it.
  *
- * The SDK's `createSdkMcpServer` accepts a heterogeneous array of tools, so a
- * factory returning several cannot name one shape. This alias is the honest
- * spelling of "some tool", and keeps the `any` confined to one place instead of
- * a cast at every return site.
+ * This used to be `ReturnType<typeof tool<any>>` — the Agent SDK's `tool()`
+ * helper, which is a plain data constructor and nothing more. It was dropped
+ * when the game moved off the SDK's in-process MCP transport, because it is the
+ * *only* thing that pulled `@modelcontextprotocol/sdk` v1 into this backend:
+ * `tool()` types its handler against v1's `CallToolResult`, and v1's and v2's
+ * differ on `structuredContent`, so nothing that went through it could be
+ * registered on an MCP v2 server without a cast.
+ *
+ * {@link tool} below keeps the same call signature, so the tool factories read
+ * exactly as they did.
+ */
+export interface GameTool<Shape extends z.ZodRawShape = z.ZodRawShape> {
+  name: string
+  description: string
+  /** Zod raw shape, wrapped with `z.object()` at registration. */
+  inputSchema: Shape
+  /**
+   * Passed through to the tool's `tools/list` entry.
+   *
+   * The key worth knowing about is `anthropic/maxResultSizeChars`: Claude Code
+   * persists any result over ~50,000 characters to a file and hands the model a
+   * preview plus a path, which is a total loss for these agents — they have no
+   * file tools to resolve the path with.
+   */
+  _meta?: Record<string, unknown>
+  handler: (args: z.infer<z.ZodObject<Shape>>, extra: unknown) => Promise<CallToolResult>
+}
+
+/**
+ * Some tool, with its argument shape erased.
+ *
+ * A factory returning several tools cannot name one shape, so this is the
+ * honest spelling of "some tool" — and it keeps the `any` in one place rather
+ * than in a cast at every return site.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type SdkTool = ReturnType<typeof tool<any>>
+export type SdkTool = GameTool<any>
+
+/** Declare a tool. Same shape as the Agent SDK helper it replaces. */
+export function tool<Shape extends z.ZodRawShape>(
+  name: string,
+  description: string,
+  inputSchema: Shape,
+  handler: GameTool<Shape>['handler'],
+  extras?: { _meta?: Record<string, unknown> },
+): GameTool<Shape> {
+  return { name, description, inputSchema, handler, ...(extras?._meta ? { _meta: extras._meta } : {}) }
+}
 
 /**
  * What a tool handler is allowed to know about the turn it is running in.

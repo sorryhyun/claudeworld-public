@@ -34,7 +34,14 @@ import { createCharacterDesignTools } from '../sdk/handlers/character-design-too
 import { createPersistCharacterTool } from '../sdk/handlers/character-tools'
 import { createPersistLocationTool } from '../sdk/handlers/location-tools'
 import { createOnboardingTools } from '../sdk/handlers/onboarding-tools'
-import { buildServers, SERVER_NAMES, type ServerDeps } from '../sdk/handlers/servers'
+import {
+  buildToolSets,
+  createTurnBinding,
+  qualifiedToolNames,
+  SERVER_NAMES,
+  type BuildServersOptions,
+  type ServerDeps,
+} from '../sdk/handlers/servers'
 import type { ToolContext } from '../sdk/handlers/context'
 import { callTool, findTool, isError, resultText } from './tool-harness'
 
@@ -658,7 +665,18 @@ describe('implant_consolidated_memory', () => {
 // ============================================================================
 
 describe('buildServers', () => {
-  function servers(role: Parameters<typeof buildServers>[2]['role'], ctx = ctxFor()) {
+  /**
+   * The shape `buildServers` used to return, reassembled from the two halves it
+   * was split into. Kept so these assertions still describe what an agent is
+   * *offered*, which is the contract the split was designed not to change --
+   * `turn.ts` and `sdk/mcp/endpoint.ts` derive from the same two calls.
+   */
+  function buildServers(ctx: ToolContext, serverDeps: ServerDeps, options: BuildServersOptions) {
+    const sets = buildToolSets(createTurnBinding(ctx, serverDeps, options), serverDeps)
+    return { mcpServers: sets, toolNames: qualifiedToolNames(sets) }
+  }
+
+  function servers(role: BuildServersOptions['role'], ctx = ctxFor()) {
     return buildServers(ctx, deps, { role, configDir: join(root, 'agents', 'Marn') })
   }
 

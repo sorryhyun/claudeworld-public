@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { getAgentByName } from '../../crud/agents'
 import { invalidateAgentCache } from '../../crud/cached'
 import type { AgentConfigService } from '../../services/agent-config-service'
@@ -9,13 +8,7 @@ import { listInventoryTool, listWorldItemTool } from '../tools/item'
 import { resolveTool } from '../tools/registry'
 import { getLogger } from '../../infrastructure/logging/logger'
 import type { PlayerMutationsPort } from './ports'
-import {
-  requireWorldName,
-  toolError,
-  toolSuccess,
-  type SdkTool,
-  type ToolContext,
-} from './context'
+import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * Stats, the clock, inventory queries, and implanted memories.

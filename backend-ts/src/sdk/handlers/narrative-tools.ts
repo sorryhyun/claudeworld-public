@@ -1,17 +1,9 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { createMessage } from '../../crud/messages'
 import type { PlayerService } from '../../services/player-service'
 import type { RoomMappingService } from '../../services/room-mapping'
 import { formatTemplate } from '../tools/definitions'
 import { narrationTool, suggestOptionsTool } from '../tools/gameplay'
-import {
-  requireAgentId,
-  requireRoomId,
-  requireWorldName,
-  toolSuccess,
-  type SdkTool,
-  type ToolContext,
-} from './context'
+import { tool, requireAgentId, requireRoomId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * The tools that produce what the player actually sees.

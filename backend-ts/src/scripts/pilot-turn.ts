@@ -17,6 +17,8 @@ import { openDb, schema } from '../db'
 import { createTurnTelemetry } from '../infrastructure/logging/turn-telemetry'
 import { runGameplayTurn } from '../orchestration/turn'
 import { SessionPool } from '../sdk/client/session-pool'
+import { McpTools } from '../sdk/mcp'
+import type { ServerDeps } from '../sdk/handlers/servers'
 import { LocationStorage } from '../services/location-storage'
 import { PlayerService } from '../services/player-service'
 import { RoomMappingService } from '../services/room-mapping'
@@ -78,9 +80,23 @@ createMessage(db, manifest.roomId, {
   participantName: world.userName,
 })
 
-const pool = new SessionPool()
 let narrationDeltaChars = 0
 let narrationProduced = false
+
+// The tools are served over the stateless MCP endpoint now rather than built
+// in process, so even a driver with no HTTP application needs one. It binds
+// loopback on an ephemeral port; `mcp.stop()` at the end closes it.
+const serverDeps: ServerDeps = {
+  players: services.players,
+  rooms: services.rooms,
+  locations: services.locations,
+  onNarrationProduced: () => {
+    narrationProduced = true
+  },
+}
+
+const mcp = new McpTools(serverDeps)
+const pool = new SessionPool(10, (id) => mcp.release(id))
 const toolsUsed = new Set<string>()
 const perAgent = new Map<string, { content: number; thinking: number }>()
 
@@ -118,15 +134,9 @@ const result = await runGameplayTurn(
       db,
       pool,
       services,
+      mcp,
       projectRoot: manifest.root,
-      serverDeps: {
-        players: services.players,
-        rooms: services.rooms,
-        locations: services.locations,
-        onNarrationProduced: () => {
-          narrationProduced = true
-        },
-      },
+      serverDeps,
       onEvent,
       onTelemetry: (t) => {
         telemetry.onTelemetry(t)
@@ -227,12 +237,9 @@ const result2 = await runGameplayTurn(
     db,
     pool,
     services,
+    mcp,
     projectRoot: manifest.root,
-    serverDeps: {
-      players: services.players,
-      rooms: services.rooms,
-      locations: services.locations,
-    },
+    serverDeps,
     onEvent,
   },
   { world, roomId: manifest.roomId, action: SECOND_ACTION },
@@ -281,6 +288,7 @@ console.log(narration2?.content?.trim() ?? '(none)')
 if (suggestions.length) console.log(`\nOptions: ${suggestions.map((s, i) => `${i + 1}. ${s}`).join('  ')}`)
 
 await pool.shutdown()
+mcp.stop()
 
 console.log(failures === 0 ? '\nPHASE 0 PASS' : `\nPHASE 0 FAIL (${failures} checks failed)`)
 process.exit(failures === 0 ? 0 : 1)

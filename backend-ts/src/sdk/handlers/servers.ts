@@ -1,4 +1,3 @@
-import { createSdkMcpServer, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import { AgentConfigService } from '../../services/agent-config-service'
 import type { ItemService } from '../../services/item-service'
 import type { LocationStorage } from '../../services/location-storage'
@@ -32,15 +31,36 @@ import type {
 import type { SdkTool, ToolContext } from './context'
 
 /**
- * Assembles the in-process MCP servers for one agent's turn.
- * Port of `sdk/handlers/servers.py` + `sdk/client/mcp_registry.py`.
+ * Decides which tools one agent gets for one turn.
  *
- * Servers are built per turn, not cached. Python cached them under a hash that
- * deliberately excluded the DB session and the NPC reactions, so a cached server
- * closed over a session that had since been closed and over the *previous*
- * turn's reactions — the narration tool could file last turn's NPC responses
- * against this turn's message. Rebuilding is cheap (these are closures, not
- * connections) and removes the whole class of bug.
+ * Port of `sdk/handlers/servers.py` + `sdk/client/mcp_registry.py`. What this
+ * file no longer does is *construct* MCP servers. The tools are served over the
+ * stateless 2026-07-28 HTTP endpoint in `sdk/mcp/`, where the server for a
+ * namespace is built per request from whatever binding is current — so the unit
+ * this file produces is a **tool set**, and both consumers derive from the same
+ * one:
+ *
+ * - `orchestration/turn.ts` maps it to qualified names for the SDK's `tools` /
+ *   `allowedTools`, and to one `{ type: 'http' }` entry per non-empty server.
+ * - `sdk/mcp/endpoint.ts` calls it again, per request, and registers the set
+ *   belonging to the one namespace named in the URL.
+ *
+ * Calling the same function on both sides is the point. The allow-list and the
+ * server's own `tools/list` cannot disagree about what exists, which is a class
+ * of bug Python had — it registered short names with the SDK and stored
+ * qualified ones in the definitions, and left the two to be kept in sync by
+ * hand.
+ *
+ * ## Why this stopped being per-turn state
+ *
+ * The old shape built one in-process `createSdkMcpServer` per turn and handed
+ * it to `query()`. `Options` are baked in at `query()` time and `SessionPool`
+ * reuses a warm session whenever the fingerprint matches — and the fingerprint
+ * hashed only the *names* of the servers. So every turn after the first on a
+ * warm session had its freshly built servers silently discarded, and the CLI
+ * went on calling turn 1's closures: `narration` filed turn 1's NPC reactions
+ * against turn 40's message. Resolving the context per request is what makes a
+ * warm session and a current context compatible.
  *
  * ## Roles and servers
  *
@@ -79,6 +99,13 @@ export const SERVER_NAMES = {
 
 export type ServerName = (typeof SERVER_NAMES)[keyof typeof SERVER_NAMES]
 
+const ALL_SERVER_NAMES: readonly ServerName[] = Object.values(SERVER_NAMES)
+
+/** Whether a path segment names one of this backend's MCP namespaces. */
+export function isServerName(value: string): value is ServerName {
+  return (ALL_SERVER_NAMES as readonly string[]).includes(value)
+}
+
 /**
  * Which agent this turn is for.
  *
@@ -92,11 +119,8 @@ export type ServerRole =
   | 'subagent'
   | 'character_design'
 
-export interface BuiltServers {
-  mcpServers: Record<string, McpServerConfig>
-  /** Fully-qualified names for the options builder's `tools`/`allowedTools`. */
-  toolNames: string[]
-}
+/** Tool sets keyed by the namespace that prefixes their names. */
+export type ToolSets = Partial<Record<ServerName, SdkTool[]>>
 
 export interface ServerDeps {
   players: PlayerService
@@ -146,15 +170,60 @@ export interface BuildServersOptions {
   configDir?: string
 }
 
-/** Wrap a tool list as one server and record its qualified names. */
-function addServer(
-  built: BuiltServers,
-  name: ServerName,
-  tools: SdkTool[],
-): void {
-  if (tools.length === 0) return
-  built.mcpServers[name] = createSdkMcpServer({ name, version: '1.0.0', tools })
-  built.toolNames.push(...tools.map((t) => qualifiedToolName(name, t.name)))
+/**
+ * One turn's worth of tool inputs, resolved once and reused by every request
+ * that turn produces.
+ *
+ * The three service handles are on the binding rather than resolved inside
+ * {@link buildToolSets} for one reason, and it is a correctness one:
+ * `mutations` must be **one** `PlayerFacade` for the whole turn. A
+ * `change_stat` and a `persist_item` in the same turn each holding their own
+ * would each hold their own cached read of `player.yaml`, and the second write
+ * would be made against a stale one. Building it per HTTP request would do
+ * exactly that, so it is built here — once, when the turn registers — and
+ * carried across every call the turn makes.
+ */
+export interface TurnBinding {
+  ctx: ToolContext
+  role: ServerRole
+  configDir?: string
+  agentConfigs: AgentConfigService
+  persistence: LocationPersistenceFactory
+  /** Absent for an agent with no world — a bare chat room has no player state. */
+  mutations?: PlayerMutationsPort
+}
+
+/**
+ * Resolve a turn's shared handles. Call once per turn, then hand the result to
+ * {@link buildToolSets} as many times as there are tool calls.
+ */
+export function createTurnBinding(
+  ctx: ToolContext,
+  deps: ServerDeps,
+  options: BuildServersOptions,
+): TurnBinding {
+  const persistence: LocationPersistenceFactory =
+    deps.persistence ??
+    ((db, worldId, worldName) => new PersistenceManager(db, worldId, worldName))
+
+  // `worldId` is absent for an agent with no world — a bare chat room — and the
+  // tools gated on this are game tools, so they are simply not offered there.
+  const mutations =
+    ctx.worldId === undefined
+      ? undefined
+      : (deps.mutations ?? ((db, worldId) => new PlayerFacade(deps.players, db, worldId)))(
+          ctx.getDb(),
+          ctx.worldId,
+        )
+
+  return {
+    ctx,
+    role: options.role,
+    configDir: options.configDir,
+    agentConfigs: deps.agentConfigs ?? new AgentConfigService(),
+    persistence,
+    mutations,
+  }
 }
 
 /**
@@ -162,12 +231,8 @@ function addServer(
  * into. Built for the Action Manager, the Onboarding Manager and sub-agents
  * alike — Python's `"subagent" in enabled_groups` covers all three.
  */
-function subagentTools(
-  ctx: ToolContext,
-  deps: ServerDeps,
-  persistence: LocationPersistenceFactory,
-  mutations: PlayerMutationsPort | undefined,
-): SdkTool[] {
+function subagentTools(binding: TurnBinding, deps: ServerDeps): SdkTool[] {
+  const { ctx, persistence, mutations } = binding
   const tools: SdkTool[] = []
 
   if (deps.agentFiles) {
@@ -208,34 +273,26 @@ function subagentTools(
   return tools
 }
 
-export function buildServers(
-  ctx: ToolContext,
-  deps: ServerDeps,
-  options: BuildServersOptions,
-): BuiltServers {
-  const built: BuiltServers = { mcpServers: {}, toolNames: [] }
-  const agentConfigs = deps.agentConfigs ?? new AgentConfigService()
-  const persistence: LocationPersistenceFactory =
-    deps.persistence ??
-    ((db, worldId, worldName) => new PersistenceManager(db, worldId, worldName))
+/**
+ * Every tool this binding's agent may call, grouped by namespace.
+ *
+ * Deterministic: called twice with the same binding it returns the same names,
+ * which is what lets the allow-list `turn.ts` computes and the `tools/list` the
+ * endpoint answers stay identical without either one being cached.
+ */
+export function buildToolSets(binding: TurnBinding, deps: ServerDeps): ToolSets {
+  const { ctx } = binding
+  const sets: ToolSets = {}
 
-  // Resolved once per turn rather than per tool call: the two tool groups that
-  // use it must share one instance, or a `change_stat` and a `persist_item` in
-  // the same turn would each hold their own cached read of `player.yaml`.
-  // `worldId` is absent for an agent with no world — a bare chat room — and the
-  // tools gated on this are game tools, so they are simply not offered there.
-  const mutations =
-    ctx.worldId === undefined
-      ? undefined
-      : (deps.mutations ?? ((db, worldId) => new PlayerFacade(deps.players, db, worldId)))(
-          ctx.getDb(),
-          ctx.worldId,
-        )
+  const add = (name: ServerName, tools: SdkTool[]): void => {
+    const kept = applyDisabledTools(tools, ctx)
+    if (kept.length > 0) sets[name] = kept
+  }
 
   // Every agent, every role. Not part of the role switch on purpose.
-  addServer(built, SERVER_NAMES.guidelines, createGuidelinesTools(ctx))
+  add(SERVER_NAMES.guidelines, createGuidelinesTools(ctx))
 
-  switch (options.role) {
+  switch (binding.role) {
     case 'action_manager': {
       const tools: SdkTool[] = [
         ...createNarrativeTools(ctx, {
@@ -266,7 +323,7 @@ export function buildServers(
             locations: deps.locations,
             worlds: deps.worlds,
             status: deps.status,
-            persistence,
+            persistence: binding.persistence,
           }),
           ...createHistoryTools(ctx, { worlds: deps.worlds }),
         )
@@ -277,21 +334,20 @@ export function buildServers(
           ...createMechanicsTools(ctx, {
             players: deps.players,
             items: deps.items,
-            agentConfigs,
-            mutations,
+            agentConfigs: binding.agentConfigs,
+            mutations: binding.mutations,
           }),
         )
       }
 
-      addServer(built, SERVER_NAMES.actionManager, tools)
-      addServer(built, SERVER_NAMES.subagents, subagentTools(ctx, deps, persistence, mutations))
+      add(SERVER_NAMES.actionManager, tools)
+      add(SERVER_NAMES.subagents, subagentTools(binding, deps))
       break
     }
 
     case 'onboarding': {
       if (deps.worlds && deps.reset) {
-        addServer(
-          built,
+        add(
           SERVER_NAMES.onboarding,
           createOnboardingTools(ctx, {
             worlds: deps.worlds,
@@ -302,19 +358,18 @@ export function buildServers(
           }),
         )
       }
-      addServer(built, SERVER_NAMES.subagents, subagentTools(ctx, deps, persistence, mutations))
+      add(SERVER_NAMES.subagents, subagentTools(binding, deps))
       break
     }
 
     case 'subagent': {
-      addServer(built, SERVER_NAMES.subagents, subagentTools(ctx, deps, persistence, mutations))
+      add(SERVER_NAMES.subagents, subagentTools(binding, deps))
       break
     }
 
     case 'character_design': {
       if (deps.agentFiles && deps.agentFactory && deps.worlds) {
-        addServer(
-          built,
+        add(
           SERVER_NAMES.characterDesign,
           createCharacterDesignTools(ctx, {
             agentFiles: deps.agentFiles,
@@ -329,14 +384,13 @@ export function buildServers(
     }
 
     case 'character': {
-      if (!options.configDir) {
+      if (!binding.configDir) {
         throw new Error(`Character agent "${ctx.agentName}" has no config directory`)
       }
-      addServer(
-        built,
+      add(
         SERVER_NAMES.action,
         createActionTools(ctx, {
-          agentConfigs,
+          agentConfigs: binding.agentConfigs,
           players: deps.players,
           invalidateAgentConfig: deps.invalidateAgentConfig,
         }),
@@ -345,8 +399,14 @@ export function buildServers(
     }
   }
 
-  built.toolNames = applyDisabledTools(built.toolNames, ctx)
-  return built
+  return sets
+}
+
+/** The `mcp__server__tool` names a tool set map implies, for the allow-list. */
+export function qualifiedToolNames(sets: ToolSets): string[] {
+  return Object.entries(sets).flatMap(([server, tools]) =>
+    tools.map((tool) => qualifiedToolName(server, tool.name)),
+  )
 }
 
 /**
@@ -360,15 +420,15 @@ export function buildServers(
  * gameplay agent without disabling them for characters.
  *
  * Python filters only the allow-list, so its servers still *offer* the tool and
- * the CLI merely refuses to let the model call it. Here the same list feeds the
- * TS SDK's `tools` option as well, which removes the tool from the model's view
- * outright — a stricter outcome, and the one the setting is actually asking for.
- * Recorded because the two backends will report different tool counts.
+ * the CLI merely refuses to let the model call it. Filtering the tool set
+ * itself removes it from `tools/list` outright — a stricter outcome, and the
+ * one the setting is actually asking for. Recorded because the two backends
+ * will report different tool counts.
  */
-function applyDisabledTools(toolNames: string[], ctx: ToolContext): string[] {
-  if (!ctx.groupName) return toolNames
+function applyDisabledTools(tools: SdkTool[], ctx: ToolContext): SdkTool[] {
+  if (!ctx.groupName) return tools
   const lookupName = ctx.groupName.startsWith('group_') ? ctx.groupName.slice(6) : ctx.groupName
   const disabled = getAgentToolConfig(lookupName, ctx.agentName).disabled_tools
-  if (!disabled || disabled.length === 0) return toolNames
-  return toolNames.filter((name) => !disabled.some((tool) => name.endsWith(`__${tool}`)))
+  if (!disabled || disabled.length === 0) return tools
+  return tools.filter((tool) => !disabled.includes(tool.name))
 }

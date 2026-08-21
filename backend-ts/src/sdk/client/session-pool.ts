@@ -25,11 +25,19 @@ export class SessionPool {
   private readonly opening = new Map<string, Promise<AgentSession>>()
 
   /**
-   * Caps simultaneous CLI spawns. Python used a semaphore of 10 for the same
-   * reason: a location with a large cast would otherwise try to spawn one
-   * subprocess per NPC at once.
+   * @param maxConcurrentConnections Caps simultaneous CLI spawns. Python used a
+   *   semaphore of 10 for the same reason: a location with a large cast would
+   *   otherwise try to spawn one subprocess per NPC at once.
+   * @param onEvict Fired for every session this pool drops, by session key.
+   *   The MCP turn registry hangs off this: a binding is reachable through the
+   *   same `room_X_agent_Y` key a session is, so the two have to die together
+   *   or the endpoint would keep answering for an agent that no longer has a
+   *   subprocess. Optional, so the pool stays constructible on its own.
    */
-  constructor(private readonly maxConcurrentConnections = 10) {}
+  constructor(
+    private readonly maxConcurrentConnections = 10,
+    private readonly onEvict?: (id: string) => void,
+  ) {}
 
   private inFlightConnects = 0
   private readonly connectWaiters: Array<() => void> = []
@@ -145,6 +153,10 @@ export class SessionPool {
     const session = this.sessions.get(id)
     if (!session) return
     this.sessions.delete(id)
+    // Before the close, not after: closing awaits the subprocess, and a tool
+    // call already in flight must not resolve a binding for a session that is
+    // on its way out.
+    this.onEvict?.(id)
     await session.close()
   }
 

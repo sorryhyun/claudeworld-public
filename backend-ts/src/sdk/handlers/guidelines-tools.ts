@@ -1,9 +1,8 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { getExtremeTraits } from '../loaders/group-config'
 import { formatTemplate } from '../tools/definitions'
 import { anthropicTool } from '../tools/guideline'
 import { resolveTool } from '../tools/registry'
-import { toolSuccess, type SdkTool, type ToolContext } from './context'
+import { tool, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * The `anthropic` escalation tool. Port of `sdk/handlers/guidelines_tools.py`.

@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { getAgentByName } from '../../crud/agents'
 import {
   addAdjacentLocation,
@@ -18,16 +17,7 @@ import { resolveTool } from '../tools/registry'
 import { persistLocationDesignTool } from '../tools/subagent'
 import { getLogger } from '../../infrastructure/logging/logger'
 import type { LocationPersistenceFactory, TurnStatusPort } from './ports'
-import {
-  requireAgentId,
-  requireRoomId,
-  requireWorldId,
-  requireWorldName,
-  toolError,
-  toolSuccess,
-  type SdkTool,
-  type ToolContext,
-} from './context'
+import { tool, requireAgentId, requireRoomId, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * Moving the player, and creating somewhere to move them to.

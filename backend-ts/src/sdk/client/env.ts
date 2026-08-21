@@ -26,6 +26,28 @@ const CLAUDE_ENV_OVERRIDES: Record<string, string> = {
   // Produces the `input_json_delta` events the narration extractor consumes.
   // Without it, narration cannot stream before the tool call completes.
   CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: 'true',
+  // Puts the CLI on the stateless 2026-07-28 MCP revision that `sdk/mcp/`
+  // serves. Both are required and neither works alone: `MCP_SDK_GENERATION`
+  // selects the v2 runtime arm, and only that arm reads
+  // `MCP_PROTOCOL_NEGOTIATION`.
+  //
+  // They are a **floor**, not the mechanism. yaar measured claude-code 2.1.237
+  // opening with `POST server/discover, mcp-protocol-version: 2026-07-28` with
+  // or without them, so these only pin a version — or a rollout arm — where it
+  // is not yet the default. The floor is load-bearing all the same: the
+  // endpoint runs `legacy: 'reject'`, so a CLI that lands on the 2025-era
+  // `initialize` loses every tool at once rather than falling back. Both are
+  // undocumented internal gates in a binary this repository does not pin; if
+  // `Refused legacy protocol era` starts showing up in the log after an SDK
+  // bump, look here first.
+  MCP_SDK_GENERATION: 'v2',
+  MCP_PROTOCOL_NEGOTIATION: 'auto',
+  // In-process tool calls were bounded only by `MCP_TOOL_TIMEOUT`, which is
+  // effectively unbounded by default. Over HTTP the CLI aborts the request
+  // under each tool call at 60s instead. 120s matches the turn's own
+  // `STREAMING_IDLE_TIMEOUT_MS`, so a wedged tool and a wedged turn now give up
+  // at the same point rather than one masking the other.
+  MCP_TOOL_TIMEOUT: '120000',
 }
 
 /** Enabled only when ENABLE_CLI_TRACING is set; requires a patched CLI. */

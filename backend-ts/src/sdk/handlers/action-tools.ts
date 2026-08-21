@@ -1,10 +1,9 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentConfigService } from '../../services/agent-config-service'
 import type { PlayerService } from '../../services/player-service'
 import { formatTemplate } from '../tools/definitions'
 import { memorizeTool, recallTool, skipTool } from '../tools/action'
 import { resolveTool } from '../tools/registry'
-import { toolSuccess, type SdkTool, type ToolContext } from './context'
+import { tool, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * The tools every character has: decline to speak, write a memory, read one.

@@ -5,6 +5,7 @@ import { getLogger } from '../infrastructure/logging/logger'
 import { RoomOrchestrator } from '../orchestration/room-orchestrator'
 import type { GameplayServices } from '../orchestration/gameplay-context'
 import { SessionPool } from '../sdk/client/session-pool'
+import { McpTools } from '../sdk/mcp'
 import type { ServerDeps } from '../sdk/handlers/servers'
 import { AgentConfigService } from '../services/agent-config-service'
 import { AgentFactory } from '../services/agent-factory'
@@ -50,8 +51,10 @@ export interface AppState {
   orchestrator: RoomOrchestrator
   /** The four filesystem services the world is actually stored in. */
   services: GameplayServices
-  /** What the in-process MCP tool servers are handed. */
+  /** What the MCP tool servers are handed, per request. */
   serverDeps: ServerDeps
+  /** The loopback MCP endpoint the spawned CLIs call tools through. */
+  mcp: McpTools
   /** Deletion paths that must also tear down warm sessions. */
   agents: AgentService
   /** World-scoped agent folders, and the mirror into the `agents` table. */
@@ -94,15 +97,6 @@ export function createAppState(options: CreateAppStateOptions): AppState {
   const agentConfigs = new AgentConfigService(projectRoot)
   const agentFactory = new AgentFactory(agentConfigs)
 
-  const pool = new SessionPool()
-  // Its own `WorldService` and mtime cache, deliberately: `compressHistory`
-  // rewrites `history.md` through `fs` directly and drops that path's cache
-  // entry itself, which it can only do for a cache it owns.
-  const history = new HistoryCompressionService(
-    createSummarizer(pool, { useSonnet: settings.useSonnet }),
-    worldsDir,
-    agentConfigs,
-  )
 
   // `serverDeps` is built before the orchestrator and closes over it. The cycle
   // is real — tools report progress to the orchestrator, and the orchestrator
@@ -151,11 +145,28 @@ export function createAppState(options: CreateAppStateOptions): AppState {
 
 
 
+  // Ordered so nothing has to be forward-declared: `serverDeps` closes over the
+  // orchestrator lazily but references nothing here eagerly, the endpoint needs
+  // only `serverDeps`, and the pool needs the endpoint's eviction hook — which
+  // keeps a session and its MCP binding dying together.
+  const mcp = new McpTools(serverDeps)
+  const pool = new SessionPool(10, mcp.release)
+
+  // Its own `WorldService` and mtime cache, deliberately: `compressHistory`
+  // rewrites `history.md` through `fs` directly and drops that path's cache
+  // entry itself, which it can only do for a cache it owns.
+  const history = new HistoryCompressionService(
+    createSummarizer(pool, { useSonnet: settings.useSonnet }),
+    worldsDir,
+    agentConfigs,
+  )
+
   const orchestrator = new RoomOrchestrator({
     db: options.db,
     pool,
     services,
     serverDeps,
+    mcp,
     projectRoot,
     useSonnet: settings.useSonnet,
   })
@@ -166,6 +177,7 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     orchestrator,
     services,
     serverDeps,
+    mcp,
     agents: new AgentService(pool, orchestrator),
     agentFiles,
     agentFactory,
@@ -178,6 +190,10 @@ export function createAppState(options: CreateAppStateOptions): AppState {
       await orchestrator.shutdown()
       logger.info('Closing agent sessions...')
       await pool.shutdown()
+      // After the sessions, not before: a session still unwinding can have a
+      // sub-agent tool call in flight, and tearing the listener out from under
+      // it would turn an orderly shutdown into a connection error.
+      mcp.stop()
     },
   }
 }

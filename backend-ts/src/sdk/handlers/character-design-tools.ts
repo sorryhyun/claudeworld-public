@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { addCharacterToLocation, getLocationByName } from '../../crud/locations'
@@ -14,14 +13,7 @@ import { getLogger } from '../../infrastructure/logging/logger'
 import type { AgentFactory } from '../../services/agent-factory'
 import type { AgentFilesystemService } from '../../services/agent-filesystem-service'
 import type { WorldService } from '../../services/world-service'
-import {
-  requireWorldId,
-  requireWorldName,
-  toolError,
-  toolSuccess,
-  type SdkTool,
-  type ToolContext,
-} from './context'
+import { tool, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * Deep character creation for onboarding.

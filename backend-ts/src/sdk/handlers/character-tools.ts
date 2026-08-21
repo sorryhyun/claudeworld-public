@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { getAgentByName } from '../../crud/agents'
 import {
   addCharacterToLocation,
@@ -18,14 +17,7 @@ import { persistCharacterDesignTool } from '../tools/subagent'
 import { getLogger } from '../../infrastructure/logging/logger'
 import type { AgentFactory } from '../../services/agent-factory'
 import type { AgentFilesystemService } from '../../services/agent-filesystem-service'
-import {
-  requireWorldId,
-  requireWorldName,
-  toolError,
-  toolSuccess,
-  type SdkTool,
-  type ToolContext,
-} from './context'
+import { tool, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * Who is in the world, where they stand, and how they leave it.

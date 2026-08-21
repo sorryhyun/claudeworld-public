@@ -1,4 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { addCharacterToLocation, getLocationByName } from '../../crud/locations'
 import { getAgentByName } from '../../crud/agents'
 import type { LocationStorage } from '../../services/location-storage'
@@ -16,7 +15,7 @@ import {
 import { resolveTool } from '../tools/registry'
 import { getLogger } from '../../infrastructure/logging/logger'
 import type { AgentFilesystemService } from '../../services/agent-filesystem-service'
-import { requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
+import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
  * World initialisation. Port of `sdk/handlers/onboarding_tools.py`.
