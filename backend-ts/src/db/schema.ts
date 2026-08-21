@@ -72,8 +72,12 @@ export const rooms = sqliteTable(
     ownerId: text('owner_id'),
     name: text('name').notNull(),
     maxInteractions: integer('max_interactions'),
-    isPaused: integer('is_paused', { mode: 'boolean' }).default(false),
-    isFinished: integer('is_finished', { mode: 'boolean' }).default(false),
+    // These two are the only booleans with a *server* default. Alembic emits
+    // `DEFAULT 0`, so the literal is written as SQL rather than as `false`:
+    // SQLite would accept `DEFAULT false` and evaluate it identically, but the
+    // DDL text is what the drift gate compares.
+    isPaused: integer('is_paused', { mode: 'boolean' }).default(sql`0`),
+    isFinished: integer('is_finished', { mode: 'boolean' }).default(sql`0`),
     createdAt: sqlaDateTime('created_at'),
     lastActivityAt: sqlaDateTime('last_activity_at'),
     lastReadAt: sqlaDateTime('last_read_at'),
@@ -131,15 +135,20 @@ export const locations = sqliteTable(
     displayName: text('display_name'),
     description: text('description'),
     label: text('label'),
-    positionX: integer('position_x').default(0),
-    positionY: integer('position_y').default(0),
+    // `$defaultFn`, not `.default()`. SQLAlchemy's `default=0` is applied by the
+    // ORM on insert and emits no DDL, so a real database has no DEFAULT clause
+    // here; `.default()` would add one and make a fresh TS install diverge from
+    // every existing database. `$defaultFn` fills the value in the INSERT the
+    // same way SQLAlchemy does, leaving the DDL alone.
+    positionX: integer('position_x').$defaultFn(() => 0),
+    positionY: integer('position_y').$defaultFn(() => 0),
     // JSON array of location ids. Left as raw text because the Python side
     // tolerates NULL, '' and '[]' here and callers already branch on that.
     adjacentLocations: text('adjacent_locations'),
     roomId: integer('room_id').references(() => rooms.id, { onDelete: 'set null' }),
-    isCurrent: integer('is_current', { mode: 'boolean' }).default(false),
-    isDiscovered: integer('is_discovered', { mode: 'boolean' }).default(true),
-    isDraft: integer('is_draft', { mode: 'boolean' }).default(false),
+    isCurrent: integer('is_current', { mode: 'boolean' }).$defaultFn(() => false),
+    isDiscovered: integer('is_discovered', { mode: 'boolean' }).$defaultFn(() => true),
+    isDraft: integer('is_draft', { mode: 'boolean' }).$defaultFn(() => false),
   },
   (t) => [index('ix_locations_id').on(t.id), index('ix_location_world').on(t.worldId)],
 )
@@ -158,9 +167,9 @@ export const messages = sqliteTable(
     participantName: text('participant_name'),
     thinking: text('thinking'),
     anthropicCalls: text('anthropic_calls'),
-    // The only column with a server-side default. Python passes an explicit
-    // value on every insert, so this fires for hand-written SQL only — but it
-    // is part of the DDL and has to stay in the mirror.
+    // The only non-boolean column with a server-side default. Python passes an
+    // explicit value on every insert, so this fires for hand-written SQL only —
+    // but it is part of the DDL and has to stay in the mirror.
     timestamp: sqlaDateTime('timestamp').notNull().default(sql`CURRENT_TIMESTAMP`),
     imageData: text('image_data'),
     imageMediaType: text('image_media_type'),
@@ -221,12 +230,12 @@ export const playerStates = sqliteTable(
     currentLocationId: integer('current_location_id').references(() => locations.id, {
       onDelete: 'set null',
     }),
-    turnCount: integer('turn_count').default(0),
+    turnCount: integer('turn_count').$defaultFn(() => 0),
     stats: text('stats'),
     inventory: text('inventory'),
     effects: text('effects'),
     actionHistory: text('action_history'),
-    isChatMode: integer('is_chat_mode', { mode: 'boolean' }).default(false),
+    isChatMode: integer('is_chat_mode', { mode: 'boolean' }).$defaultFn(() => false),
     chatModeStartMessageId: integer('chat_mode_start_message_id'),
     chatSessionId: integer('chat_session_id'),
   },

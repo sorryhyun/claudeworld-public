@@ -17,6 +17,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { WorldService } from './world-service'
+import { getLogger } from '../infrastructure/logging/logger'
+
+const logger = getLogger('RoomMapping')
 
 // ============================================================================
 // Types
@@ -147,7 +150,7 @@ export class RoomMappingService {
     try {
       data = JSON.parse(raw)
     } catch (error) {
-      console.warn(`[room-mapping] Failed to parse _state.json for '${worldName}': ${String(error)}`)
+      logger.warning(`Failed to parse _state.json for '${worldName}': ${String(error)}`)
       return emptyState()
     }
 

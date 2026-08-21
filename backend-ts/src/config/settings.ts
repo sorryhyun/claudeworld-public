@@ -18,6 +18,9 @@ import {
   resolveProjectRoot,
   type ProjectPaths,
 } from './paths'
+import { getLogger } from '../infrastructure/logging/logger'
+
+const logger = getLogger('Settings')
 
 export type EnvRecord = Record<string, string | undefined>
 
@@ -125,7 +128,7 @@ export function loadDotEnv(projectRoot: string): Record<string, string> {
   try {
     return parseDotEnv(readFileSync(envPath, 'utf-8'))
   } catch (error) {
-    console.warn(`[settings] Failed to read ${envPath}: ${String(error)}`)
+    logger.warning(`Failed to read ${envPath}: ${String(error)}`)
     return {}
   }
 }

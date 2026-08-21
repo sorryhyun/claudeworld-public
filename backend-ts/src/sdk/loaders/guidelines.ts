@@ -11,6 +11,9 @@
 
 import { DEFAULT_FALLBACK_PROMPT } from '../../config/settings'
 import { getGuidelinesConfig } from './yaml-config'
+import { getLogger } from '../../infrastructure/logging/logger'
+
+const logger = getLogger('Guidelines')
 
 /**
  * Agent-name patterns, from `domain/value_objects/enums.py`.
@@ -71,16 +74,16 @@ export function getBaseSystemPrompt(agentName?: string | null): string {
     let prompt = readPrompt(config, activeKey)
 
     if (!prompt && activeKey !== 'system_prompt') {
-      console.warn(`[guidelines] System prompt '${activeKey}' not found, falling back to 'system_prompt'`)
+      logger.warning(`System prompt '${activeKey}' not found, falling back to 'system_prompt'`)
       prompt = readPrompt(config, 'system_prompt')
     }
 
     if (prompt) return prompt.trim()
 
-    console.warn('[guidelines] system_prompt not found in guidelines config, using fallback')
+    logger.warning('system_prompt not found in guidelines config, using fallback')
     return DEFAULT_FALLBACK_PROMPT
   } catch (error) {
-    console.error(`[guidelines] Error loading system prompt: ${String(error)}`)
+    logger.error(`Error loading system prompt: ${String(error)}`)
     return DEFAULT_FALLBACK_PROMPT
   }
 }

@@ -15,6 +15,9 @@ import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
 import { MtimeCache, WorldService } from './world-service'
+import { getLogger } from '../infrastructure/logging/logger'
+
+const logger = getLogger('PlayerService')
 
 // ============================================================================
 // Types
@@ -207,7 +210,7 @@ export class PlayerService {
       try {
         data = parseYaml(raw)
       } catch (error) {
-        console.warn(`[player-service] Malformed player.yaml for '${worldName}': ${String(error)}`)
+        logger.warning(`Malformed player.yaml for '${worldName}': ${String(error)}`)
         return emptyPlayerState()
       }
 
@@ -275,7 +278,7 @@ export class PlayerService {
       try {
         data = parseYaml(raw)
       } catch (error) {
-        console.warn(`[player-service] Malformed stats.yaml for '${worldName}': ${String(error)}`)
+        logger.warning(`Malformed stats.yaml for '${worldName}': ${String(error)}`)
         return { stats: [], derived: [] }
       }
 

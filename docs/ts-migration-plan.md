@@ -1,7 +1,7 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
-**Status:** Phase 0 complete (2026-08-21). Work lives in `backend-ts/` on branch `ts-migration-phase0`; the Python backend on `master` is untouched and is still the one that runs.
-**Next:** finish Phase 1 — auth, the Hono skeleton, Drizzle migrations plus the drift gate, and the logging/cache/locking infrastructure.
+**Status:** Phases 0 and 1 complete (2026-08-21). Work lives in `backend-ts/` on branch `ts-migration-phase0`; the Python backend on `master` is untouched and is still the one that runs.
+**Next:** Phase 2 — the game core: finish `domain/`/`crud/`/`services/`, chat mode, the interrupt path, and the `routers/game/` surface.
 **Goal:** Replace the Python/FastAPI backend with a TypeScript backend running on Bun, using `@anthropic-ai/claude-agent-sdk`, so the whole personal ecosystem (ClaudeWorld + yaar) shares one language, one toolchain, and one packaging pipeline.
 
 ## Why
@@ -29,12 +29,12 @@ These make the migration invisible to users and keep rollback cheap:
 | ORM / migrations | SQLAlchemy + Alembic | **Drizzle** + `bun:sqlite` | Baseline generated from the current schema; Alembic history is not replayed. `bun:sqlite` is synchronous — fine for SQLite, removes the aiosqlite/greenlet layer entirely. |
 | Validation / schemas | Pydantic | **Zod 4** | Same lib as yaar; schemas shared with tool definitions. |
 | Agent SDK | `claude-agent-sdk` 0.2.131 | `@anthropic-ai/claude-agent-sdk` **≥0.3.233** | Match or exceed yaar's pin. ≥0.3.144 required for `extractFromBunfs()` (single-exe support). |
-| Auth | bcrypt + PyJWT | `Bun.password.verify` + **jose** | |
+| Auth | bcrypt + PyJWT | `Bun.password.verify` + **jose** | Confirmed in Phase 1: existing `$2b$` hashes verify, and tokens round-trip between the two backends in both directions. |
 | Scheduler | APScheduler | **croner** (or plain `setInterval`) | Only autonomous-round cadence is needed; APScheduler is overkill to replicate. |
 | Images | Pillow | **sharp** | WebP conversion path in `utils/images.py`. |
-| Rate limiting | slowapi | hono-rate-limiter (or tiny middleware) | |
+| Rate limiting | slowapi | **tiny fixed-window middleware** | Settled in Phase 1. slowapi is used for exactly one route; a dependency would be more moving parts than the thing it limits. `src/http/middleware/rate-limit.ts`, same algorithm and same 429 body. |
 | Hot reload of agent files | watchfiles | `fs.watch` (chokidar if edge cases appear) | |
-| File locking | custom `infrastructure/locking.py` | **proper-lockfile** | Advisory lock semantics must match (concurrent agent-file writes). |
+| File locking | custom `infrastructure/locking.py` | **proper-lockfile** | Phase 1 note: the actual guarantee is atomic rename plus `O_APPEND`, not the lock. `proper-lockfile` covers read-modify-write only and, being directory-based, does not interlock with Python's `fcntl` locks. |
 | MCP endpoint | fastapi-mcp | `@modelcontextprotocol/server` | Same packages yaar uses. |
 | Lint / format | ruff | eslint + typescript-eslint (yaar's catalog config) | |
 | Tests | pytest | `bun test` | |
@@ -99,28 +99,83 @@ filesystem services. 211 unit tests, `tsc` and `eslint` clean.
 would have silently produced rows the Python backend cannot read. `src/db/columns.ts` reproduces
 the format exactly.
 
-### Phase 1 — Foundation
+### Phase 1 — Foundation ✅ *complete*
 
-Partly delivered by Phase 0, which needed the config and schema layers to run a turn at all.
+`bun run dev` starts a server that boots, opens or creates its database, authenticates, and
+serves `/auth/login`, `/auth/verify` and `/auth/health`. 361 unit tests, `tsc` and `eslint`
+clean, and a `backend-ts` CI job running typecheck, lint, tests and the drift gate alongside
+the existing Python job.
 
 - [x] Config/env loading (`core/`) — `src/config/{settings,paths}.ts`. All env var names preserved;
       `sys.frozen` replaced by a `CLAUDEWORLD_ROOT` override plus upward root discovery.
-- [ ] Logging infrastructure (JSON agent logs, `latency.log` perf logging). Not started. Phase 0
-      passes telemetry out through callbacks (`onEvent` / `onTelemetry`) instead, so the sinks can
-      be added without touching call sites.
-- [ ] In-memory cache. Not started. Note the mtime caches inside the filesystem services are a
-      different thing — they are the hot-reload mechanism, not the request cache Python's
-      `infrastructure/cache.py` provides, and the CRUD layer currently has no cache at all.
-- [ ] File locking (`proper-lockfile`). Not started.
+- [x] Logging infrastructure — `src/infrastructure/logging/`. Named leveled loggers in Python's
+      exact line format (`logger.ts`), `latency.log` in Python's exact entry format (`perf.ts`),
+      and the `debug.yaml`-driven agent transcript plus JSON message formatter (`agent-log.ts`).
+      `turn-telemetry.ts` adapts Phase 0's `onEvent`/`onTelemetry` callbacks to those sinks, so
+      the SDK layer still logs nothing directly. The fourteen `console.warn`/`console.error` call
+      sites left over from Phase 0 now route through the logger, so the level setting is not a
+      lie for half the backend.
+- [x] In-memory cache — `src/infrastructure/cache.ts`. TTL, LRU cap, single-flight
+      `getOrSetAsync`. *Not wired into CRUD*: Python's cached CRUD layer is `crud/cached.py`,
+      which Phase 2 owns. The mtime caches inside the filesystem services remain a different
+      thing — they are the hot-reload mechanism, not a request cache.
+- [x] File locking — `src/infrastructure/locking.ts` (`proper-lockfile`). *Not wired into a
+      writer yet*: the only caller in Python is `services/agent_config_service.py`, a Phase 2
+      service. Note the guarantee is carried by atomic rename and `O_APPEND`, not by the lock;
+      the lock covers read-modify-write only, and being directory-based rather than `flock` it
+      does **not** interlock with the Python backend — acceptable only because the two never
+      run at once.
 - [x] Drizzle schema for **all** tables — `src/db/schema.ts`, all 8 tables plus `alembic_version`,
       verified column-for-column against a real `claudeworld.db` by `src/scripts/verify-schema.ts`.
-- [ ] Drift gate + migrations applied on startup. **Partial.** `verify-schema.ts` diffs the schema
-      against a live database, which is not the same guarantee as `migration-check`: there are no
-      Drizzle migrations yet, so nothing yet proves a *fresh* install converges on the same schema
-      as an upgraded one. That is the remaining half, and it belongs in CI.
-- [ ] Auth: login endpoint, bcrypt verify of existing `API_KEY_HASH`, JWT issue/verify, guest login
-      flag, rate limiting. Not started — `settings.ts` reads the env vars, nothing consumes them.
-- [ ] Hono app skeleton with the auth router passing ported auth tests. Not started.
+- [x] Drift gate + migrations applied on startup. `drizzle/0000_baseline_schema.sql` is the
+      committed baseline; `src/db/migrate.ts` applies it on startup and `bun run migration-check`
+      is the CI gate — it builds a database from the migrations alone and diffs it against
+      `schema.ts`, exactly what `alembic check` does for Python. With `--against <db>` it also
+      diffs against a real Python-created database.
+- [x] Auth — `src/auth/`. `Bun.password.verify` against existing `$2b$` hashes, `jose` HS256
+      tokens with the same five claims, guest login flag, and a fixed-window limiter replacing
+      slowapi (20/minute per IP on login, same 429 body).
+- [x] Hono app skeleton — `src/http/`. CORS, the ported auth middleware exclusion table, the
+      auth router, FastAPI's `{"detail": ...}` error envelope, and `src/main.ts`.
+
+**Not carried over, deliberately:** `@track_perf` / `@track_interaction`. Those decorators exist
+to recover `room_id` and `agent_name` out of a wrapped function's bound arguments via
+`inspect.signature`; there is no TypeScript equivalent and no need for one, because every call
+site already holds the context.
+
+**Deferred:** `/auth/health/pool` reports on the SDK client pool, which no part of the HTTP layer
+owns yet. It returns to the auth router when Phase 3 wires the pool into app state.
+
+**Three parity landmines found and fixed:**
+
+- **`.default()` on a Drizzle column emits a SQL `DEFAULT`; SQLAlchemy's `default=` does not.**
+  Only `rooms.is_paused`, `rooms.is_finished` and `messages.timestamp` carry real server
+  defaults. Seven other columns in `schema.ts` had `.default()` and would have produced a fresh
+  install whose DDL no existing database shares. They now use `$defaultFn`, which fills the
+  value into the INSERT the way the ORM does without touching the DDL.
+- **A fresh TypeScript install left `alembic_version` empty.** Python reads that as "under
+  Alembic control, at no revision", re-runs the baseline revision and dies on
+  `CREATE TABLE agents`. A fresh install now stamps the Alembic head, which is what makes the
+  documented rollback story actually true rather than assumed. Verified by running Python's
+  `init_db()` against a TypeScript-created database: *"Database schema up to date
+  (e872d9c86c83)"*.
+- **A router held as a module singleton shares its rate-limit counters across apps.** The auth
+  router is a factory (`createAuthRoutes()`), which is the shape Phase 2 needs anyway to inject
+  the agent manager and orchestrator.
+
+**Remaining cross-backend schema differences, all verified equivalent** by
+`bun run migration-check --against <db>` against both a fresh Alembic database and a real
+`claudeworld.db`: SQLAlchemy writes `VARCHAR`/`BOOLEAN` where Drizzle writes `text`/`integer`
+(same SQLite affinity, except `BOOLEAN`→NUMERIC vs `INTEGER`, which is the one equivalence
+written down explicitly in `src/db/introspect.ts`), foreign keys are declared in a different
+order, and `player_states.world_id` is an inline `UNIQUE` on one side and a named unique index
+on the other. The gate matches implicit indexes on their columns rather than their names, so
+that constraint is genuinely verified rather than skipped.
+
+**Known limitation:** the TypeScript backend refuses to adopt a database whose schema is behind
+the Alembic head — there is no equivalent of `migrations.py`'s legacy catch-up. Before cutover
+this needs either a decision that such databases must be upgraded by the Python backend first,
+or a catch-up path of its own.
 
 ### Phase 2 — Game core
 
@@ -158,11 +213,12 @@ completing any layer. What is marked partial below is genuinely partial, not "do
 
 - Port the unit suites that guard logic (domain services, tape, options builder, auth, crud) to `bun test`; skip suites that only test Python plumbing.
 - **Parity harness:** run the existing *integration* scenarios (world creation → action → poll) against both backends and diff the responses. This, not line-coverage parity, is the cutover gate.
-- Wire `bun test` + eslint + drift gate into CI alongside the existing Python jobs (both run during the transition).
+- ~~Wire `bun test` + eslint + drift gate into CI alongside the existing Python jobs~~ **done in Phase 1** — the `backend-ts` job in `.github/workflows/tests.yml`. What remains here is the parity harness itself.
 
 ### Phase 5 — Packaging & distribution
 
 - Single executable via `bun build --compile`, embedding the platform CLI with `import ... with { type: "file" }` + `extractFromBunfs()`, passed as `pathToClaudeCodeExecutable`. Start from yaar's `scripts/build/exe-bundle.js`.
+- **From Phase 1:** `src/db/migrate.ts` finds `drizzle/` by walking up from `import.meta.dir`, which does not survive `--compile`. The migration SQL has to be embedded the same way the CLI is, or read from beside the executable.
 - **Open decision — native window:** pywebview + WebView2 has no direct Bun equivalent. Options: (a) ship `--browser` mode as the default and drop the native window, (b) spawn the OS webview from the compiled binary (small helper, WebView2 on Windows), (c) Tauri wrapper. Recommend (a) for the first TS release, revisit (b) after.
 - Update `Makefile`, `scripts/install/install.sh` / `install.ps1`, and `.github/workflows/release.yml` (preserve `.env` / `claudeworld.db` / `worlds/` / edited agents on upgrade, LF pinning for `*.sh`).
 
@@ -185,7 +241,9 @@ completing any layer. What is marked partial below is genuinely partial, not "do
 | `permissionMode: 'bypassPermissions'` needs `allowDangerouslySkipPermissions: true` in the TS SDK (Python had no counterpart) | Every tool call stops at a permission prompt nobody can answer | Set in the central options builder |
 | TS `tools` and `allowedTools` mean *different* things (Python set both to the same list) | `tools` restricts what exists, `allowedTools` waives the prompt — setting only one leaves CLI file/shell tools visible to characters | Both set explicitly in the options builder |
 | `bun build --compile` can't `require.resolve` the bundled CLI | Compiled exe can't find `cli.js` | `extractFromBunfs()` (SDK ≥0.3.144) + explicit `pathToClaudeCodeExecutable` |
-| bcrypt hash compat | Existing users locked out | `Bun.password.verify` handles `$2b$`; add a unit test against a known hash from `make setup` |
+| bcrypt hash compat | Existing users locked out | `Bun.password.verify` handles `$2b$`; pinned by a test against a hash and PyJWT tokens generated by the Python side |
+| Drizzle's `.default()` emits DDL where SQLAlchemy's `default=` does not | A fresh TS install has `DEFAULT` clauses no existing database has | `$defaultFn` for client-side defaults; `migration-check --against <db>` catches it — found and fixed in Phase 1 |
+| A fresh TS install leaving `alembic_version` empty | Python re-runs the baseline revision and dies on `CREATE TABLE` | Fresh installs stamp the Alembic head; verified by running Python's `init_db()` against a TS-created database — found and fixed in Phase 1 |
 
 ## Open Decisions
 

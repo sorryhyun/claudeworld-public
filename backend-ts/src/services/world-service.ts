@@ -17,6 +17,10 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
+import { getLogger } from '../infrastructure/logging/logger'
+
+const logger = getLogger('WorldService')
+
 // ============================================================================
 // mtime cache
 // ============================================================================
@@ -221,7 +225,7 @@ export class WorldService {
       try {
         data = parseYaml(raw)
       } catch (error) {
-        console.warn(`[world-service] Malformed world.yaml for '${worldName}': ${String(error)}`)
+        logger.warning(`Malformed world.yaml for '${worldName}': ${String(error)}`)
         return null
       }
 
@@ -288,8 +292,8 @@ export class WorldService {
     }
 
     if (content.trimEnd().endsWith(summary.trimEnd())) {
-      console.warn(
-        `[world-service] Duplicate history entry for '${worldName}' at Turn ${turn} - ${locationName}, skipping`,
+      logger.warning(
+        `Duplicate history entry for '${worldName}' at Turn ${turn} - ${locationName}, skipping`,
       )
       return
     }

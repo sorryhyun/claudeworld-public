@@ -14,6 +14,7 @@ import { getWorldByName } from '../crud/worlds'
 import { createMessage } from '../crud/messages'
 import { addActionToHistory, incrementTurn } from '../crud/player-state'
 import { openDb, schema } from '../db'
+import { createTurnTelemetry } from '../infrastructure/logging/turn-telemetry'
 import { runGameplayTurn } from '../orchestration/turn'
 import { SessionPool } from '../sdk/client/session-pool'
 import { LocationStorage } from '../services/location-storage'
@@ -81,7 +82,14 @@ const perAgent = new Map<string, { content: number; thinking: number }>()
 console.log(`\n> ${PLAYER_ACTION}\n`)
 const startedAt = Date.now()
 
+// The real logging sinks, so the pilot exercises them too. Both are no-ops
+// unless PERF_LOG / debug.yaml turn them on, which is why they can sit in the
+// hot path unconditionally.
+const telemetry = createTurnTelemetry({ roomId: manifest.roomId })
+
 const onEvent = (agent: { name: string }, event: TurnEvent): void => {
+  telemetry.onEvent(agent, event)
+
   const tally = perAgent.get(agent.name) ?? { content: 0, thinking: 0 }
   if (event.type === 'content_delta') tally.content += event.delta.length
   if (event.type === 'thinking_delta') tally.thinking += event.delta.length
@@ -116,6 +124,7 @@ const result = await runGameplayTurn(
       },
       onEvent,
       onTelemetry: (t) => {
+        telemetry.onTelemetry(t)
         if (t.kind === 'tool_used') toolsUsed.add(t.toolName)
         if (t.kind === 'subagent_completed') {
           console.log(`  [subagent] ${t.subagentType} ${t.durationMs}ms`)

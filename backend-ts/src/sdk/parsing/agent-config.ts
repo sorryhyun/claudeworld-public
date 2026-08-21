@@ -14,6 +14,9 @@ import { parse as parseYaml } from 'yaml'
 
 import { getSettings } from '../../config/settings'
 import { parseLongTermMemory } from './memory'
+import { getLogger } from '../../infrastructure/logging/logger'
+
+const logger = getLogger('AgentConfig')
 
 /** A folder is an agent if it has at least one of these. */
 export const REQUIRED_AGENT_FILES = ['in_a_nutshell.md', 'characteristics.md'] as const
@@ -69,7 +72,7 @@ function readYamlConfig(folderPath: string): Record<string, unknown> {
       return parsed as Record<string, unknown>
     }
   } catch (error) {
-    console.warn(`[agent-config] Failed to parse config.yaml in ${folderPath}: ${String(error)}`)
+    logger.warning(`Failed to parse config.yaml in ${folderPath}: ${String(error)}`)
   }
   return {}
 }
@@ -162,7 +165,7 @@ export function parseAgentConfig(folderPath: string): AgentConfigData | null {
       homeLocation: typeof homeLocation === 'string' ? homeLocation : null,
     }
   } catch (error) {
-    console.error(`[agent-config] Error parsing agent config ${absolute}: ${String(error)}`)
+    logger.error(`Error parsing agent config ${absolute}: ${String(error)}`)
     return null
   }
 }

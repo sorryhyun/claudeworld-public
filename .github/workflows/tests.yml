@@ -42,3 +42,44 @@ jobs:
       # asks Alembic whether autogenerate would still have anything to say.
       - name: Schema drift check (models.py vs migrations)
         run: uv run poe migration-check
+
+  # The TypeScript backend under construction in backend-ts/. It runs alongside
+  # the Python job, not instead of it: until cutover, master's backend is still
+  # the Python one and both have to stay green.
+  backend-ts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: backend-ts
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: backend-ts
+        run: bun run typecheck
+
+      - name: Lint
+        working-directory: backend-ts
+        run: bun run lint
+
+      - name: Unit tests
+        working-directory: backend-ts
+        run: bun test src/tests
+
+      # The counterpart of the Python drift check above, and the half of it that
+      # was missing after Phase 0: builds a database from the committed Drizzle
+      # migrations alone and asserts the result is what src/db/schema.ts says.
+      # A column added to schema.ts with no migration fails here rather than on
+      # somebody's fresh install.
+      - name: Schema drift check (schema.ts vs migrations)
+        working-directory: backend-ts
+        run: bun run migration-check

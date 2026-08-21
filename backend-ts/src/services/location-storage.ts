@@ -17,6 +17,9 @@ import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
 import { MtimeCache, WorldService } from './world-service'
+import { getLogger } from '../infrastructure/logging/logger'
+
+const logger = getLogger('LocationStorage')
 
 // ============================================================================
 // Types
@@ -117,8 +120,8 @@ export class LocationStorage {
       try {
         return asMapping(asMapping(parseYaml(raw)).locations)
       } catch (error) {
-        console.warn(
-          `[location-storage] Malformed locations/_index.yaml for '${worldName}': ${String(error)}`,
+        logger.warning(
+          `Malformed locations/_index.yaml for '${worldName}': ${String(error)}`,
         )
         return {}
       }

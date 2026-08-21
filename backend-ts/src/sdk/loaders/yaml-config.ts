@@ -13,6 +13,9 @@ import { readFileSync, statSync } from 'node:fs'
 import { parse as parseYaml } from 'yaml'
 
 import { getSettings } from '../../config/settings'
+import { getLogger } from '../../infrastructure/logging/logger'
+
+const logger = getLogger('YamlConfig')
 
 export type YamlConfig = Record<string, unknown>
 
@@ -46,7 +49,7 @@ export function loadYamlFile(filePath: string): YamlConfig {
   try {
     raw = readFileSync(filePath, 'utf-8')
   } catch {
-    console.warn(`[yaml-config] Configuration file not found: ${filePath}`)
+    logger.warning(`Configuration file not found: ${filePath}`)
     return {}
   }
 
@@ -54,12 +57,12 @@ export function loadYamlFile(filePath: string): YamlConfig {
     const parsed: unknown = parseYaml(raw)
     if (parsed === null || parsed === undefined) return {}
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-      console.warn(`[yaml-config] Expected a mapping at top level of ${filePath}`)
+      logger.warning(`Expected a mapping at top level of ${filePath}`)
       return {}
     }
     return parsed as YamlConfig
   } catch (error) {
-    console.error(`[yaml-config] Error loading YAML file ${filePath}: ${String(error)}`)
+    logger.error(`Error loading YAML file ${filePath}: ${String(error)}`)
     return {}
   }
 }
