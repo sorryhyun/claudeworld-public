@@ -21,17 +21,32 @@ import { authMiddleware } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
 import { createGameRoutes } from './routes/game'
 import { HttpError } from './errors'
+import { createFrontendMiddleware } from './static'
 import type { AppState } from './state'
 import type { AppEnv } from './types'
 
 const logger = getLogger('AppFactory')
+
+export interface CreateAppOptions {
+  /**
+   * Directory of a built frontend (`frontend/dist`) to serve alongside the API,
+   * so one port answers both. Null/undefined serves the API only.
+   *
+   * Passed in rather than discovered here: `createApp()` is what the test suite
+   * drives, and a `frontend/dist` left behind by a `bun run build` would
+   * otherwise turn every expected JSON 404 into HTML depending on whether the
+   * developer had built recently. {@link resolveFrontendDir} in `main.ts` owns
+   * the decision.
+   */
+  readonly frontendDir?: string | null
+}
 
 /**
  * @param state Everything that outlives a request — the database, the session
  *   pool, the orchestrator and the filesystem services. Optional only so the
  *   auth surface can be stood up on its own in tests; every game route needs it.
  */
-export function createApp(state?: AppState): Hono<AppEnv> {
+export function createApp(state?: AppState, options: CreateAppOptions = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
   const allowedOrigins = getCorsOrigins(getSettings())
@@ -51,6 +66,14 @@ export function createApp(state?: AppState): Hono<AppEnv> {
       allowHeaders: ['Content-Type', 'X-API-Key', 'Authorization'],
     }),
   )
+
+  // Ahead of auth on purpose: a deep link into a client-side route carries no
+  // API key, and the page it needs is the one that will *do* the logging in.
+  // See the module header in `static.ts`.
+  if (options.frontendDir) {
+    logger.info(`📦 Serving frontend from ${options.frontendDir}`)
+    app.use('*', createFrontendMiddleware(options.frontendDir))
+  }
 
   app.use('*', authMiddleware)
 

@@ -8,7 +8,8 @@
  * than accepting requests it cannot serve.
  */
 
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 import { assertAuthConfigured } from './auth/passwords'
 import { DEFAULT_DATABASE_URL, getSettings } from './config/settings'
@@ -36,6 +37,36 @@ export function resolveDatabasePath(): string {
   return sqlitePathFromUrl(settings.databaseUrl)
 }
 
+/**
+ * The built frontend to serve on the API's own port, or null for API-only.
+ *
+ * Resolution order: `SERVE_FRONTEND=false` disables it outright, then
+ * `FRONTEND_DIST` if set, then `<projectRoot>/frontend/dist`. Auto-detecting
+ * the default is what makes `make serve` a two-step recipe (build, run) rather
+ * than something that also has to thread a path through the environment; the
+ * explicit override is for a relocated install where the bundle does not sit
+ * next to the source tree.
+ *
+ * A missing directory is not an error — `make dev` runs Vite on 5173 and never
+ * builds `dist/` — but an override that points nowhere is worth a warning,
+ * because the person who set it expected pages, not JSON 404s.
+ */
+export function resolveFrontendDir(env: Record<string, string | undefined> = process.env): string | null {
+  if (env.SERVE_FRONTEND?.trim().toLowerCase() === 'false') return null
+
+  const override = env.FRONTEND_DIST?.trim()
+  const dir = override
+    ? resolve(override)
+    : join(getSettings().paths.projectRoot, 'frontend', 'dist')
+
+  if (existsSync(join(dir, 'index.html'))) return dir
+
+  if (override) {
+    logger.warning(`FRONTEND_DIST=${override} has no index.html — serving the API only`)
+  }
+  return null
+}
+
 export function startServer(): { port: number; stop: () => Promise<void> } {
   const settings = getSettings()
   setupLogging({ debugMode: settings.debugAgents })
@@ -52,7 +83,8 @@ export function startServer(): { port: number; stop: () => Promise<void> } {
   // routers work through Drizzle, so it is wrapped once here rather than in
   // every module that needs it.
   const state = createAppState({ db: wrapDb(sqlite) })
-  const app = createApp(state)
+  const frontendDir = resolveFrontendDir()
+  const app = createApp(state, { frontendDir })
   const port = Number(process.env.PORT ?? 8000)
 
   const server = Bun.serve({
@@ -65,6 +97,9 @@ export function startServer(): { port: number; stop: () => Promise<void> } {
   })
 
   logger.info(`✅ Application startup complete — listening on http://${server.hostname}:${port}`)
+  if (frontendDir) {
+    logger.info(`🌐 Frontend and API are on the same origin — open http://localhost:${port}`)
+  }
 
   return {
     port,

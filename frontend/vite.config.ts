@@ -4,6 +4,52 @@ import path from 'path'
 import { visualizer } from 'rollup-plugin-visualizer'
 import type { PluginOption } from 'vite'
 
+/**
+ * Top-level paths owned by the backend rather than by the SPA.
+ *
+ * Kept in step with `API_PREFIXES` in `backend-ts/src/http/static.ts` — the two
+ * lists answer the same question from opposite ends (which paths are *not* the
+ * app), and a prefix added on one side but not the other shows up as a 404 in
+ * exactly one of the two run modes.
+ *
+ * Anchored regexes rather than Vite's plain-string prefixes so `/agents` cannot
+ * swallow `/agent-configs`.
+ */
+const API_PREFIXES = [
+  'auth',
+  'worlds',
+  'rooms',
+  'messages',
+  'agents',
+  'agent-configs',
+  'readme',
+  'debug',
+  'mcp',
+]
+
+/**
+ * Forward the API to the backend so a developer only ever opens 5173.
+ *
+ * Same-origin in dev is not just convenience: it means CORS, cookie scope and
+ * the SSE stream behave here the way they do in the single-port production
+ * build, instead of being exercised for the first time after `bun run build`.
+ */
+function apiProxy(target: string) {
+  return Object.fromEntries(
+    API_PREFIXES.map((prefix) => [
+      `^/${prefix}(/|$)`,
+      {
+        target,
+        changeOrigin: true,
+        // The SSE stream is a long-lived response; http-proxy passes chunks
+        // through as they arrive, but the socket must be allowed to stay open.
+        timeout: 0,
+        proxyTimeout: 0,
+      },
+    ]),
+  )
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const plugins: PluginOption[] = [react()]
@@ -31,6 +77,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: 'localhost',
       port: 5173,
+      proxy: apiProxy(process.env.BACKEND_URL ?? 'http://127.0.0.1:8000'),
     },
     build: {
       // Optimize chunk splitting for better caching

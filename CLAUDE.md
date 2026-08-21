@@ -28,8 +28,11 @@ The Python/FastAPI backend in `backend/` is the **legacy tree being retired**. S
 # One install for the whole repo (root package.json is a Bun workspace)
 bun install
 
-# Run backend + frontend
-make dev                 # TypeScript backend (SQLite) + frontend
+# Run backend + frontend -- either way, the app lives on ONE origin
+make dev                 # Two processes, one URL: http://localhost:5173
+                         # Vite proxies the API prefixes to the backend on :8000
+make serve               # One process, one URL:  http://localhost:8000
+                         # Builds the frontend, then the backend serves it
 make stop                # Stop all servers
 make clean               # Clean build artifacts (including SQLite database)
 
@@ -132,6 +135,36 @@ sdk/
   `deferBackground` (macrotask) from `routes/game/shared.ts`.
 - **SQLite `DateTime` columns are text, not integers** (`2026-08-06 04:14:54.931812`).
   `src/db/columns.ts` reproduces the format; Drizzle's default timestamp mode would not.
+
+### Single-Port Serving
+
+The frontend and the API share one origin in both run modes, so the app only ever
+issues **relative** URLs (`/worlds/...`) and never has to know a backend host:
+
+| Mode | Port | Who serves the HTML | Who serves the API |
+|---|---|---|---|
+| `make dev` | 5173 | Vite (with HMR) | Vite proxies to the backend on :8000 |
+| `make serve` | 8000 | the backend, from `frontend/dist` | the backend |
+
+- **Dev proxy:** `frontend/vite.config.ts` maps each API prefix to
+  `BACKEND_URL` (default `http://127.0.0.1:8000`) with anchored regex keys, so
+  `/agents` cannot swallow `/agent-configs`. SSE passes through unbuffered.
+- **`make dev` passes `SERVE_FRONTEND=false`** so the backend does *not* serve
+  `frontend/dist`. Vite is authoritative in dev, and a leftover `dist/` would
+  otherwise have :8000 quietly answering with a stale bundle.
+- **Single process:** `backend-ts/src/http/static.ts` serves `frontend/dist`
+  with an SPA fallback. `main.ts` decides *whether* to (`resolveFrontendDir`);
+  `createApp()` with no `frontendDir` is API-only, which is what keeps the test
+  suite independent of whether anyone has run `bun run build`.
+- **The static middleware runs before `authMiddleware`, deliberately.** A deep
+  link like `/game/abc` carries no `X-API-Key` — the page it wants is the one
+  that will do the logging in — so auth cannot run first. The cost is that
+  `API_PREFIXES` in `static.ts` has to name every top-level router explicitly;
+  a new router missing from that list gets HTML back instead of a JSON 404.
+  Keep it in step with the list in `vite.config.ts`.
+- `VITE_API_BASE_URL` overrides the relative default, and is now only for the
+  split deployment (frontend on Vercel, backend behind a tunnel) — the one case
+  where the two origins genuinely differ. CORS only matters there.
 
 ### Frontend (`frontend/`)
 - **React + TypeScript + Vite** with Tailwind CSS
@@ -289,9 +322,14 @@ Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법
    make dev
    ```
 
-4. **Access application:**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:8000
+4. **Access application:** http://localhost:5173
+
+   That is the only URL you need — Vite proxies `/auth`, `/worlds`, `/rooms`,
+   `/agents`, … through to the backend on :8000, so the app runs same-origin.
+   Hitting :8000 directly still works for poking at the API with curl.
+
+   For a single process on a single port, run `make serve` instead and open
+   http://localhost:8000.
 
    Login with the password you used to generate the hash.
 
@@ -309,6 +347,10 @@ Releases are cut with `gh release create <tag> --target master --generate-notes`
 **Packaging is still on the Python toolchain** (`make build-exe` → PyInstaller + pywebview). The
 `bun build --compile` replacement is Phase 5 of the migration; see
 [docs/ts-migration-plan.md](docs/ts-migration-plan.md) for the open decision on the native window.
+
+The static-file half of that phase is done: `backend-ts/src/http/static.ts` serves the built
+frontend from the API's own port, which is what the `sys.frozen` branch of `app_factory.py` does
+for the PyInstaller bundle. A Bun build points `FRONTEND_DIST` at the bundled `dist/`.
 
 ## Configuration
 
@@ -330,7 +372,10 @@ Read by `backend-ts/src/config/settings.ts`. All names are unchanged from the Py
 - `PRIORITY_AGENTS`, `MAX_CONCURRENT_ROOMS` - Orchestration tuning
 - `IMAGE_WEBP_QUALITY` - WebP compression quality 1-100 (default: 85)
 - `IMAGE_CONVERT_TO_WEBP` - Convert images to WebP format (default: true)
-- `FRONTEND_URL`, `VERCEL_URL` - CORS origins
+- `FRONTEND_URL`, `VERCEL_URL` - CORS origins (only needed for a split deployment)
+- `FRONTEND_DIST` - Directory of a built frontend to serve on the API's port
+  (default: `<projectRoot>/frontend/dist` when it exists)
+- `SERVE_FRONTEND` - Set to "false" to serve the API only, ignoring `frontend/dist`
 - `ENABLE_CLI_TRACING`, `CLI_TRACE_OUTPUT` - CLI tracing (requires a patched CLI)
 
 **Claude API:**

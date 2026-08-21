@@ -1,15 +1,25 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-ts run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-python dev-postgresql dev-perf dev-trace diagnose-traces prod stop clean generate-icon build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-ts run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-python dev-postgresql dev-perf dev-trace diagnose-traces serve prod stop clean generate-icon build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
+
+# Whether the backend serves frontend/dist on its own port. On by default, so
+# `make run-backend-ts` after a build is a working single-port app. `make dev`
+# overrides it to false: Vite on :5173 is authoritative there, and a dist/ left
+# over from an earlier build would otherwise have :8000 quietly answering with a
+# stale bundle to anyone who opened it out of habit.
+SERVE_FRONTEND ?= true
 
 help:
 	@echo "ClaudeWorld - Available commands:"
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev               - Run TypeScript backend (SQLite) + frontend  [DEFAULT]"
+	@echo "                           Open http://localhost:5173 only -- Vite proxies the API."
 	@echo "                           Serves /auth/* and the whole /worlds/* TRPG surface."
 	@echo "                           Chat rooms, SSE and image upload are still Python-only."
+	@echo "  make serve             - Build the frontend and serve it FROM the backend"
+	@echo "                           One process, one port: http://localhost:8000"
 	@echo "  make dev-python        - Run Python backend (SQLite) + frontend (legacy, being retired)"
 	@echo "  make dev-postgresql    - Run Python backend (PostgreSQL) + frontend (requires PostgreSQL)"
 	@echo "  make dev-perf          - Run Python backend (SQLite) + frontend with performance logging"
@@ -78,7 +88,7 @@ run-backend-sqlite:
 
 run-backend-ts:
 	@echo "Starting TypeScript backend server (SQLite)..."
-	HOST=127.0.0.1 PORT=8000 DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev:backend
+	HOST=127.0.0.1 PORT=8000 SERVE_FRONTEND=$(SERVE_FRONTEND) DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev:backend
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
@@ -101,8 +111,11 @@ run-tunnel-frontend:
 dev:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting TypeScript backend (SQLite) and frontend..."
-	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
-	@echo "Frontend will run on http://localhost:5173"
+	@echo ""
+	@echo "👉 Open http://localhost:5173 — that is the only URL you need."
+	@echo "   Vite proxies /auth, /worlds, /rooms, /agents, ... to the backend on"
+	@echo "   :8000, so the app runs same-origin exactly as it does under 'make serve'."
+	@echo "   (SQLite: ./claudeworld.db)"
 	@echo ""
 	@echo "ℹ️  The TypeScript backend serves /auth/* and the full /worlds/* game"
 	@echo "   surface — onboarding, turns, travel, chat mode, state and polling."
@@ -112,7 +125,7 @@ dev:
 	@echo ""
 	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
 	@echo "Press Ctrl+C to stop all servers"
-	@$(MAKE) -j2 run-backend-ts run-frontend
+	@$(MAKE) -j2 SERVE_FRONTEND=false run-backend-ts run-frontend
 
 dev-python:
 	@mkdir -p /tmp/claude-empty
@@ -184,6 +197,16 @@ diagnose-traces:
 		FORMAT=$${FORMAT:-text}; \
 		uv run python backend/scripts/diagnose_traces.py "$(FILE)" --threshold $$THRESHOLD --format $$FORMAT; \
 	fi
+
+serve:
+	@mkdir -p /tmp/claude-empty
+	@echo "Building frontend..."
+	bun run build
+	@echo ""
+	@echo "Starting TypeScript backend with the built frontend on ONE port..."
+	@echo "👉 Open http://localhost:8000 — frontend and API share the origin."
+	@echo "Press Ctrl+C to stop."
+	HOST=127.0.0.1 PORT=8000 DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run --filter '@claudeworld/backend' start
 
 prod:
 	@echo "Starting production deployment..."

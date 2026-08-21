@@ -1,29 +1,32 @@
-// Get clean API URL without credentials
+/**
+ * Base URL every request is built on.
+ *
+ * Empty string by default, i.e. same-origin relative URLs. Both supported ways
+ * of running the app put the API on the page's own origin — Vite proxies the
+ * API prefixes to the backend in dev (see `vite.config.ts`), and the backend
+ * serves this bundle itself in the single-port build (see
+ * `backend-ts/src/http/static.ts`) — so the app does not need to know a host,
+ * and stops being wrong when it is reached over a LAN IP, a tunnel or a
+ * forwarded port.
+ *
+ * `VITE_API_BASE_URL` overrides it for the split deployment, where the frontend
+ * is on Vercel and the backend behind a Cloudflare tunnel and the two genuinely
+ * do have different origins.
+ */
 function getApiUrl(): string {
-  // If VITE_API_BASE_URL is explicitly set, use it
-  if (import.meta.env.VITE_API_BASE_URL) {
-    const urlString = import.meta.env.VITE_API_BASE_URL;
-    try {
-      const parsed = new URL(urlString);
-      // Remove credentials if present (they're handled by API key now)
-      parsed.username = "";
-      parsed.password = "";
-      // Remove trailing slash to avoid double slashes in API calls
-      return parsed.toString().replace(/\/$/, "");
-    } catch {
-      return urlString;
-    }
-  }
+  const configured = import.meta.env.VITE_API_BASE_URL;
+  if (!configured) return "";
 
-  // Auto-detect based on current window location
-  // If accessing via network IP, use network IP for backend too
-  const currentHost = window.location.hostname;
-  if (currentHost !== "localhost" && currentHost !== "127.0.0.1") {
-    return `http://${currentHost}:8000`;
+  try {
+    const parsed = new URL(configured);
+    // Strip any credentials embedded in the URL; auth is the API key now.
+    parsed.username = "";
+    parsed.password = "";
+    // Trailing slash would double up against the leading slash of every path.
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return configured.replace(/\/$/, "");
   }
-
-  // Default to localhost
-  return "http://localhost:8000";
 }
 
 export const API_BASE_URL = getApiUrl();

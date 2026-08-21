@@ -13,6 +13,7 @@
     "dev:backend": "bun run --filter '@claudeworld/backend' dev",
     "dev:frontend": "bun run --filter '@claudeworld/frontend' dev",
     "build": "bun run --filter '@claudeworld/frontend' build",
+    "serve": "bun run build && bun run --filter '@claudeworld/backend' start",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
     "test": "bun run --filter '*' test",
