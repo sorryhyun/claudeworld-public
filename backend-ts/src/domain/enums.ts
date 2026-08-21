@@ -14,8 +14,6 @@
  * beside each is there so a value can be validated or iterated. This matches
  * the shape already used by `auth/roles.ts` and `db/schema.ts`.
  *
- * `ParticipantType` is not ported: it is used only by evaluation scripts that
- * are outside this port's scope.
  */
 
 import { LANGUAGES, type Language } from '../db/schema'
@@ -31,6 +29,22 @@ export const CONVERSATION_MODES = ['normal', 'onboarding', 'game', 'chat'] as co
 export type ConversationMode = (typeof CONVERSATION_MODES)[number]
 
 /** An NPC's standing attitude toward the player, carried in character files. */
+/**
+ * Who authored a message. Port of `ParticipantType`.
+ *
+ * Not the same axis as `role`: `role` is the Anthropic user/assistant
+ * distinction the SDK needs, while this says whether the author was the player,
+ * a character, a system notice, or a non-character agent. Both columns are
+ * written on every row, and the frontend renders off this one.
+ */
+export const PARTICIPANT_TYPES = ['user', 'character', 'system', 'agent'] as const
+
+export type ParticipantType = (typeof PARTICIPANT_TYPES)[number]
+
+export function isParticipantType(value: unknown): value is ParticipantType {
+  return (PARTICIPANT_TYPES as readonly unknown[]).includes(value)
+}
+
 export const CHARACTER_DISPOSITIONS = ['friendly', 'neutral', 'wary', 'hostile'] as const
 
 export type CharacterDisposition = (typeof CHARACTER_DISPOSITIONS)[number]

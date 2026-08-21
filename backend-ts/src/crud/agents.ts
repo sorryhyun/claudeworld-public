@@ -12,7 +12,8 @@ import { existsSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { createProjectPaths } from '../config/paths'
 import type { Db } from '../db'
-import { agents, type Agent } from '../db/schema'
+import { agents, roomAgents, type Agent } from '../db/schema'
+import { getCache, roomAgentsKey } from '../infrastructure/cache'
 import { getLogger } from '../infrastructure/logging/logger'
 import { invalidateAgentCache } from './cached'
 
@@ -150,6 +151,52 @@ export function updateAgent(db: Db, agentId: number, update: AgentUpdate): Agent
 /** Get a specific agent by ID. */
 export function getAgent(db: Db, agentId: number): Agent | null {
   return db.select().from(agents).where(eq(agents.id, agentId)).get() ?? null
+}
+
+/**
+ * Every agent row in the database, in no particular order.
+ *
+ * Unscoped on purpose: this is the agent-management surface's "show me
+ * everything", so it deliberately mixes the system agents (NULL `world_name`)
+ * with every world's cast. Callers that want one world want
+ * {@link getAgentsByWorld} instead.
+ */
+export function getAllAgents(db: Db): Agent[] {
+  return db.select().from(agents).all()
+}
+
+/**
+ * Delete an agent permanently. False when it did not exist.
+ *
+ * `room_agents` and `room_agent_sessions` cascade away with it;
+ * `messages.agent_id` is `ON DELETE SET NULL`, so what the agent said survives
+ * with the speaker recoverable only from `participant_name`. That asymmetry is
+ * intentional in the schema — deleting a character must not punch holes in
+ * every transcript it appeared in.
+ *
+ * The two cache sweeps are not in Python. They are the same one-directional
+ * divergence `crud/worlds.ts::deleteWorld` makes: SQLite reuses rowids, so a
+ * cached `agent_config:{id}` outliving its row can be handed to a *different*
+ * agent that later inherits the id — which means a character prompted with
+ * someone else's system prompt. The membership sweep covers the second half of
+ * the same problem, where `getAgentsCached` keeps returning the deleted agent
+ * as a room member for up to a minute and the orchestrator keeps giving it
+ * turns.
+ */
+export function deleteAgent(db: Db, agentId: number): boolean {
+  const memberships = db
+    .select({ roomId: roomAgents.roomId })
+    .from(roomAgents)
+    .where(eq(roomAgents.agentId, agentId))
+    .all()
+
+  const deleted = db.delete(agents).where(eq(agents.id, agentId)).returning({ id: agents.id }).get()
+  if (!deleted) return false
+
+  invalidateAgentCache(agentId)
+  for (const { roomId } of memberships) getCache().invalidate(roomAgentsKey(roomId))
+
+  return true
 }
 
 /**

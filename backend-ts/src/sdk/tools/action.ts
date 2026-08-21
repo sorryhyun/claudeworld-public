@@ -1,5 +1,4 @@
-import { z } from 'zod'
-import type { ToolDefinition } from './definitions'
+import { requiredText, type ToolDefinition } from './definitions'
 
 /**
  * The tools every character has. Port of `sdk/tools/action.py`.
@@ -8,19 +7,6 @@ import type { ToolDefinition } from './definitions'
  * when the server is built for a specific agent, so each character is told about
  * its own memories by name.
  */
-
-/**
- * Trim, and reject a value that is only whitespace.
- *
- * Python enforced this with a `mode="before"` validator on every string field.
- * It matters because the model does occasionally emit `" "` for a required
- * field, and an empty memory entry would otherwise be written to disk.
- */
-const requiredText = (label: string) =>
-  z
-    .string()
-    .transform((v) => v.trim())
-    .refine((v) => v.length > 0, { message: `${label} cannot be empty` })
 
 export const skipTool = {
   name: 'skip',

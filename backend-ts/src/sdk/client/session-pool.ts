@@ -1,5 +1,5 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
-import { AgentSession, sessionKeyOf, type SessionKey } from './session'
+import { AgentSession, parseSessionKey, sessionKeyOf, type SessionKey } from './session'
 
 /**
  * One warm Claude session per (room, agent), reused across turns.
@@ -107,6 +107,37 @@ export class SessionPool {
   private releaseConnectSlot(): void {
     this.inFlightConnects--
     this.connectWaiters.shift()?.()
+  }
+
+  /**
+   * Agent ids with a live session in this room.
+   *
+   * Port of `get_chatting_agents`, which walked `AgentManager.active_clients`
+   * and matched on `task_id.room_id`. The polling endpoint reports these as the
+   * agents currently "in" the room, so it is deliberately *presence*, not
+   * busyness: an NPC whose session is warm but idle is still part of the scene.
+   */
+  agentsInRoom(roomId: number): number[] {
+    return this.keys
+      .map(parseSessionKey)
+      .filter((key): key is SessionKey => key?.roomId === roomId)
+      .map((key) => key.agentId)
+  }
+
+  /**
+   * Every live session belonging to one agent, across all its rooms.
+   *
+   * Port of `ClientPool.get_keys_for_agent`. Parsing rather than substring
+   * matching matters here: agent 3 owns `room_12_agent_3`, and a naive search
+   * for `3` would also claim `room_3_agent_12`.
+   */
+  keysForAgent(agentId: number): string[] {
+    return this.keys.filter((key) => parseSessionKey(key)?.agentId === agentId)
+  }
+
+  /** Close every session belonging to an agent — the agent is being deleted. */
+  async evictAgent(agentId: number): Promise<void> {
+    await Promise.all(this.keysForAgent(agentId).map((k) => this.evict(k)))
   }
 
   /** Drop and close one session. Safe to call for an absent key. */

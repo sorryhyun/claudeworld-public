@@ -1,4 +1,4 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 
 /**
  * A tool's declaration, separated from its implementation.
@@ -30,6 +30,43 @@ export interface ToolDefinition<Shape extends z.ZodRawShape = z.ZodRawShape> {
   response?: string
   enabled?: boolean
 }
+
+/**
+ * Trim, and reject a value that is only whitespace.
+ *
+ * Python enforced this with a `mode="before"` validator on every string field.
+ * It matters because the model does occasionally emit `" "` for a required
+ * field, and an empty memory entry — or an empty location name — would
+ * otherwise be written to disk.
+ *
+ * Lifted here from `action.ts` when the other twenty-odd tool definitions
+ * arrived: every one of them needs it, and two copies of the rule is one copy
+ * too many.
+ */
+export const requiredText = (label: string) =>
+  z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length > 0, { message: `${label} cannot be empty` })
+
+/**
+ * A required string with a *minimum length* the model must actually clear.
+ *
+ * Python spells this `Field(..., min_length=200)` plus a validator that strips
+ * first and measures after. Order is the whole point: a backstory padded with
+ * newlines must not pass a 200-character floor, so the trim happens before the
+ * measurement here too.
+ */
+export const requiredTextOfLength = (label: string, minChars: number, maxChars?: number) =>
+  z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= minChars, {
+      message: `${label} must be at least ${minChars} characters`,
+    })
+    .refine((v) => maxChars === undefined || v.length <= maxChars, {
+      message: `${label} must be at most ${maxChars} characters`,
+    })
 
 /** The name the model actually calls, as assembled by the SDK's MCP layer. */
 export function qualifiedToolName(serverName: string, toolName: string): string {

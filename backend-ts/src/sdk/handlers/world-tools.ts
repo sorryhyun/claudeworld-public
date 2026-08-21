@@ -2,7 +2,14 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { getCharactersAtLocation, getLocation, getLocations } from '../../crud/locations'
 import { getPlayerState } from '../../crud/player-state'
 import type { LocationStorage } from '../../services/location-storage'
-import { listCharactersTool, listLocationsTool, rollDice, rollTheDiceTool } from '../tools/gameplay'
+import {
+  formatDiceRoll,
+  listCharactersTool,
+  listLocationsTool,
+  rollDice,
+  rollTheDiceTool,
+} from '../tools/gameplay'
+import { resolveTool } from '../tools/registry'
 import { requireWorldId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
@@ -33,12 +40,19 @@ export function createWorldTools(
   const worldName = requireWorldName(ctx)
   const worldId = requireWorldId(ctx)
 
+  // Descriptions come through the registry so a `group_config.yaml` override
+  // reaches these three the way it reaches every other tool; `null` means the
+  // group disabled it and it must not be offered.
+  const listLocationsDef = resolveTool(listLocationsTool.name, ctx.groupName)
+  const listCharactersDef = resolveTool(listCharactersTool.name, ctx.groupName)
+  const rollTheDiceDef = resolveTool(rollTheDiceTool.name, ctx.groupName)
+
   const currentLocationId = (): number | null =>
     getPlayerState(ctx.getDb(), worldId)?.currentLocationId ?? null
 
   const listLocations = tool(
     listLocationsTool.name,
-    listLocationsTool.description,
+    listLocationsDef?.description ?? listLocationsTool.description,
     listLocationsTool.inputSchema,
     async () => {
       // The filesystem is authoritative for locations; the DB rows are a cache
@@ -59,7 +73,7 @@ export function createWorldTools(
 
   const listCharacters = tool(
     listCharactersTool.name,
-    listCharactersTool.description,
+    listCharactersDef?.description ?? listCharactersTool.description,
     listCharactersTool.inputSchema,
     async (args) => {
       const requested = args.location.trim()
@@ -93,10 +107,18 @@ export function createWorldTools(
 
   const rollTheDice = tool(
     rollTheDiceTool.name,
-    rollTheDiceTool.description,
+    rollTheDiceDef?.description ?? rollTheDiceTool.description,
     rollTheDiceTool.inputSchema,
-    async () => toolSuccess(rollDice(deps.random ?? Math.random)),
+    // The bucket name alone is what Phase 0 returned, and it reads to the model
+    // as a tool that failed to decide — `nothing_happened` with no sentence
+    // after it gets re-rolled or narrated around. Python has always returned the
+    // full `**Dice Roll Result:** …` block.
+    async () => toolSuccess(formatDiceRoll(rollDice(deps.random ?? Math.random))),
   )
 
-  return [listLocations, listCharacters, rollTheDice]
+  const tools: SdkTool[] = []
+  if (listLocationsDef) tools.push(listLocations)
+  if (listCharactersDef) tools.push(listCharacters)
+  if (rollTheDiceDef) tools.push(rollTheDice)
+  return tools
 }

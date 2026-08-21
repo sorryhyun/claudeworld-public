@@ -1,22 +1,209 @@
 import { z } from 'zod'
-import type { ToolDefinition } from './definitions'
+import { requiredText, type ToolDefinition } from './definitions'
+import { ITEM_TOOLS } from './item'
+import { LOCATION_TOOLS } from './location'
 
 /**
- * Action Manager tools. Port of the subset of `sdk/tools/gameplay.py` a
- * gameplay turn needs.
+ * Action Manager tools. Port of `sdk/tools/gameplay.py`.
  *
- * Scope note for Phase 0: this is the pilot's tool set — `narration`,
- * `suggest_options`, `roll_the_dice`, `list_characters`, `list_locations`.
- * The full Python set also declares `change_stat`, `advance_time`,
- * `inject_memory`, `travel`, `move_character`, `remove_character`,
- * `delete_character`, `recall_history` and the item tools; those arrive with
- * Phase 2's services layer.
+ * Structured the way Python is: this module owns the *core* gameplay tools and
+ * merges in the item and location sets to produce `ACTION_MANAGER_TOOLS`, the
+ * single object the registry and the group-config override path read.
  *
- * Five tools declared in Python are deliberately NOT ported: `set_flag`,
- * `equip_item`, `unequip_item`, `use_item` and `list_equipment` have no handler
- * on the Python side either. They reach the model through `allowed_tool_names`
- * and fail when called, so they are dropped rather than reproduced.
+ * Two of these have no handler on either side and are ported as declarations
+ * only — see `item.ts` for the item four, and `setFlagTool` below.
  */
+
+// Re-exported so the location queries keep their Phase 0 import path; they are
+// *defined* in `location.ts`, mirroring Python's `location.py`.
+export {
+  listCharactersTool,
+  listLocationsTool,
+  moveCharacterTool,
+  travelTool,
+  LOCATION_TOOLS,
+} from './location'
+export { ITEM_TOOLS } from './item'
+
+// ============================================================================
+// Character tools
+// ============================================================================
+
+export const removeCharacterTool = {
+  name: 'remove_character',
+  description: `Remove an NPC from the current location.
+Use this when a character leaves, departs, or should no longer be at this location.
+The character still exists in the world and can be encountered elsewhere.`,
+  inputSchema: {
+    character_name: requiredText('Character name').describe(
+      'Name of character to remove from current location',
+    ),
+  },
+  response: '{removal_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
+export const deleteCharacterTool = {
+  name: 'delete_character',
+  description: `Permanently delete an NPC from the game.
+Use this when an NPC dies, 실종, or is removed by magic.
+The character will be archived and no longer exist in the world.
+Reasons: 'death', '실종', 'magic'`,
+  inputSchema: {
+    character_name: requiredText('Character name').describe('Name of character to delete'),
+    // Python lowercases and defaults an empty string back to "death"; the
+    // handler maps anything it does not recognise onto DEATH anyway, so the
+    // normalisation is cosmetic and lives with the value that is echoed back.
+    reason: z.string().default('death').describe("Reason for deletion: 'death', '실종', or 'magic'"),
+    narrative: z.string().default('').describe('Optional narrative description of the deletion'),
+  },
+  response: '{deletion_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
+// ============================================================================
+// Mechanics tools
+// ============================================================================
+
+export const injectMemoryTool = {
+  name: 'inject_memory',
+  description: `Inject a memory into a specific character's recent_events.
+Use this when external events should implant memories into NPCs, such as hypnosis, mind control, illusions, or similar supernatural effects.
+The character will remember this as if it actually happened or regard as commonsense.`,
+  inputSchema: {
+    character_name: requiredText('Character name').describe(
+      'Name of the character to inject memory into',
+    ),
+    memory_entry: requiredText('Memory entry').describe('The memory to inject (one-liner)'),
+  },
+  response: '{inject_memory_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
+/**
+ * Accept a list the model may have serialised as a JSON string.
+ *
+ * `change_stat` is the tool this bites on hardest: Claude passes `'[]'` or
+ * `'[{"stat_name": "HP", "delta": -10}]'` often enough that Python grew a
+ * dedicated `mode="before"` validator for each of the two list fields, with an
+ * explicit "returns [] on a decode failure" rule. Failing the call instead
+ * would lose the whole mechanical resolution of a turn, so a malformed list is
+ * dropped rather than raised, exactly as it is in `gameplay.py`.
+ */
+const recordList = z.preprocess((value): unknown => {
+  if (value === null || value === undefined) return []
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === '[]') return []
+    try {
+      const parsed: unknown = JSON.parse(trimmed)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return Array.isArray(value) ? value : []
+}, z.array(z.record(z.string(), z.unknown())))
+
+export const changeStatTool = {
+  name: 'change_stat',
+  description: `Apply stat and inventory changes to player state.
+Used directly by Action Manager after determining mechanical effects.
+Persists changes to filesystem and syncs to database.
+
+**IMPORTANT: Item Handling**
+- Items can ONLY be added if they already exist in the world's items/ directory.
+- Use Task with item_designer to create new items BEFORE adding to inventory.
+- If an item doesn't exist, it will be SKIPPED and reported in the response.
+- Removing items always works (no template required).
+
+**Note:** For time advancement, use \`advance_time\` tool separately.`,
+  inputSchema: {
+    summary: requiredText('Summary').describe('Summary of changes'),
+    stat_changes: recordList.default([]).describe('List of {stat_name, delta} objects'),
+    inventory_changes: recordList
+      .default([])
+      .describe(
+        'List of {action, item_id, name, quantity, description?, properties?} objects',
+      ),
+    time_advance_minutes: z
+      .number()
+      .int()
+      .default(0)
+      .describe('Minutes to advance (0 = no time change)'),
+  },
+  response: '{persist_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
+export const advanceTimeTool = {
+  name: 'advance_time',
+  description: `Advance in-game time. Use this when actions take significant time:
+- Travel between locations
+- Resting, sleeping, waiting
+- Long activities (crafting, studying, training)
+- Passage of time during scenes
+
+**Effects:**
+- Updates world clock (hour, minute, day)
+- May trigger time-based events (day/night cycle, NPC schedules)
+- Returns new time state for narration`,
+  inputSchema: {
+    minutes: z.number().int().min(1).describe('Minutes to advance (minimum 1)'),
+    reason: requiredText('Reason').describe('Brief explanation of why time passes'),
+  },
+  response: '{time_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
+/**
+ * Declared in Python, never implemented — there is no `set_flag` handler in
+ * `sdk/handlers/`. Ported as a declaration for the same reason as the four
+ * unimplemented item tools: the registry and `group_config.yaml` address tools
+ * by name, and a name that exists on one backend and not the other is a
+ * divergence in itself. No server offers it.
+ */
+export const setFlagTool = {
+  name: 'set_flag',
+  description: `Set a player flag for game state tracking.
+
+Flags are boolean values used for:
+- Item affordance requirements (e.g., 'in_conversation' flag)
+- Story progression tracking (e.g., 'boss_defeated')
+- Route unlocking (e.g., 'route_unlocked')
+- World state (e.g., 'night_time', 'rainy')
+
+Many item affordances require certain flags to be true/false.`,
+  inputSchema: {
+    flag: requiredText('flag').describe('Name of the flag to set'),
+    value: z.boolean().default(true).describe('Value to set the flag to (default: True)'),
+  },
+  response: '{flag_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
+export const recallHistoryTool = {
+  name: 'recall_history',
+  description: `Retrieve a past event from the world's consolidated history by subtitle.
+Use this to recall specific events that happened earlier in the game.
+
+Available history entries: {history_subtitles}
+
+**When to use:**
+- When the player references past events
+- When you need context about what happened before
+- When continuity with earlier story beats matters`,
+  inputSchema: {
+    subtitle: requiredText('Subtitle').describe('The subtitle of the history entry to recall'),
+  },
+  // The matched section, verbatim. A group config can narrow this.
+  response: '{history_content}',
+  enabled: true,
+} satisfies ToolDefinition
+
+// ============================================================================
+// Narration tools
+// ============================================================================
 
 export const narrationTool = {
   name: 'narration',
@@ -91,25 +278,9 @@ No parameters required - just call to get a random result.`,
   enabled: true,
 } satisfies ToolDefinition
 
-export const listCharactersTool = {
-  name: 'list_characters',
-  description:
-    'List the characters present at a location. Leave `location` empty for the current location. ' +
-    'Use this before narrating who is in the scene.',
-  inputSchema: {
-    location: z.string().default('').describe('Location name; empty means the current location'),
-  },
-  enabled: true,
-} satisfies ToolDefinition
-
-export const listLocationsTool = {
-  name: 'list_locations',
-  description:
-    'List the locations that exist in this world, marking the current one. ' +
-    'Use this before moving the player, to check a destination exists.',
-  inputSchema: {},
-  enabled: true,
-} satisfies ToolDefinition
+// ============================================================================
+// Dice
+// ============================================================================
 
 /**
  * Weighted outcomes for `roll_the_dice`, as percentages summing to 100.
@@ -123,6 +294,22 @@ export const DICE_OUTCOMES: ReadonlyArray<readonly [outcome: string, weight: num
   ['worst_day_of_game', 1],
 ] as const
 
+/**
+ * The line the model is shown under each outcome.
+ *
+ * Load-bearing, not decoration: `nothing_happened` on its own reads to the model
+ * as "the tool failed to decide", and the Action Manager then re-rolls or
+ * narrates around it. The sentence is what tells it the roll *was* the answer.
+ */
+export const DICE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  very_lucky:
+    '🌟 **VERY LUCKY!** An exceptional stroke of fortune! The outcome is far better than expected.',
+  lucky: '🍀 **Lucky!** Fortune favors the bold. The outcome is better than expected.',
+  nothing_happened: '⚖️ **Standard outcome.** Things proceed as one might normally expect.',
+  bad_luck: "😓 **Bad luck.** Things don't go quite as planned. The outcome is worse than expected.",
+  worst_day_of_game: '💀 **WORST DAY!** A critical failure! Something has gone terribly wrong.',
+}
+
 export function rollDice(random: () => number = Math.random): string {
   const total = DICE_OUTCOMES.reduce((sum, [, weight]) => sum + weight, 0)
   let roll = random() * total
@@ -134,10 +321,31 @@ export function rollDice(random: () => number = Math.random): string {
   return DICE_OUTCOMES[DICE_OUTCOMES.length - 1]![0]
 }
 
-export const ACTION_MANAGER_TOOLS = {
+/** The full tool result text, not just the bucket name. */
+export function formatDiceRoll(outcome: string): string {
+  return `**Dice Roll Result:** \`${outcome}\`\n\n${DICE_DESCRIPTIONS[outcome] ?? ''}`
+}
+
+// ============================================================================
+// Registries
+// ============================================================================
+
+export const CORE_GAMEPLAY_TOOLS = {
+  remove_character: removeCharacterTool,
+  delete_character: deleteCharacterTool,
+  inject_memory: injectMemoryTool,
+  roll_the_dice: rollTheDiceTool,
   narration: narrationTool,
   suggest_options: suggestOptionsTool,
-  roll_the_dice: rollTheDiceTool,
-  list_characters: listCharactersTool,
-  list_locations: listLocationsTool,
+  change_stat: changeStatTool,
+  advance_time: advanceTimeTool,
+  set_flag: setFlagTool,
+  recall_history: recallHistoryTool,
+} satisfies Record<string, ToolDefinition>
+
+/** Core + item + location, the shape `sdk/tools/gameplay.py` exports. */
+export const ACTION_MANAGER_TOOLS = {
+  ...CORE_GAMEPLAY_TOOLS,
+  ...ITEM_TOOLS,
+  ...LOCATION_TOOLS,
 } satisfies Record<string, ToolDefinition>

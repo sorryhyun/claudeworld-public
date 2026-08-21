@@ -19,11 +19,19 @@ import { getCorsOrigins, getSettings } from '../config/settings'
 import { getLogger } from '../infrastructure/logging/logger'
 import { authMiddleware } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
+import { createGameRoutes } from './routes/game'
+import { HttpError } from './errors'
+import type { AppState } from './state'
 import type { AppEnv } from './types'
 
 const logger = getLogger('AppFactory')
 
-export function createApp(): Hono<AppEnv> {
+/**
+ * @param state Everything that outlives a request — the database, the session
+ *   pool, the orchestrator and the filesystem services. Optional only so the
+ *   auth surface can be stood up on its own in tests; every game route needs it.
+ */
+export function createApp(state?: AppState): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
 
   const allowedOrigins = getCorsOrigins(getSettings())
@@ -48,14 +56,42 @@ export function createApp(): Hono<AppEnv> {
 
   app.route('/auth', createAuthRoutes())
 
+  if (state) {
+    mountGameRoutes(app, state)
+  } else {
+    logger.warning('No app state supplied — serving the auth surface only')
+  }
+
   // FastAPI's error envelope. The frontend reads `detail` off failed responses
   // regardless of which endpoint produced them, so 404s and 500s have to carry
   // it too, not just the handlers that raise HTTPException.
   app.notFound((c) => c.json({ detail: 'Not Found' }, 404))
   app.onError((error, c) => {
+    // A handler that threw `HttpError` chose its status and its `detail`; the
+    // frontend reads that string, so it has to survive rather than being
+    // flattened into a 500 the way an unexpected throw is.
+    if (error instanceof HttpError) {
+      return c.json({ detail: error.detail }, error.status as 400)
+    }
     logger.exception(`Unhandled error on ${c.req.method} ${c.req.path}`, error)
     return c.json({ detail: 'Internal Server Error' }, 500)
   })
 
   return app
+}
+
+/**
+ * Mount the game surface.
+ *
+ * Split out so the route modules have exactly one place to be registered, and
+ * so the mount paths stay visible next to each other — the frontend's URLs are
+ * part of the frozen API contract, and a path typo here is invisible until a
+ * page 404s.
+ */
+function mountGameRoutes(app: Hono<AppEnv>, state: AppState): void {
+  // Mounted at the root rather than at `/worlds`: each module writes its own
+  // `/worlds/...` paths so that both `/worlds` and `/worlds/` can be served,
+  // which a sub-app mounted at `/worlds` cannot express. See
+  // `routes/game/index.ts`.
+  app.route('/', createGameRoutes(state))
 }

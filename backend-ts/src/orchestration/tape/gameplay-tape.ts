@@ -39,3 +39,33 @@ export function createGameplayTape(actionManagerId: number | null, npcIds: numbe
 
   return new TurnTape(cells)
 }
+
+/**
+ * Builds the onboarding tape. Port of
+ * `orchestration/tape/trpg_generator.py::create_onboarding_tape`.
+ *
+ * One cell, one agent: the Onboarding Manager conducts the interview *and*
+ * generates the world seed through its `draft_world` / `persist_world` tools.
+ * There is no separate World Seed Generator — the two were merged — so a world
+ * still in `onboarding` never runs the two-cell gameplay tape at all.
+ *
+ * Unlike the gameplay cells this one is **not hidden**: the interview is a
+ * conversation the player is having, so the manager's prose is persisted and
+ * shown. That single difference is why onboarding cannot reuse
+ * {@link createGameplayTape} with a substituted agent id.
+ *
+ * Returns `null` when the room has no Onboarding Manager, which is the caller's
+ * signal that the room is misconfigured rather than merely empty.
+ */
+export function createOnboardingTape(onboardingManagerId: number | null): TurnTape | null {
+  if (onboardingManagerId === null) return null
+
+  return new TurnTape([
+    {
+      cellType: 'sequential',
+      agentIds: [onboardingManagerId],
+      hidden: false,
+      isReaction: false,
+    },
+  ])
+}

@@ -63,8 +63,16 @@ export class TurnTape {
 
 export interface CellResult {
   responses: number
+  /**
+   * Agents in this cell that ran and declined to speak.
+   *
+   * A skip is not a failure: it is a character deciding the moment is not
+   * theirs, via the `skip` tool. Counted separately from responses because
+   * "nobody spoke" and "nobody was asked" are different outcomes — see
+   * {@link ExecutionResult.allSkipped}.
+   */
+  skips: number
   reactions: AgentReaction[]
-  allSkipped: boolean
 }
 
 export interface AgentReaction {
@@ -75,10 +83,19 @@ export interface AgentReaction {
 
 export interface ExecutionResult {
   totalResponses: number
+  totalSkips: number
   cellsExecuted: number
   wasInterrupted: boolean
   wasPaused: boolean
   reachedLimit: boolean
+  /**
+   * Every agent that ran chose not to speak.
+   *
+   * Python's rule — `total_responses == 0 and total_skips > 0` — and the second
+   * half is load-bearing: a tape whose cells were all empty produced no
+   * responses either, but nobody skipped, and calling that "all skipped" would
+   * report a silent cast where there was no cast at all.
+   */
   allSkipped: boolean
   reactions: AgentReaction[]
 }

@@ -46,6 +46,21 @@ export function sessionKeyOf({ roomId, agentId }: SessionKey): string {
   return `room_${roomId}_agent_${agentId}`
 }
 
+/**
+ * The inverse of {@link sessionKeyOf}, returning `null` for anything else.
+ *
+ * Python's `TaskIdentifier.parse` exists, in its own words, to replace "fragile
+ * string parsing of 'room_X_agent_Y' format" — and then raises on a malformed
+ * key. Every caller here is walking the pool's own keys, where a malformed one
+ * would be this module's bug rather than the caller's input, so it degrades
+ * instead: a key that does not parse is skipped, not thrown over.
+ */
+export function parseSessionKey(key: string): SessionKey | null {
+  const match = /^room_(\d+)_agent_(\d+)$/.exec(key)
+  if (!match) return null
+  return { roomId: Number(match[1]), agentId: Number(match[2]) }
+}
+
 export interface TurnOptions {
   /** Aborts the turn. Interrupt uses this; it does not tear the session down. */
   signal?: AbortSignal

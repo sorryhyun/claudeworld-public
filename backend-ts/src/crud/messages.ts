@@ -7,11 +7,16 @@
 
 import { and, asc, desc, eq, gt, gte, isNull, type SQL } from 'drizzle-orm'
 import type { Db } from '../db'
+import type { ParticipantType } from '../domain/enums'
 import { agents, messages, roomAgents, rooms, type Message, type MessageRole } from '../db/schema'
 import { getCache, roomMessagesKey } from '../infrastructure/cache'
 
-/** Participant kinds the Python `ParticipantType` enum admits. */
-export type ParticipantType = 'user' | 'character' | 'system' | 'agent'
+/**
+ * Re-exported from the domain layer, which is where the enum lives. Kept as an
+ * export here because `MessageCreate` names it and callers import both from
+ * this module.
+ */
+export type { ParticipantType }
 
 /**
  * The in-game clock frozen onto a message.
@@ -341,4 +346,29 @@ export function getMessagesAfterAgentResponse(
   // Newest-first-then-reverse and the `id` tiebreaker both live in
   // {@link selectWithAgent}; see its doc comment for why each is load-bearing.
   return selectWithAgent(db, where, { newestFirst: true, limit })
+}
+
+/**
+ * Wipe a room's transcript — `messages.py:321`.
+ *
+ * The return distinguishes "the room does not exist" (false) from "the room
+ * exists and now has no messages" (true), *including* when it had none to begin
+ * with. That is why the existence check is a separate statement rather than
+ * reading the delete's row count: zero rows deleted is a success here, and the
+ * caller uses the boolean to decide whether to 404.
+ *
+ * **No cache invalidation, deliberately.** Python does not invalidate here
+ * either — its caller does, at `services/agent_service.py:188`, because
+ * clearing a room is only ever half the operation: agent sessions have to be
+ * dropped and the SDK client pool torn down in the same breath, or the agents
+ * resume conversations referring to messages that no longer exist. Whoever
+ * ports that service must call `invalidateRoomCache`; calling this function on
+ * its own leaves polls serving the deleted transcript for up to 5 seconds.
+ */
+export function deleteRoomMessages(db: Db, roomId: number): boolean {
+  const room = db.select({ id: rooms.id }).from(rooms).where(eq(rooms.id, roomId)).get()
+  if (!room) return false
+
+  db.delete(messages).where(eq(messages.roomId, roomId)).run()
+  return true
 }

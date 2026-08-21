@@ -1,7 +1,7 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
-**Status:** Phases 0 and 1 complete (2026-08-21). Work lives in `backend-ts/` on branch `ts-migration-phase0`; the Python backend on `master` is untouched. On this branch `make dev` runs the TS backend (auth only) and `make dev-python` runs the Python one.
-**Next:** Phase 2 — the game core: finish `domain/`/`crud/`/`services/`, chat mode, the interrupt path, and the `routers/game/` surface.
+**Status:** Phases 0, 1 and 2 complete (2026-08-21). Work lives in `backend-ts/`; the Python backend is untouched. `make dev` runs the TS backend and `make dev-python` runs the Python one. 1,400+ unit tests, `tsc`, `eslint` and the drift gate are clean, and `bun run smoke` boots the assembled backend against a throwaway database and exercises the real routes.
+**Next:** Phase 3 — the remaining routers (`agents`, `rooms`, `messages`, `sse`, `mcp_tools`, `debug`, `readme`), the background scheduler, the agent-file hot-reload watcher, i18n, image upload/WebP, and a frontend smoke pass.
 **Goal:** Replace the Python/FastAPI backend with a TypeScript backend running on Bun, using `@anthropic-ai/claude-agent-sdk`, so the whole personal ecosystem (ClaudeWorld + yaar) shares one language, one toolchain, and one packaging pipeline.
 
 ## Why
@@ -177,31 +177,67 @@ the Alembic head — there is no equivalent of `migrations.py`'s legacy catch-up
 this needs either a decision that such databases must be upgraded by the Python backend first,
 or a catch-up path of its own.
 
-### Phase 2 — Game core
+### Phase 2 — Game core ✅ *complete*
 
-Phase 0 cut a vertical slice through this phase — the parts one gameplay turn touches — rather than
-completing any layer. What is marked partial below is genuinely partial, not "done but untested".
+The whole game surface now runs on the TypeScript backend: a world can be created, interviewed
+into existence, entered, played turn by turn, chatted in, travelled through, and polled — all
+through the frozen REST contract the React app already speaks.
 
-- [ ] Port `domain/`, `crud/`, `services/`. **Partial.**
-  - `crud/` — the turn subset only: worlds, rooms, agents, messages, locations, player-state,
-    sessions. Read paths plus `createMessage` / `incrementTurn` / `addActionToHistory` /
-    `addAgentToRoom` / `addGameplayAgentsToRoom`. Every world/room/agent *write* path, the chat-mode
-    state transitions, inventory and stat mutation, and all of `crud/cached.py` are absent.
-  - `services/` — read paths of world, player, location-storage and room-mapping. Agent factory,
-    persistence manager, item service, agent-filesystem service and history compression are absent.
-  - `domain/` — not ported as a layer. Its enums live inline in `db/schema.ts`; its entity logic
-    has no home yet.
-- [ ] Port `orchestration/` + `tape/` (full 2-cell tape, chat mode, interrupts). **Partial.**
-  - [x] The 2-cell gameplay tape, its executor, and the conversation / Action-Manager context
-        builders, all exercised end-to-end by the pilot.
-  - [ ] Chat mode — absent entirely.
-  - [ ] Interrupts — the primitives exist and are wired (`AgentSession.interrupt`,
-        `SessionPool.interruptRoom`, `AbortSignal` through the executor and turn runner, and the
-        "interrupt keeps the session, error evicts it" rule). The room-level orchestrator path that
-        cancels a turn and persists the partial response is **not** ported, and none of the
-        interrupt path has been exercised — the pilot only runs turns to completion.
-- [ ] Port `routers/game/` (actions, chat_mode, locations, polling, state, worlds) with golden
-      fixtures. Not started.
+- [x] `domain/`, `crud/`, `services/`. `crud/` is complete for the game surface (chat-mode state
+      transitions, inventory and stat mutation, every world/room/agent write, and the cached
+      readers). `services/` gained the agent config/filesystem/cache facades, the agent factory,
+      the persistence manager, the deletion-with-cleanup paths, history compression, and the
+      player facade. `domain/` is a layer rather than a scattering of inline enums.
+- [x] `schemas/` as Zod 4. All of `backend/schemas/`, including Pydantic's lax-mode request
+      coercion, which Zod does not reproduce by default — a client sending `{"max_interactions":
+      "20"}` would have started 422-ing at cutover.
+- [x] `orchestration/` + `tape/`: the 2-cell gameplay tape, the onboarding tape, chat mode, and
+      the room-level orchestrator (`src/orchestration/room-orchestrator.ts`) that tracks the
+      in-flight turn, discards superseded responses, holds the transient status the poller
+      reports, and interrupts.
+- [x] `routers/game/` — every endpoint, 1:1 with `backend/routers/game/`, with integration tests
+      that stand up the real Hono app over a temp database.
+
+**The plan's own Phase 2 status section was stale, and the gap it hid was the SDK tool surface.**
+Phase 0 cut a vertical slice — the parts one gameplay turn touches — and recorded `sdk/` as done.
+In fact 8 of ~30 tools existed: no `travel`, no `change_stat`, no onboarding server, no sub-agent
+persist tools, and no `group_config.yaml` tool-override mechanism at all, which is the feature the
+whole "filesystem-primary, hot-reloading" architecture rests on. All of it is ported now, across
+five MCP servers selected by a `ServerRole`.
+
+**Three structural decisions worth carrying forward:**
+
+- **The interrupt order is the reverse of Python's.** Stopping a turn is two actions: tell the CLI
+  to stop, then unwind the local await. `SessionPool.interruptRoom` only reaches sessions it finds
+  *busy*, and a session stops being busy the moment its read is aborted — so aborting first leaves
+  every subprocess generating a response nobody is waiting for. Python could cancel first because
+  `asyncio.Task.cancel()` propagates into the SDK client; an `AbortSignal` unwinds our own read and
+  nothing more.
+- **The SDK layer never imports orchestration.** Tools report progress and fire turn side effects
+  (`narration` produced, sub-agent active, NPC memory round, destination pre-connect) through
+  callbacks on `ServerDeps`, wired in `src/http/state.ts`. The dependency runs one way.
+- **Per-world services are factories, not instances.** `PersistenceManager` and `PlayerFacade` both
+  write to one world's row; a long-lived instance would write the right `player.yaml` and mirror it
+  onto somebody else's record. `buildServers` binds them per turn.
+
+**Fixed on the way in:** `world-services.test.ts` pointed `REAL_WORLDS_DIR` at the repo's own
+`worlds/` directory, which is `.gitignore`d — so the suite passed only on a machine that had played
+that exact world locally and failed with 34 errors on every fresh checkout, including CI. The
+fixture is checked in under `src/tests/fixtures/worlds/`.
+
+**Known gaps, all deliberate and pinned by tests:**
+
+- `chatting_agents[].thinking_text` / `response_text` are always `""`. Python reads them from
+  `AgentManager.get_streaming_state_for_room`; the TS SDK keeps that state on the turn and nothing
+  publishes it per room. `has_narrated` — the flag that actually unblocks the input box — is wired.
+- No agent pre-connect in `GET /worlds/{id}` and `POST /worlds/{id}/enter`.
+  `RoomOrchestrator.preConnectLocation` needs a turn in flight, which is precisely not the case
+  there. Latency only; the responses are identical.
+- `try_compress_image` is a pass-through until `sharp` arrives with the Phase 3 message routes.
+  Safe, because Python's own function returns the originals on any compressor failure.
+- `equip_item`, `unequip_item`, `use_item`, `list_equipment` and `set_flag` are declared with no
+  handler — exactly as in Python, where no factory produces them. `domain/player-rules.ts` already
+  has every rule they need, so implementing them is a decision, not a port.
 
 ### Phase 3 — Remaining surface
 
@@ -244,6 +280,11 @@ completing any layer. What is marked partial below is genuinely partial, not "do
 | bcrypt hash compat | Existing users locked out | `Bun.password.verify` handles `$2b$`; pinned by a test against a hash and PyJWT tokens generated by the Python side |
 | Drizzle's `.default()` emits DDL where SQLAlchemy's `default=` does not | A fresh TS install has `DEFAULT` clauses no existing database has | `$defaultFn` for client-side defaults; `migration-check --against <db>` catches it — found and fixed in Phase 1 |
 | A fresh TS install leaving `alembic_version` empty | Python re-runs the baseline revision and dies on `CREATE TABLE` | Fresh installs stamp the Alembic head; verified by running Python's `init_db()` against a TS-created database — found and fixed in Phase 1 |
+| `SessionPool.interruptRoom` only reaches *busy* sessions, and an `AbortSignal` makes a session idle at once | Aborting before interrupting leaves every CLI subprocess generating a response nobody awaits | Interrupt the pool **first**, then abort — the reverse of Python, where `Task.cancel()` propagates into the SDK client. `room-orchestrator.ts`, found in Phase 2 |
+| Pydantic's lax-mode coercion has no Zod equivalent (`"20"` → `20`, `"on"` → `True`, `2` → error) | Clients that were sending stringified numbers start 422-ing at cutover | `pydanticInt()` / `pydanticBool()` in `src/schemas/common.ts` — found in Phase 2 |
+| An `async` function passed to `spawnBackground` runs synchronously to its first `await` | With synchronous `bun:sqlite`, a "background" turn's opening writes land *inside* the request handler | `startBackground` (microtask) and `deferBackground` (macrotask) in `routes/game/shared.ts`, matching Python's `spawn_background` and `BackgroundTasks` respectively — found in Phase 2 |
+| Hono does not redirect `/worlds` to `/worlds/`; Starlette 307s | The frontend calls the unslashed form, which Python serves via redirect and Hono would 404 | Both spellings registered — found in Phase 2 |
+| A tool server bound to one world writes the right `player.yaml` but mirrors it onto the wrong row | Silent cross-world corruption of `player_states` | `PersistenceManager` and `PlayerFacade` are per-world *factories*, bound in `buildServers` — found in Phase 2 |
 
 ## Open Decisions
 
@@ -251,3 +292,22 @@ completing any layer. What is marked partial below is genuinely partial, not "do
 2. Whether to fold `frontend/` into the Bun workspace (recommend yes at cutover — one `bun install` for the whole repo — but not before).
 3. ~~Hono confirmed over Elysia?~~ **Settled 2026-08-21: Hono.** Reasoning recorded in the Target Stack table.
 4. From Phase 0: `to_system_prompt_markdown` hardcodes the Korean particle `이` in the memory-index heading instead of using `format_with_particles`, so vowel-final names read wrong (`크리스이 가진` should be `크리스가 가진`). Reproduced verbatim in the port. Fixing it changes every Korean agent's prompt, so it needs a deliberate call rather than a silent correction.
+5. **From Phase 2 — five live Python bugs, all reproduced rather than fixed.** Each one is
+   reproduced because the Phase 4 parity harness diffs responses between the two backends, and a
+   silent correction there is indistinguishable from a regression. Each needs a decision:
+   - `schemas.Location.is_draft` is wrong on the wire. `parse_adjacent_locations` rebuilds the model
+     as a dict that omits `is_draft`, so it falls back to `False` for any location that *has*
+     adjacencies. Nothing in `frontend/` reads it, so fixing it is cheap.
+   - `delete_character` advertises `실종` in its description but keys its reason map on
+     `disappearance`, so `실종` silently renders as `death`.
+   - `merge_agent_configs` drops the memory index: an agent created *with* a `provided_config` gets
+     a stored system prompt with no memory section, which then reappears on the first reload.
+   - A partially failed history compression still clears `history.md` and still reports every turn
+     as compressed — the skipped batches' turns are discarded permanently.
+   - `sync_player_state_from_filesystem` reads `name`/`description`/`properties` off `player.yaml`
+     inventory entries, which are in *reference* format and have none of those, so the DB inventory
+     blob is written with empty names.
+6. **From Phase 2 — `chatting_agents` streaming state.** Python publishes per-room streaming text
+   from `AgentManager`; the TS SDK keeps that state on the turn. Either the turn runner grows a
+   per-room publisher, or the frontend stops rendering those two fields. `has_narrated`, the flag
+   that actually gates the input box, already works.

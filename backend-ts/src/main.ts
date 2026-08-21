@@ -12,8 +12,10 @@ import { join } from 'node:path'
 
 import { assertAuthConfigured } from './auth/passwords'
 import { DEFAULT_DATABASE_URL, getSettings } from './config/settings'
+import { wrapDb } from './db'
 import { openAndInitDb, sqlitePathFromUrl } from './db/migrate'
 import { createApp } from './http/app'
+import { createAppState } from './http/state'
 import { getLogger, setupLogging } from './infrastructure/logging/logger'
 
 const logger = getLogger('Main')
@@ -34,7 +36,7 @@ export function resolveDatabasePath(): string {
   return sqlitePathFromUrl(settings.databaseUrl)
 }
 
-export function startServer(): { port: number; stop: () => void } {
+export function startServer(): { port: number; stop: () => Promise<void> } {
   const settings = getSettings()
   setupLogging({ debugMode: settings.debugAgents })
 
@@ -46,7 +48,11 @@ export function startServer(): { port: number; stop: () => void } {
   logger.info(`💾 Database: ${databasePath}`)
   const sqlite = openAndInitDb({ path: databasePath })
 
-  const app = createApp()
+  // `openAndInitDb` hands back the raw `bun:sqlite` handle it migrated; the
+  // routers work through Drizzle, so it is wrapped once here rather than in
+  // every module that needs it.
+  const state = createAppState({ db: wrapDb(sqlite) })
+  const app = createApp(state)
   const port = Number(process.env.PORT ?? 8000)
 
   const server = Bun.serve({
@@ -62,9 +68,13 @@ export function startServer(): { port: number; stop: () => void } {
 
   return {
     port,
-    stop: () => {
+    stop: async () => {
       logger.info('🛑 Application shutdown...')
       server.stop()
+      // Before the database closes: stopping a turn writes to it (session ids,
+      // partial responses), and a turn still unwinding against a closed handle
+      // throws where Python's lifespan simply awaited the task.
+      await state.shutdown()
       sqlite.close()
       logger.info('✅ Application shutdown complete')
     },
@@ -73,12 +83,9 @@ export function startServer(): { port: number; stop: () => void } {
 
 if (import.meta.main) {
   const { stop } = startServer()
-  process.on('SIGINT', () => {
-    stop()
-    process.exit(0)
-  })
-  process.on('SIGTERM', () => {
-    stop()
-    process.exit(0)
-  })
+  const shutdown = (): void => {
+    void stop().then(() => process.exit(0))
+  }
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
 }

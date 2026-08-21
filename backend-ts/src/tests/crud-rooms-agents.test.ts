@@ -12,30 +12,43 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
+import { eq } from 'drizzle-orm'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { openDb, type Db } from '../db'
 import { openAndInitDb } from '../db/migrate'
-import { agents, rooms, worlds } from '../db/schema'
+import { agents, messages, roomAgents, rooms, worlds } from '../db/schema'
 import {
   addAgentToRoom,
   addGameplayAgentsToRoom,
   createAgent,
   createMessage,
   createRoom,
+  deleteAgent,
+  deleteRoom,
   getAgent,
   getAgentsByWorld,
   getAgentsInRoom,
+  getAllAgents,
+  getOrCreateDirectRoom,
   getRoom,
+  getRooms,
   markRoomAsFinished,
   removeAgentFromRoom,
   syncAgentsWithFilesystem,
   updateAgent,
+  updateRoom,
 } from '../crud'
 import { getAgentsCached } from '../crud/cached'
-import { getCache, roomAgentsKey, roomObjectKey } from '../infrastructure/cache'
+import {
+  agentConfigKey,
+  getCache,
+  roomAgentsKey,
+  roomMessagesKey,
+  roomObjectKey,
+} from '../infrastructure/cache'
 
 const WORLD_ID = 1
 const WORLD_NAME = 'testworld'
@@ -138,6 +151,296 @@ describe('createRoom', () => {
   test('rejects a duplicate owner+name+world', () => {
     createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
     expect(() => createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)).toThrow()
+  })
+})
+
+describe('getRooms', () => {
+  /**
+   * Rooms created in the same millisecond tie on `last_activity_at`, and
+   * SQLite may then return them in any order. Every ordering assertion below
+   * therefore sets the column by hand rather than relying on creation order.
+   */
+  function withActivity(roomId: number, iso: string): void {
+    db.update(rooms).set({ lastActivityAt: new Date(iso) }).where(eq(rooms.id, roomId)).run()
+  }
+
+  test('returns every room, most recently active first', () => {
+    const older = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    const newer = createRoom(db, { name: 'Location: Mill' }, OWNER, WORLD_ID)
+    withActivity(older.id, '2026-08-01T00:00:00Z')
+    withActivity(newer.id, '2026-08-20T00:00:00Z')
+
+    expect(getRooms(db).map((r) => r.name)).toEqual(['Location: Mill', 'Location: Village'])
+  })
+
+  test('a never-active room sorts last under SQLite DESC', () => {
+    const active = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    const idle = createRoom(db, { name: 'Location: Mill' }, OWNER, WORLD_ID)
+    withActivity(active.id, '2026-08-20T00:00:00Z')
+    // SQLite sorts NULL smallest, so a plain DESC puts it at the bottom.
+    // PostgreSQL would put it first, which is why `getWorldsByOwner` spells its
+    // NULL handling out and this one deliberately does not.
+    db.update(rooms).set({ lastActivityAt: null }).where(eq(rooms.id, idle.id)).run()
+
+    expect(getRooms(db).map((r) => r.name)).toEqual(['Location: Village', 'Location: Mill'])
+  })
+
+  test('an admin sees every room regardless of owner', () => {
+    createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    createRoom(db, { name: 'Direct: Elric' }, 'guest-abc')
+
+    expect(getRooms(db, { role: 'admin', userId: OWNER })).toHaveLength(2)
+  })
+
+  test('a guest sees only their own rooms', () => {
+    createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    createRoom(db, { name: 'Direct: Elric' }, 'guest-abc')
+
+    const listed = getRooms(db, { role: 'guest', userId: 'guest-abc' })
+
+    expect(listed.map((r) => r.name)).toEqual(['Direct: Elric'])
+  })
+
+  test('no identity is the unscoped read', () => {
+    createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    createRoom(db, { name: 'Direct: Elric' }, 'guest-abc')
+
+    // Python's `identity=None` default; the HTTP layer always supplies one, so
+    // this is the internal-caller path.
+    expect(getRooms(db)).toHaveLength(2)
+    expect(getRooms(db, null)).toHaveLength(2)
+  })
+
+  test('the summary omits the relationships and coerces the flags', () => {
+    const room = createRoom(db, { name: 'Location: Village', maxInteractions: 5 }, OWNER, WORLD_ID)
+    createMessage(db, room.id, { content: 'hello', role: 'user' })
+    // A row predating the server defaults reads NULL; `RoomSummary` declares
+    // both flags as non-optional booleans, so they have to surface as false.
+    db.update(rooms).set({ isPaused: null, isFinished: null }).where(eq(rooms.id, room.id)).run()
+
+    const [summary] = getRooms(db)
+
+    expect(summary).toEqual({
+      id: room.id,
+      name: 'Location: Village',
+      ownerId: OWNER,
+      maxInteractions: 5,
+      isPaused: false,
+      isFinished: false,
+      createdAt: expect.any(Date),
+      lastActivityAt: expect.any(Date),
+    })
+  })
+
+  test('empty when there are no rooms at all', () => {
+    expect(getRooms(db)).toEqual([])
+  })
+})
+
+describe('updateRoom', () => {
+  test('writes only the fields given and returns the eager-loaded room', () => {
+    const room = createRoom(db, { name: 'Location: Village', maxInteractions: 5 }, OWNER, WORLD_ID)
+    addAgentToRoom(db, room.id, 3)
+
+    const updated = updateRoom(db, room.id, { isPaused: true })!
+
+    expect(updated.isPaused).toBe(true)
+    // `null` is "leave alone", not "clear", exactly as in updateAgent.
+    expect(updated.maxInteractions).toBe(5)
+    expect(updated.agents.map((a) => a.name)).toEqual(['Elric'])
+    expect(updated.world?.id).toBe(WORLD_ID)
+  })
+
+  test('zero is a real value, not an absent one', () => {
+    const room = createRoom(db, { name: 'Location: Village', maxInteractions: 5 }, OWNER, WORLD_ID)
+
+    // The guard is `!= null`, so a falsy-but-present 0 must still be written —
+    // "no interactions allowed" is a legitimate setting.
+    expect(updateRoom(db, room.id, { maxInteractions: 0 })?.maxInteractions).toBe(0)
+  })
+
+  test('rejects a negative interaction cap', () => {
+    const room = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+
+    expect(() => updateRoom(db, room.id, { maxInteractions: -1 })).toThrow(
+      'max_interactions must be non-negative',
+    )
+  })
+
+  test('an empty patch returns the untouched room rather than failing', () => {
+    const room = createRoom(db, { name: 'Location: Village', maxInteractions: 5 }, OWNER, WORLD_ID)
+
+    // Drizzle rejects an empty SET clause where SQLAlchemy commits nothing.
+    expect(updateRoom(db, room.id, {})?.maxInteractions).toBe(5)
+  })
+
+  test('drops the cached room object, so a pause takes effect at once', () => {
+    const room = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    getCache().set(roomObjectKey(room.id), getRoom(db, room.id), 30)
+
+    updateRoom(db, room.id, { isPaused: true })
+
+    // Without this the scheduler keeps driving a paused room for up to 30s.
+    expect(getCache().get(roomObjectKey(room.id))).toBeUndefined()
+  })
+
+  test('returns null for an unknown room', () => {
+    expect(updateRoom(db, 9999, { isPaused: true })).toBeNull()
+  })
+})
+
+describe('deleteRoom', () => {
+  test('takes the transcript and the membership rows with it', () => {
+    const room = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    addAgentToRoom(db, room.id, 3)
+    createMessage(db, room.id, { content: 'hello', role: 'user' })
+
+    expect(deleteRoom(db, room.id)).toBe(true)
+
+    expect(getRoom(db, room.id)).toBeNull()
+    // Both cascade from `rooms.id`; the pragma that makes that true is set in
+    // `db/index.ts`, so this is as much a test of the connection as the delete.
+    expect(db.select().from(messages).where(eq(messages.roomId, room.id)).all()).toEqual([])
+    expect(db.select().from(roomAgents).where(eq(roomAgents.roomId, room.id)).all()).toEqual([])
+    // Membership is not existence: the agent itself survives.
+    expect(getAgent(db, 3)?.name).toBe('Elric')
+  })
+
+  test('invalidates every cache entry the room owned', () => {
+    const room = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    getCache().set(roomObjectKey(room.id), getRoom(db, room.id), 30)
+    getCache().set(roomAgentsKey(room.id), [], 60)
+    getCache().set(`${roomMessagesKey(room.id)}:recent:200`, [], 5)
+
+    deleteRoom(db, room.id)
+
+    // Not in Python. SQLite reuses rowids, so an entry outliving its row can be
+    // served to whatever room later inherits the id.
+    expect(getCache().get(roomObjectKey(room.id))).toBeUndefined()
+    expect(getCache().get(roomAgentsKey(room.id))).toBeUndefined()
+    expect(getCache().get(`${roomMessagesKey(room.id)}:recent:200`)).toBeUndefined()
+  })
+
+  test('false for an unknown room', () => {
+    expect(deleteRoom(db, 9999)).toBe(false)
+  })
+})
+
+describe('getOrCreateDirectRoom', () => {
+  test('creates the room, names it by convention and enrols the agent', () => {
+    const room = getOrCreateDirectRoom(db, 3, OWNER)!
+
+    expect(room.name).toBe('Direct: Elric')
+    expect(room.ownerId).toBe(OWNER)
+    // A direct room belongs to no world — that NULL is what lets the same owner
+    // hold one per world under `ux_rooms_owner_name_world`.
+    expect(room.worldId).toBeNull()
+    expect(room.agents.map((a) => a.name)).toEqual(['Elric'])
+  })
+
+  test('writes no join notice, unlike addAgentToRoom', () => {
+    // Python appends to `Room.agents` directly rather than calling
+    // `add_agent_to_room`, so the "X joined the chat" message is never written.
+    expect(getOrCreateDirectRoom(db, 3, OWNER)?.messages).toEqual([])
+  })
+
+  test('leaves joined_at NULL', () => {
+    const room = getOrCreateDirectRoom(db, 3, OWNER)!
+
+    // A SQLAlchemy secondary-relationship append writes only the two foreign
+    // keys. `getMessagesAfterAgentResponse` reads a NULL `joined_at` as "show
+    // the whole recent window", which is what a 1-on-1 room wants.
+    expect(
+      rawValue<number | null>(
+        `SELECT joined_at FROM room_agents WHERE room_id = ${room.id} AND agent_id = 3`,
+      ),
+    ).toBeNull()
+  })
+
+  test('a second call returns the same room rather than a second one', () => {
+    const first = getOrCreateDirectRoom(db, 3, OWNER)!
+    createMessage(db, first.id, { content: 'hello', role: 'user' })
+
+    const again = getOrCreateDirectRoom(db, 3, OWNER)!
+
+    expect(again.id).toBe(first.id)
+    expect(again.messages).toHaveLength(1)
+    expect(db.select().from(rooms).all()).toHaveLength(1)
+  })
+
+  test('is scoped to the owner, so two users get their own', () => {
+    const mine = getOrCreateDirectRoom(db, 3, OWNER)!
+    const theirs = getOrCreateDirectRoom(db, 3, 'guest-abc')!
+
+    expect(theirs.id).not.toBe(mine.id)
+    expect(theirs.name).toBe('Direct: Elric')
+  })
+
+  test('null for an unknown agent, and nothing is created', () => {
+    expect(getOrCreateDirectRoom(db, 9999, OWNER)).toBeNull()
+    expect(db.select().from(rooms).all()).toEqual([])
+  })
+})
+
+describe('getAllAgents', () => {
+  test('returns system agents and world casts alike', () => {
+    createAgent(db, { name: 'Fern', systemPrompt: 'p', worldName: 'other' })
+
+    expect(getAllAgents(db).map((a) => a.name).sort()).toEqual([
+      'Action_Manager',
+      'Elric',
+      'Fern',
+      'Narrator',
+    ])
+  })
+
+  test('empty when the table is', () => {
+    db.delete(agents).run()
+    expect(getAllAgents(db)).toEqual([])
+  })
+})
+
+describe('deleteAgent', () => {
+  test('removes the row and its memberships but keeps what it said', () => {
+    const room = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    addAgentToRoom(db, room.id, 3)
+    createMessage(db, room.id, {
+      content: 'well met',
+      role: 'assistant',
+      agentId: 3,
+      participantName: 'Elric',
+    })
+
+    expect(deleteAgent(db, 3)).toBe(true)
+
+    expect(getAgent(db, 3)).toBeNull()
+    expect(db.select().from(roomAgents).where(eq(roomAgents.agentId, 3)).all()).toEqual([])
+
+    // `messages.agent_id` is ON DELETE SET NULL, not CASCADE: deleting a
+    // character must not punch holes in every transcript it appeared in.
+    const [message] = db.select().from(messages).where(eq(messages.roomId, room.id)).all()
+    expect(message!.content).toBe('well met')
+    expect(message!.agentId).toBeNull()
+    expect(message!.participantName).toBe('Elric')
+  })
+
+  test('drops the agent and room-membership cache entries', () => {
+    const room = createRoom(db, { name: 'Location: Village' }, OWNER, WORLD_ID)
+    addAgentToRoom(db, room.id, 3)
+    getCache().set(agentConfigKey(3), { systemPrompt: 'prompt' }, 300)
+    expect(getAgentsCached(db, room.id)).toHaveLength(1)
+
+    deleteAgent(db, 3)
+
+    // Neither sweep is in Python. Without the first, a reused rowid gets
+    // someone else's system prompt; without the second, the orchestrator keeps
+    // giving a deleted agent turns for a full minute.
+    expect(getCache().get(agentConfigKey(3))).toBeUndefined()
+    expect(getAgentsCached(db, room.id)).toEqual([])
+  })
+
+  test('false for an unknown agent', () => {
+    expect(deleteAgent(db, 9999)).toBe(false)
   })
 })
 

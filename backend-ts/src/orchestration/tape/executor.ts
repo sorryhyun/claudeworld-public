@@ -37,6 +37,16 @@ export interface ExecutorDeps {
   /** Re-read pause state between cells; a paused room stops the tape. */
   isPaused(): Promise<boolean> | boolean
   /**
+   * The room's own `max_interactions` ceiling, re-counted between cells.
+   *
+   * Separate from `maxTotalMessages`, which is the executor's runaway guard.
+   * This one is a per-room setting a user can configure, counted against the
+   * agent messages already in the room rather than against this turn — so a
+   * room can start a turn already over its limit and stop before the first cell.
+   * Omitted by callers that do not expose the setting.
+   */
+  isInteractionLimitReached?(): Promise<boolean> | boolean
+  /**
    * Re-resolve the room after a hidden cell.
    *
    * The `travel` tool moves the player to a different location, and each
@@ -60,12 +70,12 @@ export class TapeExecutor {
     const maxTotalMessages = opts.maxTotalMessages ?? 30
     const collected: AgentReaction[] = []
     let totalResponses = 0
+    let totalSkips = 0
     let cellsExecuted = 0
     let visibleMessages = 0
     let wasInterrupted = false
     let wasPaused = false
     let reachedLimit = false
-    let allSkipped = true
 
     while (!tape.isExhausted()) {
       const cell = tape.current
@@ -84,11 +94,15 @@ export class TapeExecutor {
         reachedLimit = true
         break
       }
+      if (await this.deps.isInteractionLimitReached?.()) {
+        reachedLimit = true
+        break
+      }
 
       const result = await this.executeCell(cell, opts, collected)
       cellsExecuted++
       totalResponses += result.responses
-      if (!result.allSkipped) allSkipped = false
+      totalSkips += result.skips
       if (cell.isReaction) collected.push(...result.reactions)
       // Hidden cells persist nothing, so they cannot advance a limit that counts
       // messages. Without this a two-cell hidden turn would consume the budget
@@ -101,11 +115,12 @@ export class TapeExecutor {
 
     return {
       totalResponses,
+      totalSkips,
       cellsExecuted,
       wasInterrupted,
       wasPaused,
       reachedLimit,
-      allSkipped,
+      allSkipped: totalResponses === 0 && totalSkips > 0,
       reactions: collected,
     }
   }
@@ -143,23 +158,26 @@ export class TapeExecutor {
 
     const reactions: AgentReaction[] = []
     let responses = 0
-    let allSkipped = true
+    let skips = 0
 
     for (const [index, outcome] of outcomes.entries()) {
       // A failed agent does not fail the cell: one NPC whose session died should
       // not cost the player their turn. The others still react and the Action
-      // Manager still narrates.
+      // Manager still narrates. It is not counted as a skip either — a crash is
+      // not a character choosing silence.
       if (outcome.status === 'rejected') continue
       const { responded, responseText, agentName } = outcome.value
-      if (!responded) continue
+      if (!responded) {
+        skips++
+        continue
+      }
       responses++
-      allSkipped = false
       if (cell.isReaction && responseText) {
         reactions.push({ agentId: agentIds[index]!, agentName, content: responseText })
       }
     }
 
-    return { responses, reactions, allSkipped }
+    return { responses, skips, reactions }
   }
 }
 

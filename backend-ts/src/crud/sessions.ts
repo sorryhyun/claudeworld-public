@@ -47,3 +47,19 @@ export function updateRoomAgentSession(
     .returning()
     .get()
 }
+
+/**
+ * Drop every stored session id for a room.
+ *
+ * Only called when a room's transcript is being wiped. Deleting the messages
+ * alone would not do it: each row points at a CLI conversation that still holds
+ * everything just deleted, so the next turn would `resume` it and the "cleared"
+ * room would keep answering from a transcript the player can no longer see.
+ *
+ * Python has no counterpart function — `services/agent_service.py` issues the
+ * `DELETE` inline — but the statement belongs beside the readers that write
+ * these rows rather than in a service.
+ */
+export function deleteRoomAgentSessions(db: Db, roomId: number): void {
+  db.delete(roomAgentSessions).where(eq(roomAgentSessions.roomId, roomId)).run()
+}

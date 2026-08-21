@@ -29,6 +29,7 @@ import { join } from 'node:path'
 
 import {
   createMessage,
+  deleteRoomMessages,
   getChatSessionMessages,
   getMessages,
   getMessagesExcludingChat,
@@ -352,5 +353,52 @@ describe('timestamp ties', () => {
       ids[1]!,
       ids[2]!,
     ])
+  })
+})
+
+describe('deleteRoomMessages', () => {
+  test('clears the room and leaves every other room alone', () => {
+    seedMessage({ content: 'kept', timestamp: at(1), roomId: OTHER_ROOM_ID })
+    seedMessage({ content: 'gone', timestamp: at(2) })
+    seedMessage({ content: 'also gone', timestamp: at(3) })
+
+    expect(deleteRoomMessages(db, ROOM_ID)).toBe(true)
+
+    expect(getMessages(db, ROOM_ID)).toEqual([])
+    expect(getMessages(db, OTHER_ROOM_ID).map((m) => m.content)).toEqual(['kept'])
+  })
+
+  test('true for a room that had nothing to delete', () => {
+    // The boolean answers "does the room exist", not "was anything removed" —
+    // the caller uses it to decide whether to 404, and an empty room is not a
+    // missing one.
+    expect(deleteRoomMessages(db, ROOM_ID)).toBe(true)
+  })
+
+  test('false for a room that does not exist', () => {
+    expect(deleteRoomMessages(db, 9999)).toBe(false)
+  })
+
+  test('the room row itself survives', () => {
+    seedMessage({ content: 'gone', timestamp: at(1) })
+    deleteRoomMessages(db, ROOM_ID)
+
+    expect(rawValue<string>(`SELECT name FROM rooms WHERE id = ${ROOM_ID}`)).toBe(
+      'Onboarding: asdf',
+    )
+  })
+
+  test('deliberately leaves the message cache alone', () => {
+    seedMessage({ content: 'gone', timestamp: at(1) })
+    getCache().set(`${roomMessagesKey(ROOM_ID)}:recent:200`, [{ id: 1 }], 5)
+
+    deleteRoomMessages(db, ROOM_ID)
+
+    // Python does not sweep here either: its caller
+    // (`services/agent_service.py:188`) owns the invalidation, because clearing
+    // a room is only half an operation that also tears down agent sessions and
+    // the SDK client pool. Pinning the gap means the service port cannot
+    // silently inherit it.
+    expect(getCache().get(`${roomMessagesKey(ROOM_ID)}:recent:200`)).toBeDefined()
   })
 })

@@ -27,6 +27,18 @@ export interface OpenDbOptions {
  * rooms, locations and player state. Without the pragma those deletes silently
  * orphan rows instead.
  */
+/**
+ * Wrap an already-open `bun:sqlite` handle as a Drizzle database.
+ *
+ * `openAndInitDb` returns the raw handle because migrations are applied with
+ * plain SQL against it. Everything above the migration layer wants the typed
+ * query builder, so the two are bridged in one place instead of each caller
+ * remembering the `{ schema }` argument.
+ */
+export function wrapDb(sqlite: Database): Db {
+  return drizzle(sqlite, { schema }) as Db
+}
+
 export function openDb({ path, readonly = false }: OpenDbOptions): Db {
   const sqlite = new Database(path, { readonly, create: false, strict: true })
 
