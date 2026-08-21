@@ -1,6 +1,7 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
-**Status:** Phase 0 complete (2026-08-21)
+**Status:** Phase 0 complete (2026-08-21). Work lives in `backend-ts/` on branch `ts-migration-phase0`; the Python backend on `master` is untouched and is still the one that runs.
+**Next:** finish Phase 1 — auth, the Hono skeleton, Drizzle migrations plus the drift gate, and the logging/cache/locking infrastructure.
 **Goal:** Replace the Python/FastAPI backend with a TypeScript backend running on Bun, using `@anthropic-ai/claude-agent-sdk`, so the whole personal ecosystem (ClaudeWorld + yaar) shares one language, one toolchain, and one packaging pipeline.
 
 ## Why
@@ -100,16 +101,52 @@ the format exactly.
 
 ### Phase 1 — Foundation
 
-- Config/env loading (`core/`), logging infrastructure (JSON agent logs, `latency.log` perf logging), in-memory cache, file locking.
-- Drizzle schema for **all** tables + a `migration-check`-equivalent drift gate; migrations apply on startup (same behavior as Alembic runner). New migrations from here on are Drizzle-only.
-- Auth: login endpoint, bcrypt verify of existing `API_KEY_HASH`, JWT issue/verify, guest login flag, rate limiting.
-- Hono app skeleton with the auth router passing ported auth tests.
+Partly delivered by Phase 0, which needed the config and schema layers to run a turn at all.
+
+- [x] Config/env loading (`core/`) — `src/config/{settings,paths}.ts`. All env var names preserved;
+      `sys.frozen` replaced by a `CLAUDEWORLD_ROOT` override plus upward root discovery.
+- [ ] Logging infrastructure (JSON agent logs, `latency.log` perf logging). Not started. Phase 0
+      passes telemetry out through callbacks (`onEvent` / `onTelemetry`) instead, so the sinks can
+      be added without touching call sites.
+- [ ] In-memory cache. Not started. Note the mtime caches inside the filesystem services are a
+      different thing — they are the hot-reload mechanism, not the request cache Python's
+      `infrastructure/cache.py` provides, and the CRUD layer currently has no cache at all.
+- [ ] File locking (`proper-lockfile`). Not started.
+- [x] Drizzle schema for **all** tables — `src/db/schema.ts`, all 8 tables plus `alembic_version`,
+      verified column-for-column against a real `claudeworld.db` by `src/scripts/verify-schema.ts`.
+- [ ] Drift gate + migrations applied on startup. **Partial.** `verify-schema.ts` diffs the schema
+      against a live database, which is not the same guarantee as `migration-check`: there are no
+      Drizzle migrations yet, so nothing yet proves a *fresh* install converges on the same schema
+      as an upgraded one. That is the remaining half, and it belongs in CI.
+- [ ] Auth: login endpoint, bcrypt verify of existing `API_KEY_HASH`, JWT issue/verify, guest login
+      flag, rate limiting. Not started — `settings.ts` reads the env vars, nothing consumes them.
+- [ ] Hono app skeleton with the auth router passing ported auth tests. Not started.
 
 ### Phase 2 — Game core
 
-- Port `domain/`, `crud/`, `services/` (agent factory, persistence, world/location/player services).
-- Port `orchestration/` + `tape/` on top of the Phase 0 SDK layer (full 2-cell tape, chat mode, interrupts).
-- Port `routers/game/` (actions, chat_mode, locations, polling, state, worlds) preserving exact response shapes — snapshot the Python responses as golden fixtures first.
+Phase 0 cut a vertical slice through this phase — the parts one gameplay turn touches — rather than
+completing any layer. What is marked partial below is genuinely partial, not "done but untested".
+
+- [ ] Port `domain/`, `crud/`, `services/`. **Partial.**
+  - `crud/` — the turn subset only: worlds, rooms, agents, messages, locations, player-state,
+    sessions. Read paths plus `createMessage` / `incrementTurn` / `addActionToHistory` /
+    `addAgentToRoom` / `addGameplayAgentsToRoom`. Every world/room/agent *write* path, the chat-mode
+    state transitions, inventory and stat mutation, and all of `crud/cached.py` are absent.
+  - `services/` — read paths of world, player, location-storage and room-mapping. Agent factory,
+    persistence manager, item service, agent-filesystem service and history compression are absent.
+  - `domain/` — not ported as a layer. Its enums live inline in `db/schema.ts`; its entity logic
+    has no home yet.
+- [ ] Port `orchestration/` + `tape/` (full 2-cell tape, chat mode, interrupts). **Partial.**
+  - [x] The 2-cell gameplay tape, its executor, and the conversation / Action-Manager context
+        builders, all exercised end-to-end by the pilot.
+  - [ ] Chat mode — absent entirely.
+  - [ ] Interrupts — the primitives exist and are wired (`AgentSession.interrupt`,
+        `SessionPool.interruptRoom`, `AbortSignal` through the executor and turn runner, and the
+        "interrupt keeps the session, error evicts it" rule). The room-level orchestrator path that
+        cancels a turn and persists the partial response is **not** ported, and none of the
+        interrupt path has been exercised — the pilot only runs turns to completion.
+- [ ] Port `routers/game/` (actions, chat_mode, locations, polling, state, worlds) with golden
+      fixtures. Not started.
 
 ### Phase 3 — Remaining surface
 
@@ -154,4 +191,5 @@ the format exactly.
 
 1. Native window vs. browser-only for the packaged exe (Phase 5; recommend browser-only first).
 2. Whether to fold `frontend/` into the Bun workspace (recommend yes at cutover — one `bun install` for the whole repo — but not before).
-3. Hono confirmed over Elysia? (Cheap to swap before Phase 1; expensive after.)
+3. Hono confirmed over Elysia? (Cheap to swap before Phase 1; expensive after.) **Still open and still cheap** — Phase 0 built no HTTP layer at all, so nothing yet depends on the choice.
+4. New, from Phase 0: `to_system_prompt_markdown` hardcodes the Korean particle `이` in the memory-index heading instead of using `format_with_particles`, so vowel-final names read wrong (`크리스이 가진` should be `크리스가 가진`). Reproduced verbatim in the port. Fixing it changes every Korean agent's prompt, so it needs a deliberate call rather than a silent correction.
