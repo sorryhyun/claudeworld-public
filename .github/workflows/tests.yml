@@ -57,7 +57,9 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pinned in .bun-version. `latest` used to be here, which meant a Bun
+          # release could turn CI red on a commit that changed nothing.
+          bun-version-file: .bun-version
 
       # One lockfile for the whole repo: the root package.json is a Bun
       # workspace over backend-ts/ and frontend/, so this installs both.
@@ -72,9 +74,12 @@ jobs:
         working-directory: backend-ts
         run: bun run lint
 
+      # `bun run test`, not `bun test src/tests`: the package script carries
+      # `--parallel`, and CI should run the command developers run rather than a
+      # second spelling of it that can drift.
       - name: Unit tests
         working-directory: backend-ts
-        run: bun test src/tests
+        run: bun run test
 
       # The counterpart of the Python drift check above, and the half of it that
       # was missing after Phase 0: builds a database from the committed Drizzle
@@ -99,7 +104,9 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pinned in .bun-version. `latest` used to be here, which meant a Bun
+          # release could turn CI red on a commit that changed nothing.
+          bun-version-file: .bun-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -114,4 +121,4 @@ jobs:
 
       - name: Unit tests
         working-directory: frontend
-        run: bun test src
+        run: bun run test

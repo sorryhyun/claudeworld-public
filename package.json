@@ -22,6 +22,6 @@
     "smoke": "bun run --filter '@claudeworld/backend' smoke"
   },
   "engines": {
-    "bun": ">=1.3.0"
+    "bun": ">=1.4.0"
   }
 }

@@ -1,0 +1,15 @@
+# `bun test` launched from the repo root. Bun picks bunfig.toml by *current
+# directory*, so this file is what a root-level run gets -- and until it existed
+# such a run got no preload at all. That was not merely untidy: the backend's
+# preload is what points `os.tmpdir()` at tmpfs, and without it every fixture
+# database fsynced to disk. A root `bun test` took 79s against the 6.6s the same
+# files take from `backend-ts/`, and its logs were buried under the ERROR lines
+# the preload's sink discards. See backend-ts/src/tests/setup/env.ts.
+#
+# The frontend suite needs nothing here: its DOM tests import `src/test/setup`
+# themselves as their first import, because React and Testing Library capture
+# `document` at import time and a preload cannot be made to win that race from
+# a file the test imports later.
+[test]
+preload = ["./backend-ts/src/tests/setup/env.ts"]
+pathIgnorePatterns = ["**/dist/**", "**/node_modules/**"]

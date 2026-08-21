@@ -9,14 +9,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Gameplay**: User action → NPC reactions → Interpretation → Resolution → Narration
 
 **Tech Stack (TypeScript end to end):**
-- Runtime: **Bun** (≥1.3) — one workspace at the repo root over `backend-ts/` and `frontend/`
+- Runtime: **Bun** (≥1.4, pinned in `.bun-version`) — one workspace at the repo root over
+  `backend-ts/` and `frontend/`
 - Backend: **Hono** + **Drizzle ORM** + `bun:sqlite`
 - Validation: **Zod 4**
 - Auth: `Bun.password` (bcrypt-compatible) + **jose** (HS256 JWT)
 - AI Integration: **`@anthropic-ai/claude-agent-sdk`**, with game tools served over a stateless **MCP** endpoint
 - Frontend: React + TypeScript + Vite + Tailwind CSS
 - Real-time: SSE for streaming, HTTP polling as the safety net
-- Tests: `bun test` for both workspaces
+- Tests: `bun test --parallel` for both workspaces
 
 The Python/FastAPI backend in `backend/` is the **legacy tree being retired**. See
 [Legacy Python backend](#legacy-python-backend) — do not add features there.
@@ -40,10 +41,10 @@ make run-backend-ts                                # same, with host/port/DB env
 bun run dev:frontend
 
 # Checks -- run these from the repo root; each fans out to both workspaces
-bun test                 # Every test in the repo: backend-ts + frontend, one runner
+bun run test             # Every test in the repo, per-workspace via package scripts (~3s)
+bun test --parallel      # Same files in one runner; `--parallel` is what makes it ~3s not ~7s
 bun run typecheck        # tsc in both workspaces
 bun run lint             # eslint in both workspaces
-bun run test             # Same tests, but per-workspace via package scripts
 
 # One workspace only
 bun run --filter '@claudeworld/backend' test
@@ -376,7 +377,20 @@ in `src/http/routes/` (register it in `routes/game/index.ts` or `http/app.ts`)
 
 ## Testing
 
-Both workspaces run on `bun test`. From the repo root, bare `bun test` runs everything.
+Both workspaces run on `bun test`. `bun run test` is the entry point; from the repo root a bare
+`bun test` also collects everything.
+
+**`--parallel` (Bun 1.4) is in both `test` scripts.** It runs the files across N worker processes
+(N = core count) and implies `--isolate`, so each file gets a fresh global. Backend: 6.6s → 2.6s.
+The suite is safe under it by construction — no test binds a port (the Hono app is driven through
+`app.fetch`) and every fixture database lives in its own `mkdtemp` directory — and it stays green
+under `--randomize`. Drop the flag to debug a suspected cross-file interaction.
+
+**The root `bunfig.toml` is load-bearing.** Bun picks `bunfig.toml` by *current directory*, so a
+run launched from the repo root does not see `backend-ts/bunfig.toml`. Without a root file, such a
+run got no preload — and the backend preload is what points `os.tmpdir()` at tmpfs. Every fixture
+database fsynced to real disk instead: 79s for the files that take 6.6s from `backend-ts/`, with
+the output buried under the ERROR lines the preload's log sink discards.
 
 - Backend suites: `backend-ts/src/tests/` — unit tests plus integration tests that stand up the
   real Hono app over a temp database. Fixtures (including a checked-in world) are in
