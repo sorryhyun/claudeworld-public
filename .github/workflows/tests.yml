@@ -84,3 +84,34 @@ jobs:
       - name: Schema drift check (schema.ts vs migrations)
         working-directory: backend-ts
         run: bun run migration-check
+
+  # The React app. Its suite runs on `bun test` (happy-dom registered by
+  # src/test/setup.ts), same runner as backend-ts, so there is no second test
+  # toolchain to keep alive.
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend
+        run: bun run typecheck
+
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Unit tests
+        working-directory: frontend
+        run: bun test src

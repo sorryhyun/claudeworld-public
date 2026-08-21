@@ -1,13 +1,13 @@
-import { describe, it, expect } from "vitest";
+import "./setup";
+import { describe, it, expect } from "bun:test";
 
 describe("Test Setup", () => {
   it("should run tests successfully", () => {
     expect(true).toBe(true);
   });
 
-  it("should have access to globals", () => {
-    expect(expect).toBeDefined();
-    expect(describe).toBeDefined();
-    expect(it).toBeDefined();
+  it("should have access to a DOM", () => {
+    expect(typeof document).toBe("object");
+    expect(document.body).toBeDefined();
   });
 });

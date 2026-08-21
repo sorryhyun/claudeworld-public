@@ -1,3 +1,4 @@
+import "../test/setup";
 import {
   describe,
   it,
@@ -5,33 +6,47 @@ import {
   beforeEach,
   beforeAll,
   afterAll,
-  vi,
-} from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
-import { usePolling } from "./usePolling";
+  mock,
+} from "bun:test";
 
-// Mock the api module
-vi.mock("../utils/api", () => ({
-  getApiKey: vi.fn(() => "test-api-key"),
+// usePolling composes useSSE, which POSTs for a stream ticket and opens an
+// EventSource. Neither belongs in a polling test: the ticket request races the
+// message fetch for the queued fetch mocks. Stub it as permanently
+// disconnected so only the polling paths are exercised.
+const SSE_DISCONNECTED = {
+  isConnected: false,
+  streamingAgents: new Map(),
+  lastNewMessage: null,
+  newMessageSeq: 0,
+};
+mock.module("./useSSE", () => ({
+  useSSE: () => SSE_DISCONNECTED,
 }));
 
-// Mock fetch
-global.fetch = vi.fn();
+const { renderHook, waitFor } = await import("@testing-library/react");
+const { setApiKey } = await import("../services/apiClient");
+const { usePolling } = await import("./usePolling");
 
 // Suppress console errors in tests
 const originalConsoleError = console.error;
 beforeAll(() => {
-  console.error = vi.fn();
+  console.error = mock();
 });
 
 afterAll(() => {
   console.error = originalConsoleError;
+  setApiKey(null);
 });
 
 describe("usePolling", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // A fresh mock per test - queued `mockResolvedValueOnce` responses must not
+    // leak across tests.
+    globalThis.fetch = mock() as unknown as typeof fetch;
+    setApiKey("test-api-key");
   });
+
+  const fetchMock = () => globalThis.fetch as unknown as ReturnType<typeof mock>;
 
   it("should initialize with empty messages and disconnected state", () => {
     const { result } = renderHook(() => usePolling(null));
@@ -46,7 +61,7 @@ describe("usePolling", () => {
       { id: 2, content: "Hi", role: "assistant", timestamp: "2024-01-02" },
     ];
 
-    (global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => mockMessages,
     });
@@ -54,7 +69,7 @@ describe("usePolling", () => {
     renderHook(() => usePolling(1));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(fetchMock()).toHaveBeenCalledWith(
         expect.stringContaining("/rooms/1/messages"),
         expect.objectContaining({
           headers: expect.objectContaining({
@@ -67,7 +82,7 @@ describe("usePolling", () => {
   });
 
   it("should set isConnected to true on successful message fetch", async () => {
-    (global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => [],
     });
@@ -80,7 +95,7 @@ describe("usePolling", () => {
   });
 
   it("should set isConnected to false on failed message fetch", async () => {
-    (global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: false,
       statusText: "Not Found",
     });
@@ -93,7 +108,7 @@ describe("usePolling", () => {
   });
 
   it("should handle network errors gracefully", async () => {
-    (global.fetch as any).mockRejectedValue(new Error("Network error"));
+    fetchMock().mockRejectedValue(new Error("Network error"));
 
     const { result } = renderHook(() => usePolling(1));
 
@@ -103,20 +118,7 @@ describe("usePolling", () => {
   });
 
   it("should send message with correct headers and body", async () => {
-    // Mock initial fetch
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => [],
-    });
-
-    // Mock send message
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({}),
-    });
-
-    // Mock ongoing polling
-    (global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => [],
     });
@@ -130,18 +132,18 @@ describe("usePolling", () => {
     result.current.sendMessage("Test message");
 
     await waitFor(() => {
-      const sendCall = (global.fetch as any).mock.calls.find((call: any[]) =>
-        call[0].includes("/messages/send"),
+      const sendCall = fetchMock().mock.calls.find((call: unknown[]) =>
+        String(call[0]).includes("/messages/send"),
       );
       expect(sendCall).toBeDefined();
-      expect(sendCall[1]).toMatchObject({
+      expect(sendCall![1]).toMatchObject({
         method: "POST",
         headers: expect.objectContaining({
           "Content-Type": "application/json",
           "X-API-Key": "test-api-key",
         }),
       });
-      expect(JSON.parse(sendCall[1].body)).toMatchObject({
+      expect(JSON.parse((sendCall![1] as RequestInit).body as string)).toMatchObject({
         content: "Test message",
         role: "user",
       });
@@ -149,7 +151,7 @@ describe("usePolling", () => {
   });
 
   it("should send message with optional parameters", async () => {
-    (global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => [],
     });
@@ -165,11 +167,11 @@ describe("usePolling", () => {
     ]);
 
     await waitFor(() => {
-      const sendCall = (global.fetch as any).mock.calls.find((call: any[]) =>
-        call[0].includes("/messages/send"),
+      const sendCall = fetchMock().mock.calls.find((call: unknown[]) =>
+        String(call[0]).includes("/messages/send"),
       );
       expect(sendCall).toBeDefined();
-      const body = JSON.parse(sendCall[1].body);
+      const body = JSON.parse((sendCall![1] as RequestInit).body as string);
       expect(body).toMatchObject({
         content: "Test",
         role: "user",
@@ -185,27 +187,21 @@ describe("usePolling", () => {
       { id: 1, content: "Hello", role: "user", timestamp: "2024-01-01" },
     ];
 
-    (global.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => initialMessages,
+    });
+
+    // Ongoing polling and the post-reset refetch both come back empty.
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: async () => [],
     });
 
     const { result } = renderHook(() => usePolling(1));
 
     await waitFor(() => {
       expect(result.current.messages).toHaveLength(1);
-    });
-
-    // Mock the refetch after reset
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => [],
-    });
-
-    // Mock ongoing polling
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => [],
     });
 
     await result.current.resetMessages();
@@ -224,13 +220,13 @@ describe("usePolling", () => {
     ];
 
     // First room fetch
-    (global.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => room1Messages,
     });
 
-    // Mock ongoing polling for room 1
-    (global.fetch as any).mockResolvedValue({
+    // Ongoing polling for room 1
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => [],
     });
@@ -248,7 +244,7 @@ describe("usePolling", () => {
     });
 
     // Second room fetch
-    (global.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => room2Messages,
     });
@@ -264,11 +260,11 @@ describe("usePolling", () => {
   it("should not make API calls when roomId is null", () => {
     renderHook(() => usePolling(null));
 
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchMock()).not.toHaveBeenCalled();
   });
 
   it("should expose setMessages for external updates", async () => {
-    (global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => [],
     });
@@ -283,13 +279,12 @@ describe("usePolling", () => {
       {
         id: 3,
         content: "External",
-        role: "user",
+        role: "user" as const,
         timestamp: "2024-01-03",
         agent_id: null,
       },
     ];
 
-    // Use act to wrap state update
     result.current.setMessages((prev) => [...prev, ...newMessages]);
 
     await waitFor(() => {
