@@ -5,18 +5,68 @@
  * reads the repo's real `agents/` and `backend/sdk/config/` trees regardless of
  * the cwd `bun test` was invoked from.
  *
- * Nothing else is stubbed here on purpose: settings parsing is exercised
- * through `createSettings(env)` with an explicit env map, so the developer's
- * own `.env` cannot leak into assertions.
+ * Also neutralises `<projectRoot>/.env`, so the suite gives the same answer on
+ * a machine that has run `make setup` as on CI, which has no such file. See
+ * `unloadDotEnvFromProcessEnv` below.
  */
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { resolveProjectRoot, PROJECT_ROOT_ENV_VAR } from '../../config/paths'
+import { parseDotEnv, SKIP_DOTENV_ENV_VAR } from '../../config/settings'
 import { setLogSink } from '../../infrastructure/logging/logger'
 
-process.env[PROJECT_ROOT_ENV_VAR] ??= resolveProjectRoot({})
+const projectRoot = resolveProjectRoot({})
+process.env[PROJECT_ROOT_ENV_VAR] ??= projectRoot
+
+/**
+ * Make the suite run as if no `.env` existed.
+ *
+ * Most settings assertions go through `createSettings(env)` with an explicit
+ * map, but a handful legitimately exercise the `getSettings()` singleton — and
+ * that one resolves the developer's `.env`. Whether a run was green therefore
+ * depended on whether `make setup` had been run and on what it wrote: a `.env`
+ * carrying `GUIDELINES_FILE=…` repoints `paths.guidelinesConfigPath` at a YAML
+ * that does not exist and takes six tests down, on a commit that is green on
+ * CI, which never has a `.env`. The absent case is the one CI and a fresh clone
+ * see, so it is the one pinned here; a test wanting specific settings passes
+ * them in.
+ *
+ * `.env` reaches the process through two independent doors and both have to be
+ * shut:
+ *
+ * 1. `loadDotEnv()` reads `<projectRoot>/.env` itself, from any cwd. The knob
+ *    below turns that read into a no-op.
+ * 2. **Bun auto-loads `.env` from the current directory** into `process.env`
+ *    before any of our code runs — which is also why the same commit behaved
+ *    differently depending on where `bun test` was launched from: the root run
+ *    picked the file up, a run from `backend-ts/` did not. There is no flag to
+ *    switch that off from `bunfig.toml`, so the entries are removed again
+ *    below, matched by value so a variable genuinely exported in the shell
+ *    survives.
+ */
+process.env[SKIP_DOTENV_ENV_VAR] ??= '1'
+
+function unloadDotEnvFromProcessEnv(): void {
+  for (const dir of new Set([projectRoot, process.cwd()])) {
+    const path = join(dir, '.env')
+    if (!existsSync(path)) continue
+
+    let entries: Record<string, string>
+    try {
+      entries = parseDotEnv(readFileSync(path, 'utf-8'))
+    } catch {
+      continue // unreadable — nothing was auto-loaded from it either
+    }
+
+    for (const [key, value] of Object.entries(entries)) {
+      if (process.env[key] === value) delete process.env[key]
+    }
+  }
+}
+
+unloadDotEnvFromProcessEnv()
 
 /**
  * Point `os.tmpdir()` at a RAM-backed filesystem for the duration of the run.

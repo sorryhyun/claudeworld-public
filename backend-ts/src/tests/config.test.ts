@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -11,7 +11,9 @@ import {
   getPriorityAgentNames,
   getSettings,
   isGuestLoginEnabled,
+  loadDotEnv,
   parseDotEnv,
+  SKIP_DOTENV_ENV_VAR,
   type EnvRecord,
 } from '../config/settings'
 import { getAgentToolConfig, getExtremeTraits, getGroupConfig } from '../sdk/loaders/group-config'
@@ -22,8 +24,20 @@ describe('paths', () => {
   const paths = createProjectPaths()
 
   test('the discovered root holds the agents/ and backend/ trees', () => {
-    expect(basename(paths.projectRoot)).toBe('claudeworld-public')
+    // Identify the root by what it contains, never by its name: a checkout
+    // cloned to any other directory -- `claudeworld/`, `work/cw`, a worktree
+    // under `.git/` -- is the same repository, and asserting the basename
+    // failed there while discovery had in fact worked perfectly.
     expect(existsSync(paths.agentsDir)).toBe(true)
+    expect(existsSync(paths.backendDir)).toBe(true)
+
+    // What the basename check was reaching for: that the walk stopped on the
+    // repository root and not on some ancestor that happens to hold `agents/`
+    // and `backend/` too. Reaching this very file back through the resolved
+    // root pins that exactly, and survives a rename.
+    expect(join(paths.projectRoot, 'backend-ts', 'src', 'tests', 'config.test.ts')).toBe(
+      import.meta.path,
+    )
   })
 
   test('backendDir points at the Python tree, not backend-ts', () => {
@@ -179,6 +193,53 @@ describe('parseDotEnv', () => {
       HASHY: 'a#b',
       ESCAPED: 'line1\nline2',
     })
+  })
+})
+
+describe('loadDotEnv', () => {
+  let dir: string
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'cw-dotenv-'))
+    writeFileSync(join(dir, '.env'), 'GUIDELINES_FILE=guidelines_custom\n', 'utf-8')
+  })
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true })
+    process.env[SKIP_DOTENV_ENV_VAR] = '1'
+  })
+
+  test('a project root with no .env yields {}', () => {
+    expect(loadDotEnv(mkdtempSync(join(tmpdir(), 'cw-noenv-')))).toEqual({})
+  })
+
+  test('the suite runs with .env hidden, so a developer file cannot change results', () => {
+    // The preload sets this; without it, a `.env` carrying GUIDELINES_FILE
+    // repoints paths.guidelinesConfigPath and takes the guidelines tests down
+    // on a machine that has run `make setup`, while CI stays green.
+    expect(process.env[SKIP_DOTENV_ENV_VAR]).toBeTruthy()
+    expect(loadDotEnv(dir)).toEqual({})
+  })
+
+  test('nothing from a project-root .env survives in process.env', () => {
+    // Bun auto-loads `.env` from the cwd, so a root-launched `bun test` used to
+    // see the developer's settings even though `loadDotEnv` was hushed. The
+    // preload deletes those entries again. Vacuous when there is no `.env`
+    // (CI, a fresh clone) -- and that is exactly the state it pins.
+    const path = join(getSettings().paths.projectRoot, '.env')
+    const entries = existsSync(path) ? parseDotEnv(readFileSync(path, 'utf-8')) : {}
+    for (const [key, value] of Object.entries(entries)) {
+      expect({ key, value: process.env[key] }).not.toEqual({ key, value })
+    }
+  })
+
+  test('the file is still read when the knob is unset -- production behaviour', () => {
+    delete process.env[SKIP_DOTENV_ENV_VAR]
+    try {
+      expect(loadDotEnv(dir)).toEqual({ GUIDELINES_FILE: 'guidelines_custom' })
+    } finally {
+      process.env[SKIP_DOTENV_ENV_VAR] = '1'
+    }
   })
 })
 

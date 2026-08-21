@@ -121,8 +121,22 @@ export function parseDotEnv(content: string): Record<string, string> {
   return result
 }
 
+/**
+ * Env var that makes {@link loadDotEnv} behave as if the file were absent.
+ *
+ * Set by the test preload (`src/tests/setup/env.ts`). Without it the suite's
+ * result depends on whether the developer has run `make setup` and on what
+ * that wrote: a `.env` carrying `GUIDELINES_FILE=…` redirects
+ * `settings.paths.guidelinesConfigPath` at a YAML that does not exist, and the
+ * six tests that read the real `guidelines_3rd.yaml` fail against a tree that
+ * is green on CI, where no `.env` is ever written. Pinning the *absent* case is
+ * what makes the two agree, since that is the case CI and a fresh clone have.
+ */
+export const SKIP_DOTENV_ENV_VAR = 'CW_TEST_NO_DOTENV'
+
 /** Read `<projectRoot>/.env`, returning `{}` when absent or unreadable. */
 export function loadDotEnv(projectRoot: string): Record<string, string> {
+  if (process.env[SKIP_DOTENV_ENV_VAR]) return {}
   const envPath = join(projectRoot, '.env')
   if (!existsSync(envPath)) return {}
   try {
