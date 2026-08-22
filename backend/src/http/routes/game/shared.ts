@@ -17,7 +17,7 @@ import { GameTimeSnapshot } from '../../../schemas/messages'
 import { parseJsonColumn } from '../../../schemas/common'
 import { RoomMappingService } from '../../../services/room-mapping'
 import { assertWorldAccess } from '../../access-control'
-import { HttpError, validationError } from '../../errors'
+import { HttpError, validationError } from '../../../domain/errors'
 import { identityOf, type AppState } from '../../state'
 import type { AppEnv } from '../../types'
 

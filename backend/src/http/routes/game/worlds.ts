@@ -47,7 +47,7 @@ import {
   type World as WorldResponse,
 } from '../../../schemas/game'
 import { RoomMappingService } from '../../../services/room-mapping'
-import { HttpError } from '../../errors'
+import { HttpError } from '../../../domain/errors'
 import { identityOf, type AppState } from '../../state'
 import type { AppEnv } from '../../types'
 import {

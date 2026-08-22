@@ -2,7 +2,7 @@
  * Cached reads for the CRUD the polling endpoints hammer. Sync `getOrSet`, not
  * `getOrSetAsync`: `bun:sqlite` runs a statement to completion before any other
  * JS, so there is no await window between miss and store. **Invalidation lives
- * at the writes** — the helpers below plus inline sweeps in `rooms.ts`,
+ * at the writes** — the sweeps in `cache-invalidation.ts` plus inline sweeps in `rooms.ts`,
  * `messages.ts` and `agents.ts`; even the deletes sweep, since SQLite reuses
  * rowids. Only `deleteRoomMessages` skips it.
  */
@@ -11,14 +11,12 @@ import { getAgent } from './agents'
 import type { Db } from '../db'
 import type { Agent } from '../db/schema'
 import {
-  agentConfigKey,
   agentObjectKey,
   getCache,
   roomAgentsKey,
   roomMessagesKey,
   roomObjectKey,
 } from '../infrastructure/cache'
-import { getLogger } from '../infrastructure/logging/logger'
 import {
   getMessages,
   getMessagesAfterAgentResponse,
@@ -26,8 +24,6 @@ import {
   type MessageWithAgent,
 } from './messages'
 import { getAgentsInRoom, getRoom, type RoomWithRelations } from './rooms'
-
-const logger = getLogger('CachedCRUD')
 
 // How stale a reader can stand to be: agent rows change only on a config edit,
 // room flags gate the scheduler, a poller showing a turn late is user-visible.
@@ -37,7 +33,7 @@ const ROOM_AGENTS_TTL_SECONDS = 60
 const MESSAGES_TTL_SECONDS = 5
 
 /**
- * The long TTL is safe only because {@link invalidateAgentCache} runs on every
+ * The long TTL is safe only because `invalidateAgentCache` (in `cache-invalidation.ts`) runs on every
  * `updateAgent`; without it a config hot-reload would take 5 minutes to land.
  */
 export function getAgentCached(db: Db, agentId: number): Agent | null {
@@ -126,34 +122,4 @@ export function getMessagesAfterAgentResponseCached(
     () => getMessagesAfterAgentResponse(db, roomId, agentId, limit),
     MESSAGES_TTL_SECONDS,
   )
-}
-
-/** The sweep prefix has no separator, so room 1 also clears 10, 11 and 100. */
-export function invalidateRoomCache(roomId: number): void {
-  const cache = getCache()
-  cache.invalidate(roomObjectKey(roomId))
-  cache.invalidate(roomAgentsKey(roomId))
-  cache.invalidatePattern(roomMessagesKey(roomId))
-  logger.debug(`Invalidated cache for room ${roomId}`)
-}
-
-/**
- * Two keys: `agentObjectKey` here and `agentConfigKey` from the agent-config
- * service. Both have to go together, or a hot-reloaded prompt edit lands while
- * the row behind it still reads stale.
- */
-export function invalidateAgentCache(agentId: number): void {
-  const cache = getCache()
-  cache.invalidate(agentObjectKey(agentId))
-  cache.invalidate(agentConfigKey(agentId))
-  logger.debug(`Invalidated cache for agent ${agentId}`)
-}
-
-/**
- * Message entries only — for callers that bulk-modify a transcript,
- * `deleteRoomMessages` in particular, which does not sweep on its own behalf.
- */
-export function invalidateMessagesCache(roomId: number): void {
-  getCache().invalidatePattern(roomMessagesKey(roomId))
-  logger.debug(`Invalidated message cache for room ${roomId}`)
 }

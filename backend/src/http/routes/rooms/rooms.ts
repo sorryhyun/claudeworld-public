@@ -17,7 +17,7 @@ import {
 import { RoomAlreadyExistsError } from '../../../domain/errors'
 import { getLogger } from '../../../infrastructure/logging/logger'
 import { RoomCreate, RoomUpdate, toRoom, toRoomSummary } from '../../../schemas/rooms'
-import { HttpError } from '../../errors'
+import { HttpError } from '../../../domain/errors'
 import { requireAdmin } from '../../middleware/auth'
 import { identityOf, type AppState } from '../../state'
 import type { AppEnv } from '../../types'

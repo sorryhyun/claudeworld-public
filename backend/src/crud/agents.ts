@@ -8,7 +8,7 @@ import type { Db } from '../db'
 import { agents, roomAgents, type Agent } from '../db/schema'
 import { getCache, roomAgentsKey } from '../infrastructure/cache'
 import { getLogger } from '../infrastructure/logging/logger'
-import { invalidateAgentCache } from './cached'
+import { invalidateAgentCache } from './cache-invalidation'
 
 const logger = getLogger('CRUD')
 

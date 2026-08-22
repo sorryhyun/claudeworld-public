@@ -2,7 +2,7 @@
 // exactly the same things, and the role only decides whose worlds are visible.
 
 import type { UserRole } from '../auth/roles'
-import { HttpError } from './errors'
+import { HttpError } from '../domain/errors'
 
 export interface Identity {
   role: UserRole

@@ -15,7 +15,7 @@ import {
 import type { UserRole } from '../auth/roles'
 import { getCache, roomAgentsKey, roomObjectKey } from '../infrastructure/cache'
 import { getLogger } from '../infrastructure/logging/logger'
-import { invalidateRoomCache } from './cached'
+import { invalidateRoomCache } from './cache-invalidation'
 import { createSystemMessage, type MessageWithAgent } from './messages'
 
 const logger = getLogger('CRUD')

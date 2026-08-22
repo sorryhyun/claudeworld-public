@@ -2,6 +2,7 @@
 // their own: the room half in `./rooms`, the location half in `./locations`.
 
 export * from './agents'
+export * from './cache-invalidation'
 export * from './cached'
 export * from './locations'
 export * from './messages'

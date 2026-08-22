@@ -52,7 +52,8 @@ bun run test                      # bun test src/tests --parallel  (~3.8s, 1608 
 bun test src/tests/tape.test.ts   # single file
 bun test -t "narration"           # tests matching a pattern
 bun run typecheck                 # tsc --noEmit
-bun run lint                      # eslint src
+bun run lint                      # eslint src + the import-cycle gate
+bun run check-cycles              # just the cycle gate (src/scripts/check-cycles.ts)
 
 bun run migration-check           # Schema drift gate (runs in CI)
 bun run migration-check -- --against <db>   # diff against a real database file
@@ -156,6 +157,18 @@ sdk/
 
 `bun run migration-check` builds a database from the migrations alone and diffs it against
 `schema.ts` — it fails if the two have drifted, and it runs in CI.
+
+## Layering
+
+The import direction is enforced, not just documented. `eslint.config.js` carries the
+boundary rules — nothing below `http/` imports it (`HttpError` lives in
+`domain/errors.ts`), nothing but `http/` and `main.ts` imports `orchestration/`, and
+`crud/` stays pure CRUD (type-only imports upward are tolerated; `domain/room-keys.ts`
+exists so crud can format a room key without reaching into services). `bun run
+check-cycles` fails on any import cycle and runs as part of `bun run lint`; the cached
+CRUD readers (`crud/cached.ts`) and the invalidation sweeps
+(`crud/cache-invalidation.ts`) are separate modules *because* one module holding both
+halves was a cycle.
 
 ## Auth
 

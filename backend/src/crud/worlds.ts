@@ -16,7 +16,7 @@ import {
   type World,
   type WorldPhase,
 } from '../db/schema'
-import { invalidateRoomCache } from './cached'
+import { invalidateRoomCache } from './cache-invalidation'
 import type { PlayerStateWithLocation } from './player-state'
 import { addAgentToRoom, createRoom } from './rooms'
 import { toLangKey } from '../domain/enums'

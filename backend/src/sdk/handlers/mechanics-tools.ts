@@ -1,5 +1,5 @@
 import { getAgentByName } from '../../crud/agents'
-import { invalidateAgentCache } from '../../crud/cached'
+import { invalidateAgentCache } from '../../crud/cache-invalidation'
 import type { AgentConfigService } from '../../services/agent-config-service'
 import type { ItemService } from '../../services/item-service'
 import type { PlayerService } from '../../services/player-service'

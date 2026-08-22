@@ -10,6 +10,7 @@ import { join } from 'node:path'
 
 import { LocationStorage } from './location-storage'
 import { WorldService } from './world-service'
+import { isLocationRoomKey, locationToRoomKey, roomKeyToLocation } from '../domain/room-keys'
 import { getLogger } from '../infrastructure/logging/logger'
 
 const logger = getLogger('RoomMapping')
@@ -37,8 +38,6 @@ export interface ArrivalContext {
   triggeringAction: string
   fromLocation: string
 }
-
-const LOCATION_PREFIX = 'location:'
 
 const ARRIVAL_CONTEXT_KEY = 'arrival_context'
 
@@ -271,7 +270,7 @@ export class RoomMappingService {
     }
 
     if (mapping === undefined) {
-      if (!key.startsWith(LOCATION_PREFIX)) {
+      if (!isLocationRoomKey(key)) {
         logger.warning(`Room ${key} not found in world ${worldName}`)
         return false
       }
@@ -396,12 +395,14 @@ export class RoomMappingService {
     return null
   }
 
+  // Statics kept for the many call sites; the functions live in
+  // `domain/room-keys.ts` so layers below services can format a key.
   static locationToRoomKey(locationName: string): string {
-    return `${LOCATION_PREFIX}${locationName}`
+    return locationToRoomKey(locationName)
   }
 
   /** `null` for any key that is not a `location:` key. */
   static roomKeyToLocation(roomKey: string): string | null {
-    return roomKey.startsWith(LOCATION_PREFIX) ? roomKey.slice(LOCATION_PREFIX.length) : null
+    return roomKeyToLocation(roomKey)
   }
 }

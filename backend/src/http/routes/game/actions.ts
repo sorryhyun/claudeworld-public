@@ -18,7 +18,7 @@ import { addGameplayAgentsToRoom, getWorld, updateWorldLastPlayed } from '../../
 import { parseSlashCommand } from '../../../domain/slash-commands'
 import { getLogger } from '../../../infrastructure/logging/logger'
 import { PlayerAction } from '../../../schemas/game'
-import { HttpError } from '../../errors'
+import { HttpError } from '../../../domain/errors'
 import type { AppState } from '../../state'
 import type { AppEnv } from '../../types'
 import { handleChatCommand, handleChatModeAction, handleEndCommand } from './chat-mode'

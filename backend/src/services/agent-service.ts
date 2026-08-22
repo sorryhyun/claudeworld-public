@@ -12,7 +12,7 @@
  */
 
 
-import { invalidateRoomCache } from '../crud/cached'
+import { invalidateRoomCache } from '../crud/cache-invalidation'
 import { deleteAgent } from '../crud/agents'
 import { deleteRoomMessages } from '../crud/messages'
 import { deleteRoom, getAgentsInRoom, removeAgentFromRoom } from '../crud/rooms'

@@ -32,10 +32,12 @@ import {
   getMessagesSinceCached,
   getRecentMessagesCached,
   getRoomCached,
+} from '../crud/cached'
+import {
   invalidateAgentCache,
   invalidateMessagesCache,
   invalidateRoomCache,
-} from '../crud/cached'
+} from '../crud/cache-invalidation'
 import { createMessage, getMessagesSince } from '../crud/messages'
 import { openDb, type Db } from '../db'
 import { initDb } from '../db/migrate'

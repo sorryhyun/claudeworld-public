@@ -14,7 +14,7 @@ import {
   type Room,
 } from '../db/schema'
 import { getLogger } from '../infrastructure/logging/logger'
-import { RoomMappingService } from '../services/room-mapping'
+import { locationToRoomKey } from '../domain/room-keys'
 import { addAgentToRoom, createRoom, getAgentsInRoom, removeAgentFromRoom } from './rooms'
 import { addGameplayAgentsToRoom } from './worlds'
 import { SYSTEM_AGENT_GROUPS } from '../domain/agent'
@@ -247,7 +247,7 @@ export function syncLocationsWithFilesystem(
     logger.info(`Deleting orphaned location '${location.name}' from world '${worldName}'`)
     // Mapping first: a stale one is harmless if the delete throws, while a
     // mapping onto a deleted room id opens the wrong transcript next turn.
-    filesystem.deleteRoomMapping(worldName, RoomMappingService.locationToRoomKey(location.name))
+    filesystem.deleteRoomMapping(worldName, locationToRoomKey(location.name))
     deleteLocation(db, location.id)
     deleted += 1
   }

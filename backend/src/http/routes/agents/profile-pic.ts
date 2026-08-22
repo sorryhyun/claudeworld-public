@@ -11,7 +11,7 @@ import { join, resolve, sep } from 'node:path'
 
 import type { Context } from 'hono'
 
-import { HttpError } from '../../errors'
+import { HttpError } from '../../../domain/errors'
 import type { AppEnv } from '../../types'
 
 /**
