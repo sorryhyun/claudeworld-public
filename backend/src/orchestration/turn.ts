@@ -122,9 +122,10 @@ export async function runGameplayTurn(
       npcs.map((n) => n.id),
     )
     if (!tape) {
+      // Throw rather than fall back to a generic responder: that produces
+      // output which is not a game turn.
       throw new Error(
-        `Room ${input.roomId} has no Action_Manager; a gameplay turn cannot be built. ` +
-          'Python fell through to a generic handler here, which produced output that was not a game turn.',
+        `Room ${input.roomId} has no Action_Manager; a gameplay turn cannot be built.`,
       )
     }
   }
