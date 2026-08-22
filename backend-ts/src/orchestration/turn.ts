@@ -18,9 +18,10 @@ import {
   optionsFingerprint,
   type AgentOptionsInput,
 } from '../sdk/agent/options-builder'
+import { buildSubagentDefinitionsForRole } from '../sdk/agent/subagent-definitions'
 import { TurnRunner, type TurnEvent } from '../sdk/agent/turn-runner'
 import type { SessionPool } from '../sdk/client/session-pool'
-import type { ServerDeps } from '../sdk/handlers/servers'
+import type { ServerDeps, ServerRole } from '../sdk/handlers/servers'
 import type { McpTools } from '../sdk/mcp'
 import type { ToolContext } from '../sdk/handlers/context'
 import { parseAgentConfig } from '../sdk/parsing/agent-config'
@@ -876,11 +877,20 @@ function buildAgentTurn(
     getDb: () => db,
   }
 
+  // One role for both the tool set and the sub-agent set. Deriving them from
+  // separate expressions is how a parent ends up with `mcp__subagents__*` in
+  // its allow-list and no sub-agent to hand them to, or the reverse.
+  const role: ServerRole = asActionManager
+    ? 'action_manager'
+    : asOnboardingManager
+      ? 'onboarding'
+      : 'character'
+
   // Binds before the session is acquired, which the ordering here already
   // guarantees: the caller does not touch the pool until these options exist,
   // and the CLI's first `tools/list` cannot precede its own subprocess.
   const servers = deps.mcp.bindTurn({ roomId: input.roomId, agentId: agent.id }, ctx, {
-    role: asActionManager ? 'action_manager' : asOnboardingManager ? 'onboarding' : 'character',
+    role,
     configDir: agent.configFile
       ? `${deps.projectRoot}/${agent.configFile}`.replace(/\/+/g, '/')
       : undefined,
@@ -970,6 +980,12 @@ function buildAgentTurn(
       systemPrompt,
       mcpServers: servers.mcpServers,
       toolNames: servers.toolNames,
+      // What the dispatch tool — handed to every agent in `options-builder.ts`
+      // — can actually reach. `undefined` for a character, which is why a
+      // character's dispatch stays inert rather than reaching a designer. The
+      // tool names are passed so a designer whose persist tool this turn does
+      // not serve is dropped rather than offered with nothing to call.
+      agents: buildSubagentDefinitionsForRole(role, servers.toolNames),
       hooks,
       resume,
       useSonnet: deps.useSonnet,

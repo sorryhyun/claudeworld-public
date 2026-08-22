@@ -58,7 +58,8 @@ cd backend-ts && bun test -t "narration"           # Tests matching a pattern
 # Backend tooling
 bun run migration-check                            # Schema drift gate (runs in CI)
 bun run smoke                                      # Boot the app against a throwaway DB
-cd backend-ts && bun run pilot                     # Drive one real game turn, no HTTP
+cd backend-ts && bun run pilot                     # Drive three real game turns, no HTTP
+cd backend-ts && bun run spike                     # SDK-behavior harness (real CLI, real tokens)
 cd backend-ts && bun run verify-schema             # Diff schema.ts against a real .db
 cd backend-ts && bun run migration-new             # drizzle-kit generate
 
@@ -129,6 +130,21 @@ sdk/
 - **Per-world services are factories, not instances.** `PersistenceManager` and `PlayerFacade` each
   write one world's row; a long-lived instance silently mirrors state onto the wrong record.
   `buildServers` binds them per turn.
+- **The SDK is pinned exactly, and `bun run spike` is the canary.** `spike-session.ts` is
+  the only place CLI behaviour is asserted against a live subprocess — the pin, streaming
+  sessions, MCP tools across turns, hook firing, `Options.agents`, `outputFormat`. Run it
+  on every SDK bump. Its first run found two silent bugs, so treat a version bump without a
+  spike run as unverified.
+- **The sub-agent dispatch tool is `Agent`, not `Task`.** CLI 2.1.238 renamed it; a hook
+  matching only `Task` fires never and fails silently. `SUBAGENT_DISPATCH_TOOLS` in
+  `sdk/agent/hooks.ts` is the single list, and `options-builder.ts` derives `NATIVE_TOOLS`
+  from it. `SubagentStart`/`SubagentStop` pair on `agent_id`, *not* the dispatch's
+  `tool_use_id` — those are different ids.
+- **`Options.agents` is the only way a sub-agent exists.** Built-in agents are disabled and
+  `settingSources: []` blocks filesystem discovery, so `sdk/agent/subagent-definitions.ts`
+  is what `Task` dispatches to. It drops any designer whose `mcp__subagents__persist_*`
+  tool the turn does not serve — a definition naming a tool that is not there leaves the
+  sub-agent with no tools at all and no diagnostic.
 - **`bun:sqlite` is synchronous.** A statement runs to completion before any other code does, so
   there is no retry-on-lock or serialized-write layer. An `async` function handed to a "background"
   helper runs synchronously to its first `await`; use `startBackground` (microtask) or

@@ -12,7 +12,30 @@ import type { HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
  * as `{}` here so the no-op is obvious.
  */
 
-/** Timing for a `Task` sub-agent invocation, from PreToolUse to SubagentStop. */
+/**
+ * The CLI's sub-agent dispatch tool, by name.
+ *
+ * `Agent` is what CLI 2.1.238 calls it (`sdk-tools.d.ts` declares `AgentInput`
+ * with the `subagent_type` field, and no `TaskInput` at all); `Task` is the
+ * name the early-0.3 CLI used, which every comment in this repository and the
+ * Python backend still say. Both are matched because the rename is exactly the
+ * kind of silent drift the pin is meant to catch and the telemetry is not worth
+ * losing to it: `bun run spike` asserts which one actually fires.
+ *
+ * This is not cosmetic. Matching only `Task` is why `subagent_invoked` and
+ * every sub-agent duration were missing from telemetry — the hook ran, saw
+ * `Agent`, and returned.
+ */
+export const SUBAGENT_DISPATCH_TOOLS = ['Agent', 'Task'] as const
+
+/** Regex form for `HookCallbackMatcher.matcher`, which matches on tool name. */
+const SUBAGENT_DISPATCH_MATCHER = SUBAGENT_DISPATCH_TOOLS.join('|')
+
+function isSubagentDispatch(toolName: string): boolean {
+  return (SUBAGENT_DISPATCH_TOOLS as readonly string[]).includes(toolName)
+}
+
+/** Timing for a sub-agent invocation, from PreToolUse to SubagentStop. */
 interface SubagentStart {
   startedAt: number
   parentAgent: string
@@ -21,7 +44,7 @@ interface SubagentStart {
 }
 
 /**
- * Sub-agent start times, keyed by `tool_use_id`.
+ * Sub-agent start times, keyed by the CLI's `agent_id`.
  *
  * Python also kept a `${roomId}:${subagentType}` composite key as a fallback
  * and scanned it when the id was missing, which mismatched whenever a room ran
@@ -34,15 +57,15 @@ export class SubagentTimings {
   /** Entries older than this are swept; a sub-agent that never stops must not leak. */
   private static readonly MAX_AGE_MS = 300_000
 
-  record(toolUseId: string, start: SubagentStart): void {
+  record(id: string, start: SubagentStart): void {
     this.sweep()
-    this.starts.set(toolUseId, start)
+    this.starts.set(id, start)
   }
 
-  take(toolUseId: string | undefined): SubagentStart | null {
-    if (!toolUseId) return null
-    const found = this.starts.get(toolUseId)
-    if (found) this.starts.delete(toolUseId)
+  take(id: string | undefined): SubagentStart | null {
+    if (!id) return null
+    const found = this.starts.get(id)
+    if (found) this.starts.delete(id)
     return found ?? null
   }
 
@@ -118,7 +141,7 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
   }
 
   const preTask: HookCallback = async (input, toolUseId) => {
-    if (input.hook_event_name !== 'PreToolUse' || input.tool_name !== 'Task') return {}
+    if (input.hook_event_name !== 'PreToolUse' || !isSubagentDispatch(input.tool_name)) return {}
     const toolInput = input.tool_input as { subagent_type?: unknown; run_in_background?: unknown } | undefined
     const subagentType = toolInput?.subagent_type
     if (typeof subagentType !== 'string' || !subagentType) return {}
@@ -141,14 +164,38 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
     return {}
   }
 
+  /**
+   * The authoritative start of a sub-agent, keyed by the CLI's own id.
+   *
+   * `PreToolUse` on the dispatch is the *request*; this is the run. They are
+   * keyed differently — the dispatch has a `tool_use_id`, the run has an
+   * `agent_id` — and `SubagentStop` is given the latter, which is why pairing a
+   * stop against the dispatch's id produced `unknown` / `matched: false` on
+   * every completed sub-agent in the pilot.
+   */
+  const subagentStart: HookCallback = async (input) => {
+    if (input.hook_event_name !== 'SubagentStart') return {}
+    timings.record(input.agent_id, {
+      startedAt: Date.now(),
+      parentAgent: context.agentName,
+      roomId: context.roomId,
+      subagentType: input.agent_type,
+    })
+    return {}
+  }
+
   const subagentStop: HookCallback = async (input, toolUseId) => {
     if (input.hook_event_name !== 'SubagentStop') return {}
-    const start = timings.take(toolUseId)
+    // `agent_id` first; the dispatch's `tool_use_id` is the fallback for a CLI
+    // that does not emit `SubagentStart`, where the two ids coincide.
+    const start = timings.take(input.agent_id) ?? timings.take(toolUseId)
     context.onEvent?.({
       kind: 'subagent_completed',
       agentName: context.agentName,
       roomId: context.roomId,
-      subagentType: start?.subagentType ?? 'unknown',
+      // The stop carries the type outright, so an unpaired duration no longer
+      // costs us the identity of what finished.
+      subagentType: input.agent_type || start?.subagentType || 'unknown',
       durationMs: start ? Date.now() - start.startedAt : 0,
       matched: start !== null,
     })
@@ -157,7 +204,11 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
 
   const hooks: Options['hooks'] = {
     UserPromptSubmit: [{ hooks: [promptSubmit] }],
-    PreToolUse: [{ hooks: [observeTool] }, { matcher: 'Task', hooks: [preTask] }],
+    PreToolUse: [
+      { hooks: [observeTool] },
+      { matcher: SUBAGENT_DISPATCH_MATCHER, hooks: [preTask] },
+    ],
+    SubagentStart: [{ hooks: [subagentStart] }],
     SubagentStop: [{ hooks: [subagentStop] }],
   }
   // Registered only when there is somewhere to put the result. Python always

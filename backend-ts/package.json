@@ -14,10 +14,11 @@
     "migration-new": "drizzle-kit generate",
     "migration-check": "bun src/scripts/check-migrations.ts",
     "verify-schema": "bun src/scripts/verify-schema.ts",
-    "smoke": "bun src/scripts/smoke-app.ts"
+    "smoke": "bun src/scripts/smoke-app.ts",
+    "spike": "bun src/scripts/spike-session.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.233",
+    "@anthropic-ai/claude-agent-sdk": "0.3.238",
     "@modelcontextprotocol/server": "2.0.0",
     "drizzle-orm": "^0.44.7",
     "hono": "^4.13.3",
