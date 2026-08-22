@@ -246,13 +246,13 @@ export function deleteWorld(db: Db, worldId: number): boolean {
   return true
 }
 
-// `players` reads `player.yaml`; `rooms` writes the mapping into `_state.json`.
+// `players` reads `player.json`; `rooms` writes the mapping into `_state.json`.
 export interface ImportWorldServices {
   players: PlayerService
   rooms: RoomMappingService
 }
 
-// `world.yaml` is user-editable; throwing beats defaulting to `onboarding`,
+// `world.json` is user-editable; throwing beats defaulting to `onboarding`,
 // which would restart a finished campaign.
 function toWorldPhase(phase: string): WorldPhase {
   if ((WORLD_PHASES as readonly string[]).includes(phase)) return phase as WorldPhase
@@ -293,7 +293,7 @@ export function importWorldFromFilesystem(
 
     db.update(rooms).set({ worldId: created.id }).where(eq(rooms.id, room.id)).run()
 
-    // A world can exist on disk with no `player.yaml` yet.
+    // A world can exist on disk with no `player.json` yet.
     const fsPlayer = services.players.loadPlayerState(fsConfig.name)
     db.insert(playerStates)
       .values({

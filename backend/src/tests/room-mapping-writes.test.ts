@@ -23,7 +23,7 @@ let worldsDir: string
 beforeEach(() => {
   worldsDir = mkdtempSync(join(tmpdir(), 'cw-room-writes-'))
   mkdirSync(join(worldsDir, WORLD, 'locations'), { recursive: true })
-  writeFileSync(join(worldsDir, WORLD, 'locations', '_index.yaml'), 'locations: {}\n', 'utf-8')
+  writeFileSync(join(worldsDir, WORLD, 'locations', '_index.json'), '{"locations": {}}', 'utf-8')
 })
 afterEach(() => {
   rmSync(worldsDir, { recursive: true, force: true })

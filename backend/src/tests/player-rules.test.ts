@@ -175,7 +175,7 @@ describe('InventoryItem serialization', () => {
       quantity: 2,
       instance_properties: { durability: 40 },
     })
-    // Name and description must not leak into player.yaml.
+    // Name and description must not leak into player.json.
     expect(Object.keys(item.toReferenceDict()).sort()).toEqual([
       'instance_properties',
       'item_id',

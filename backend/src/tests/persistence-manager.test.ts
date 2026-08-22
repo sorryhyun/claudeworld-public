@@ -13,7 +13,6 @@ import { eq } from 'drizzle-orm'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse as parseYaml } from 'yaml'
 
 import { createAgent } from '../crud/agents'
 import { getLocations } from '../crud/locations'
@@ -74,8 +73,8 @@ afterEach(() => {
 })
 
 function readIndex(): Record<string, Record<string, unknown>> {
-  const raw = readFileSync(join(worldsDir, WORLD, 'locations', '_index.yaml'), 'utf-8')
-  return (parseYaml(raw) as { locations: Record<string, Record<string, unknown>> }).locations
+  const raw = readFileSync(join(worldsDir, WORLD, 'locations', '_index.json'), 'utf-8')
+  return (JSON.parse(raw) as { locations: Record<string, Record<string, unknown>> }).locations
 }
 
 // ============================================================================
@@ -172,7 +171,7 @@ describe('createLocation', () => {
 // ============================================================================
 
 describe('syncPlayerStateFromFilesystem', () => {
-  /** Write a `player.yaml` describing a character mid-adventure. */
+  /** Write a `player.json` describing a character mid-adventure. */
   function writeFsPlayerState(overrides: Record<string, unknown> = {}): void {
     const state = playerService.loadPlayerState(WORLD)!
     playerService.savePlayerState(WORLD, {
@@ -201,7 +200,7 @@ describe('syncPlayerStateFromFilesystem', () => {
       unknown
     >[]
     expect(inventory).toHaveLength(1)
-    // The parity landmine: `player.yaml` holds a reference, so the name and
+    // The parity landmine: `player.json` holds a reference, so the name and
     // description the database ends up with are empty. Python does the same.
     expect(inventory[0]).toEqual({
       item_id: 'iron_sword',
@@ -267,8 +266,8 @@ describe('syncPlayerStateFromFilesystem', () => {
     expect(getPlayerState(db, worldId)?.currentLocation).toBeNull()
   })
 
-  test('a world with no player.yaml is a no-op, not a crash', () => {
-    rmSync(join(worldsDir, WORLD, 'player.yaml'))
+  test('a world with no player.json is a no-op, not a crash', () => {
+    rmSync(join(worldsDir, WORLD, 'player.json'))
 
     expect(() => pm.syncPlayerStateFromFilesystem()).not.toThrow()
     expect(JSON.parse(getPlayerState(db, worldId)!.stats!)).toEqual({})
@@ -276,7 +275,7 @@ describe('syncPlayerStateFromFilesystem', () => {
 
   test('empty sections do not overwrite what the database already has', () => {
     updateStats(db, worldId, { hp: 7 })
-    // `player.yaml` is the fresh-world one: no stats, no inventory.
+    // `player.json` is the fresh-world one: no stats, no inventory.
 
     pm.syncPlayerStateFromFilesystem()
 
@@ -289,7 +288,7 @@ describe('syncPlayerStateFromFilesystem', () => {
 // ============================================================================
 
 describe('world-level writes', () => {
-  test('saveStatDefinitions writes stats.yaml and the world column', () => {
+  test('saveStatDefinitions writes stats.json and the world column', () => {
     const definitions = {
       stats: [{ name: 'hp', display: 'Health', min: 0, max: 20, default: 20 }],
       derived: [],
@@ -309,8 +308,8 @@ describe('world-level writes', () => {
     expect(db.select().from(worlds).where(eq(worlds.id, worldId)).get()!.phase).toBe('active')
   })
 
-  test('updateWorldPhase still updates the row when world.yaml is unreadable', () => {
-    rmSync(join(worldsDir, WORLD, 'world.yaml'))
+  test('updateWorldPhase still updates the row when world.json is unreadable', () => {
+    rmSync(join(worldsDir, WORLD, 'world.json'))
 
     pm.updateWorldPhase('ended')
 
@@ -331,7 +330,7 @@ describe('world-level writes', () => {
 // ============================================================================
 
 describe('exportStateToFilesystem', () => {
-  test('writes turn count, stats, inventory and location back to player.yaml', () => {
+  test('writes turn count, stats, inventory and location back to player.json', () => {
     const locationId = pm.createLocation({
       name: 'tavern',
       displayName: 'Tavern',
@@ -372,8 +371,8 @@ describe('exportStateToFilesystem', () => {
     expect(readIndex().tavern?.is_discovered).toBe(false)
   })
 
-  test('a world with no player.yaml still exports, starting from a blank state', () => {
-    rmSync(join(worldsDir, WORLD, 'player.yaml'))
+  test('a world with no player.json still exports, starting from a blank state', () => {
+    rmSync(join(worldsDir, WORLD, 'player.json'))
     updateStats(db, worldId, { hp: 4 })
 
     pm.exportStateToFilesystem()
@@ -385,10 +384,10 @@ describe('exportStateToFilesystem', () => {
     expect(state.gameTime).toEqual({ hour: 8, minute: 0, day: 1 })
   })
 
-  test('a corrupt stats blob aborts the export instead of blanking player.yaml', () => {
+  test('a corrupt stats blob aborts the export instead of blanking player.json', () => {
     writeFileSync(
-      join(worldsDir, WORLD, 'player.yaml'),
-      'current_location: null\nstats:\n  hp: 5\nturn_count: 3\ninventory: []\n',
+      join(worldsDir, WORLD, 'player.json'),
+      JSON.stringify({ current_location: null, stats: { hp: 5 }, turn_count: 3, inventory: [] }),
       'utf-8',
     )
     db.$client.query("UPDATE player_states SET stats = 'not json'").run()

@@ -361,22 +361,22 @@ describe('importWorldFromFilesystem', () => {
     }
   }
 
-  function writePlayerYaml(worldName: string, yaml: string): void {
+  function writePlayerState(worldName: string, state: unknown): void {
     mkdirSync(join(worldsDir, worldName), { recursive: true })
-    writeFileSync(join(worldsDir, worldName, 'player.yaml'), yaml, 'utf-8')
+    writeFileSync(join(worldsDir, worldName, 'player.json'), JSON.stringify(state), 'utf-8')
   }
 
   function readState(worldName: string): Record<string, unknown> {
     return JSON.parse(readFileSync(join(worldsDir, worldName, '_state.json'), 'utf-8'))
   }
 
-  test('creates the room, the world and a player state seeded from player.yaml', () => {
-    writePlayerYaml(
-      'saved-world',
-      ['turn_count: 12', 'stats:', '  hp: 7', 'inventory:', '  - item_id: lamp', 'effects: []'].join(
-        '\n',
-      ),
-    )
+  test('creates the room, the world and a player state seeded from player.json', () => {
+    writePlayerState('saved-world', {
+      turn_count: 12,
+      stats: { hp: 7 },
+      inventory: [{ item_id: 'lamp' }],
+      effects: [],
+    })
 
     const world = importWorldFromFilesystem(db, config(), OWNER, services())
 
@@ -401,7 +401,7 @@ describe('importWorldFromFilesystem', () => {
     expect(JSON.parse(world.playerState!.effects!)).toEqual([])
   })
 
-  test('falls back to an empty player state when player.yaml is absent', () => {
+  test('falls back to an empty player state when player.json is absent', () => {
     const world = importWorldFromFilesystem(db, config(), OWNER, services())
 
     expect(world.playerState?.turnCount).toBe(0)
@@ -442,8 +442,8 @@ describe('importWorldFromFilesystem', () => {
     })
   })
 
-  test('rejects a phase world.yaml should never contain', () => {
-    // `world.yaml` is user-editable. Defaulting an unreadable phase to
+  test('rejects a phase world.json should never contain', () => {
+    // `world.json` is user-editable. Defaulting an unreadable phase to
     // `onboarding` would restart a finished campaign from its intro.
     expect(() => importWorldFromFilesystem(db, config({ phase: 'halfway' }), OWNER, services())).toThrow(
       /Unknown world phase/,

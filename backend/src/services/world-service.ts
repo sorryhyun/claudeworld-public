@@ -7,12 +7,28 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { join, sep } from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
 import { getLogger } from '../infrastructure/logging/logger'
 import { HttpError } from '../http/errors'
 
 const logger = getLogger('WorldService')
+
+/**
+ * World data is JSON on disk. It was YAML until the `yaml` dependency was
+ * dropped for `Bun.YAML`, whose parser is a drop-in but whose `stringify` has no
+ * options — no key order, no block scalars — so the writers moved to
+ * `JSON.stringify` rather than reformat every world file into escaped one-liners.
+ * `world-json-migration.ts` converts a pre-existing YAML world once on startup;
+ * nothing here reads `.yaml`.
+ *
+ * The names live here because five call sites across three services and the
+ * migration have to agree on them.
+ */
+export const WORLD_CONFIG_FILE = 'world.json'
+export const PLAYER_STATE_FILE = 'player.json'
+export const STAT_DEFINITIONS_FILE = 'stats.json'
+export const LOCATION_INDEX_FILE = '_index.json'
+export const ITEM_TEMPLATE_SUFFIX = '.json'
 
 interface CacheEntry {
   mtimeMs: number
@@ -68,7 +84,7 @@ export class MtimeCache {
   }
 }
 
-/** `world.yaml`. `pending_phase` is absent unless a change is queued. */
+/** `world.json`. `pending_phase` is absent unless a change is queued. */
 export interface WorldConfig {
   name: string
   ownerId: string | null
@@ -118,9 +134,24 @@ function utcStamp(when: Date): string {
   return when.toISOString()
 }
 
-/** Block style, keys sorted, non-ASCII unescaped. `location-storage.ts` too. */
-export function dumpYaml(data: unknown): string {
-  return stringifyYaml(data, { sortMapEntries: true })
+// Keys sorted at every depth, which `JSON.stringify` will not do on its own.
+// This is not cosmetic: `saveWorldConfig` adds `pending_phase` conditionally and
+// the item writer appends optional fields, so without it a key moves position
+// between two saves and the whole file reads as changed.
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys)
+  if (value === null || typeof value !== 'object') return value
+
+  const sorted: Record<string, unknown> = {}
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    sorted[key] = sortKeys((value as Record<string, unknown>)[key])
+  }
+  return sorted
+}
+
+/** Two-space JSON, keys sorted, trailing newline. `location-storage.ts` too. */
+export function dumpJson(data: unknown): string {
+  return `${JSON.stringify(sortKeys(data), null, 2)}\n`
 }
 
 export class WorldService {
@@ -136,10 +167,10 @@ export class WorldService {
     return join(this.worldsDir, worldName.replace(UNSAFE_NAME_CHARS, '').trim())
   }
 
-  /** A world exists only once `world.yaml` is on disk. */
+  /** A world exists only once `world.json` is on disk. */
   worldExists(worldName: string): boolean {
     try {
-      return statSync(join(this.getWorldPath(worldName), 'world.yaml')).isFile()
+      return statSync(join(this.getWorldPath(worldName), WORLD_CONFIG_FILE)).isFile()
     } catch {
       return false
     }
@@ -176,8 +207,8 @@ export class WorldService {
     const now = utcStamp(new Date())
 
     writeFileSync(
-      join(worldPath, 'world.yaml'),
-      dumpYaml({
+      join(worldPath, WORLD_CONFIG_FILE),
+      dumpJson({
         name,
         owner_id: ownerId,
         user_name: userName,
@@ -192,13 +223,13 @@ export class WorldService {
       'utf-8',
     )
 
-    writeFileSync(join(worldPath, 'stats.yaml'), dumpYaml({ stats: [], derived: [] }), 'utf-8')
+    writeFileSync(join(worldPath, STAT_DEFINITIONS_FILE), dumpJson({ stats: [], derived: [] }), 'utf-8')
 
     // `equipment` and `flags` are deliberately absent: `PlayerService` defaults
     // them on read, so a new world and an old one parse identically.
     writeFileSync(
-      join(worldPath, 'player.yaml'),
-      dumpYaml({
+      join(worldPath, PLAYER_STATE_FILE),
+      dumpJson({
         current_location: null,
         turn_count: 0,
         stats: {},
@@ -211,18 +242,18 @@ export class WorldService {
     )
 
     writeFileSync(join(worldPath, 'lore.md'), '# World Lore\n\n*To be written...*\n', 'utf-8')
-    writeFileSync(join(worldPath, 'locations', '_index.yaml'), dumpYaml({ locations: {} }), 'utf-8')
+    writeFileSync(join(worldPath, 'locations', LOCATION_INDEX_FILE), dumpJson({ locations: {} }), 'utf-8')
     writeFileSync(join(worldPath, 'history.md'), '# World History\n\n')
 
     logger.info(`Created world '${name}' at ${worldPath}`)
 
     const config = this.loadWorldConfig(name)
     // Unreachable — we just wrote the file this reads.
-    if (!config) throw new Error(`World '${name}' was created but world.yaml did not parse`)
+    if (!config) throw new Error(`World '${name}' was created but world.json did not parse`)
     return config
   }
 
-  /** Newest first. A directory without a `world.yaml` is skipped, not broken. */
+  /** Newest first. A directory without a `world.json` is skipped, not broken. */
   listWorlds(ownerId: string | null = null): WorldConfig[] {
     let entries: Dirent[]
     try {
@@ -234,7 +265,7 @@ export class WorldService {
     const worlds: WorldConfig[] = []
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
-      if (!existsSync(join(this.worldsDir, entry.name, 'world.yaml'))) continue
+      if (!existsSync(join(this.worldsDir, entry.name, WORLD_CONFIG_FILE))) continue
 
       const config = this.loadWorldConfig(entry.name)
       if (!config) continue
@@ -262,20 +293,20 @@ export class WorldService {
     if (!this.worldExists(worldName)) return this.createWorld(worldName, ownerId)
 
     const config = this.loadWorldConfig(worldName)
-    if (!config) throw new Error(`World '${worldName}' exists but its world.yaml did not parse`)
+    if (!config) throw new Error(`World '${worldName}' exists but its world.json did not parse`)
     return config
   }
 
   /** `null` when missing or unparseable — a half-built world must still open. */
   loadWorldConfig(worldName: string): WorldConfig | null {
-    const configFile = join(this.getWorldPath(worldName), 'world.yaml')
+    const configFile = join(this.getWorldPath(worldName), WORLD_CONFIG_FILE)
 
     return this.cache.read(configFile, (raw): WorldConfig | null => {
       let data: unknown
       try {
-        data = parseYaml(raw)
+        data = JSON.parse(raw)
       } catch (error) {
-        logger.warning(`Malformed world.yaml for '${worldName}': ${String(error)}`)
+        logger.warning(`Malformed world.json for '${worldName}': ${String(error)}`)
         return null
       }
 
@@ -304,7 +335,7 @@ export class WorldService {
 
   /** `updated_at` is *always* restamped; that is what orders {@link listWorlds}. */
   saveWorldConfig(name: string, config: WorldConfig): void {
-    const configFile = join(this.getWorldPath(name), 'world.yaml')
+    const configFile = join(this.getWorldPath(name), WORLD_CONFIG_FILE)
 
     const data: Record<string, unknown> = {
       name: config.name,
@@ -323,7 +354,7 @@ export class WorldService {
     // unconditionally and the value survives its own application.
     if (config.pendingPhase) data.pending_phase = config.pendingPhase
 
-    writeFileSync(configFile, dumpYaml(data), 'utf-8')
+    writeFileSync(configFile, dumpJson(data), 'utf-8')
     this.cache.invalidate(configFile)
   }
 

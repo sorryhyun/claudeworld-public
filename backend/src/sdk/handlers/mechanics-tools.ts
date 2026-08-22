@@ -13,7 +13,7 @@ import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type Tool
 /**
  * Stats, the clock, inventory queries, and implanted memories. The mutating
  * paths go through {@link PlayerMutationsPort} rather than `PlayerService`
- * because each must reach the `player_states` row as well as `player.yaml`: the
+ * because each must reach the `player_states` row as well as `player.json`: the
  * polling endpoint reads the row, so a change that only lands on disk is
  * invisible to the player until a full state reload.
  */

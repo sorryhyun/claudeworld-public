@@ -1,15 +1,14 @@
 /**
- * Player state (`player.yaml` — the game's save file) and stat definitions
- * (`stats.yaml`). Read on every turn to build the Action Manager's context,
+ * Player state (`player.json` — the game's save file) and stat definitions
+ * (`stats.json`). Read on every turn to build the Action Manager's context,
  * hence the same mtime cache the other world files use.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
 import { ItemService } from './item-service'
-import { MtimeCache, WorldService } from './world-service'
+import { dumpJson, MtimeCache, PLAYER_STATE_FILE, STAT_DEFINITIONS_FILE, WorldService } from './world-service'
 import { applyStatChanges } from '../domain/player-rules'
 import type {
   InventoryEntry,
@@ -30,7 +29,7 @@ export interface GameTime {
 
 export const DEFAULT_GAME_TIME: GameTime = { hour: 8, minute: 0, day: 1 }
 
-/** `player.yaml`, snake_case on disk. `equipment` and `flags` are absent from
+/** `player.json`, snake_case on disk. `equipment` and `flags` are absent from
  * older worlds, hence the defaults on read. */
 export interface PlayerState {
   /** Location *folder* name, not display name. `null` during onboarding. */
@@ -126,12 +125,6 @@ function emptyPlayerState(): PlayerState {
   }
 }
 
-// Block style, sorted keys, unescaped non-ASCII, sequence items flush with
-// their key: the format existing world files are written in.
-function dumpYaml(data: unknown): string {
-  return stringifyYaml(data, { sortMapEntries: true, indentSeq: false })
-}
-
 // A cast, not a validation: `buildStatMap` throws on a nameless entry, and
 // pre-empting that would silently un-clamp the stat.
 function asRuleDefinitions(definitions: StatDefinitions): RuleStatDefinitions {
@@ -152,7 +145,7 @@ export class PlayerService {
   }
 
   private playerFile(worldName: string): string {
-    return join(this.worlds.getWorldPath(worldName), 'player.yaml')
+    return join(this.worlds.getWorldPath(worldName), PLAYER_STATE_FILE)
   }
 
   clearCache(): void {
@@ -166,9 +159,9 @@ export class PlayerService {
     return this.cache.read(this.playerFile(worldName), (raw): PlayerState => {
       let data: unknown
       try {
-        data = parseYaml(raw)
+        data = JSON.parse(raw)
       } catch (error) {
-        logger.warning(`Malformed player.yaml for '${worldName}': ${String(error)}`)
+        logger.warning(`Malformed player.json for '${worldName}': ${String(error)}`)
         return emptyPlayerState()
       }
 
@@ -192,7 +185,7 @@ export class PlayerService {
   }
 
   /**
-   * Write `player.yaml` and invalidate the cached read. The inventory goes
+   * Write `player.json` and invalidate the cached read. The inventory goes
    * through `ItemService.toReferenceFormat`, which both strips each entry to a
    * reference and *creates* the template for any item lacking one — an item an
    * agent invented this turn becomes durable here or not at all.
@@ -215,8 +208,8 @@ export class PlayerService {
       flags: state.flags,
     }
 
-    const playerFile = join(worldPath, 'player.yaml')
-    writeFileSync(playerFile, dumpYaml(data), 'utf-8')
+    const playerFile = join(worldPath, PLAYER_STATE_FILE)
+    writeFileSync(playerFile, dumpJson(data), 'utf-8')
     this.cache.invalidate(playerFile)
   }
 
@@ -232,14 +225,14 @@ export class PlayerService {
 
   /** Missing or malformed yields the empty shape. */
   loadStatDefinitions(worldName: string): StatDefinitions {
-    const statsFile = join(this.worlds.getWorldPath(worldName), 'stats.yaml')
+    const statsFile = join(this.worlds.getWorldPath(worldName), STAT_DEFINITIONS_FILE)
 
     const parsed = this.cache.read(statsFile, (raw): StatDefinitions => {
       let data: unknown
       try {
-        data = parseYaml(raw)
+        data = JSON.parse(raw)
       } catch (error) {
-        logger.warning(`Malformed stats.yaml for '${worldName}': ${String(error)}`)
+        logger.warning(`Malformed stats.json for '${worldName}': ${String(error)}`)
         return { stats: [], derived: [] }
       }
 
@@ -256,8 +249,8 @@ export class PlayerService {
     const worldPath = this.worlds.getWorldPath(worldName)
     mkdirSync(worldPath, { recursive: true })
 
-    const statsFile = join(worldPath, 'stats.yaml')
-    writeFileSync(statsFile, dumpYaml(definitions), 'utf-8')
+    const statsFile = join(worldPath, STAT_DEFINITIONS_FILE)
+    writeFileSync(statsFile, dumpJson(definitions), 'utf-8')
 
     // Read through the mtime cache, so a same-millisecond write would otherwise
     // stay invisible.
@@ -265,7 +258,7 @@ export class PlayerService {
   }
 
   /** Clamping stays in `applyStatChanges`, so the filesystem and database paths
-   * cannot disagree about a stat's bounds. `{}` when there is no `player.yaml`. */
+   * cannot disagree about a stat's bounds. `{}` when there is no `player.json`. */
   updateStats(worldName: string, changes: Record<string, number>): Record<string, number> {
     const state = this.loadPlayerState(worldName)
     if (!state) return {}

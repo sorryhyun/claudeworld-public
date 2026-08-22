@@ -42,7 +42,7 @@ export interface Equippable {
   [key: string]: unknown
 }
 
-/** An item template as stored in `worlds/<world>/items/<item_id>.yaml`. */
+/** An item template as stored in `worlds/<world>/items/<item_id>.json`. */
 export interface ItemTemplate {
   id?: string
   name?: string
@@ -166,7 +166,7 @@ export class InventoryItem {
   }
 
   /**
-   * The reference format `player.yaml` persists — deliberately not
+   * The reference format `player.json` persists — deliberately not
    * {@link toDict}'s key set: name and description live in the item template and
    * duplicating them here would shadow an edit with a stale copy.
    */

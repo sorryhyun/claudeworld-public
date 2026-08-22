@@ -199,7 +199,7 @@ export const persistItemTool = {
   name: 'persist_item',
   description: `Persist an item design to the game world.
 Used by Item Designer sub-agent after designing an item.
-Creates the item template in filesystem (items/[item_id].yaml).
+Creates the item template in filesystem (items/[item_id].json).
 
 **Returns error if:**
 - Item ID already exists (use existing item instead)

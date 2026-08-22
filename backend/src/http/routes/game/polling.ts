@@ -3,8 +3,8 @@
  * every two seconds per open world.
  *
  * It is not a read. Because the agent side of the app writes to the
- * *filesystem*, this request also syncs the phase off `world.yaml` (what makes
- * the "Enter World" button appear), imports the seed generator's `player.yaml`,
+ * *filesystem*, this request also syncs the phase off `world.json` (what makes
+ * the "Enter World" button appear), imports the seed generator's `player.json`,
  * writes the "<player> arrives at <place>" line and replays it to the Action
  * Manager as the world's first turn. All but the phase sync are one-shot: they
  * run only while the phase is `active` and the row has no
@@ -342,7 +342,7 @@ function chattingAgentsRoom(state: AppState, world: World, pollOnboarding: boole
   return getLocation(state.db, playerState.currentLocationId)?.roomId ?? null
 }
 
-/** `world.yaml` is hand-editable; anything unrecognised reads as onboarding. */
+/** `world.json` is hand-editable; anything unrecognised reads as onboarding. */
 function asWorldPhase(phase: string): WorldPhase {
   return phase === 'active' || phase === 'ended' ? phase : 'onboarding'
 }

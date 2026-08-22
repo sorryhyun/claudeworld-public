@@ -2,7 +2,7 @@
  * `LocationStorage` write paths — creation, index patching and stale pruning.
  *
  * Each test builds an empty world under the OS temp directory through
- * `WorldService.createWorld`, so `locations/_index.yaml` starts in exactly the
+ * `WorldService.createWorld`, so `locations/_index.json` starts in exactly the
  * shape a real world starts in: present, parseable and empty.
  */
 
@@ -19,7 +19,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse as parseYaml } from 'yaml'
 
 import { LocationStorage } from '../services/location-storage'
 import { WorldService } from '../services/world-service'
@@ -41,12 +40,12 @@ function locationsDir(): string {
 }
 
 function indexFile(): string {
-  return join(locationsDir(), '_index.yaml')
+  return join(locationsDir(), '_index.json')
 }
 
 /** The raw `locations` mapping, so tests can assert on the on-disk keys. */
 function rawIndex(): Record<string, Record<string, unknown>> {
-  const document = parseYaml(readFileSync(indexFile(), 'utf-8')) as Record<string, unknown>
+  const document = JSON.parse(readFileSync(indexFile(), 'utf-8')) as Record<string, unknown>
   return document.locations as Record<string, Record<string, unknown>>
 }
 
@@ -57,7 +56,7 @@ function orphanDirectory(name: string): void {
 
 /** An index row with no directory — a stale entry. */
 function staleRow(name: string): void {
-  const document = parseYaml(readFileSync(indexFile(), 'utf-8')) as Record<string, unknown>
+  const document = JSON.parse(readFileSync(indexFile(), 'utf-8')) as Record<string, unknown>
   const locations = document.locations as Record<string, unknown>
   locations[name] = { name, label: null, position: [0, 0], is_discovered: true, adjacent: [], is_draft: false }
   writeFileSync(indexFile(), JSON.stringify(document), 'utf-8')
@@ -123,7 +122,7 @@ describe('createLocation', () => {
     expect(rawIndex().old_mill?.name).toBe('The Old Mill')
   })
 
-  test('a world with no _index.yaml gets one', () => {
+  test('a world with no _index.json gets one', () => {
     rmSync(indexFile())
     const storage = new LocationStorage(worldsDir)
 
@@ -133,10 +132,10 @@ describe('createLocation', () => {
   })
 
   test('unrelated top-level keys in the index survive the rewrite', () => {
-    writeFileSync(indexFile(), 'locations: {}\nversion: 3\n', 'utf-8')
+    writeFileSync(indexFile(), '{"locations": {}, "version": 3}', 'utf-8')
     new LocationStorage(worldsDir).createLocation(WORLD, 'old_mill', 'The Old Mill', 'Dust.', [3, 4])
 
-    const document = parseYaml(readFileSync(indexFile(), 'utf-8')) as Record<string, unknown>
+    const document = JSON.parse(readFileSync(indexFile(), 'utf-8')) as Record<string, unknown>
     expect(document.version).toBe(3)
     expect(Object.keys(document.locations as Record<string, unknown>)).toEqual(['old_mill'])
   })

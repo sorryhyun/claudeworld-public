@@ -1,6 +1,6 @@
 /**
- * Item templates — `worlds/{name}/items/{item_id}.yaml`, the source of truth for
- * what an item *is*; `player.yaml`'s inventory holds only references. Two
+ * Item templates — `worlds/{name}/items/{item_id}.json`, the source of truth for
+ * what an item *is*; `player.json`'s inventory holds only references. Two
  * load-bearing behaviours: {@link ItemService.toReferenceFormat} writes
  * templates as a side effect, which is how an item invented mid-turn becomes
  * persistent; and templates are keyed by the file's own `id` field, not by its
@@ -9,9 +9,8 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
-import { MtimeCache, WorldService } from './world-service'
+import { dumpJson, ITEM_TEMPLATE_SUFFIX, MtimeCache, WorldService } from './world-service'
 import { InventoryItem, normalizeProperties } from '../domain/player-rules'
 import type { Equippable, InventoryEntry, ItemTemplate } from '../domain/player-rules'
 import { getLogger } from '../infrastructure/logging/logger'
@@ -62,10 +61,6 @@ function getTemplate(
   return Object.hasOwn(templates, itemId) ? templates[itemId] : undefined
 }
 
-function dumpYaml(data: unknown): string {
-  return stringifyYaml(data, { sortMapEntries: true, indentSeq: false })
-}
-
 export class ItemService {
   private readonly worlds: WorldService
 
@@ -93,7 +88,7 @@ export class ItemService {
       return []
     }
     return names
-      .filter((name) => name.endsWith('.yaml') && !name.startsWith('.'))
+      .filter((name) => name.endsWith(ITEM_TEMPLATE_SUFFIX) && !name.startsWith('.'))
       .map((name) => join(itemsDir, name))
   }
 
@@ -136,7 +131,7 @@ export class ItemService {
     const templates: Record<string, ItemTemplate> = {}
     for (const file of this.listTemplateFiles(this.itemsDir(worldName))) {
       try {
-        const data: unknown = parseYaml(readFileSync(file, 'utf-8'))
+        const data: unknown = JSON.parse(readFileSync(file, 'utf-8'))
         if (isRecord(data) && 'id' in data) {
           templates[String(data.id)] = data as ItemTemplate
         }
@@ -159,7 +154,7 @@ export class ItemService {
   }
 
   /**
-   * Write `items/{safe_id}.yaml`. Returns `false` — not an error — when the file
+   * Write `items/{safe_id}.json`. Returns `false` — not an error — when the file
    * exists and `overwrite` is not set, so `persist_item` skips an item the world
    * already defines. `default_properties` is always written, even empty, because
    * the resolver distinguishes "no defaults" from a file predating it.
@@ -169,14 +164,14 @@ export class ItemService {
     mkdirSync(itemsDir, { recursive: true })
 
     const safeId = input.itemId.replace(UNSAFE_ITEM_ID_CHARS, '')
-    const itemFile = join(itemsDir, `${safeId}.yaml`)
+    const itemFile = join(itemsDir, `${safeId}${ITEM_TEMPLATE_SUFFIX}`)
 
     if (existsSync(itemFile) && !input.overwrite) {
       logger.debug(`Item template '${input.itemId}' already exists, skipping`)
       return false
     }
 
-    // Build order is cosmetic — `dumpYaml` sorts keys on the way out.
+    // Build order is cosmetic — `dumpJson` sorts keys on the way out.
     const template: ItemTemplate = {
       id: input.itemId,
       name: input.name,
@@ -193,7 +188,7 @@ export class ItemService {
 
     template.default_properties = input.properties ?? {}
 
-    writeFileSync(itemFile, dumpYaml(template), 'utf-8')
+    writeFileSync(itemFile, dumpJson(template), 'utf-8')
 
     // Makes a same-millisecond write visible where mtime resolution is coarser
     // than the gap between two saves.
@@ -204,7 +199,7 @@ export class ItemService {
   }
 
   /**
-   * Merge `player.yaml`'s inventory references with the templates they name,
+   * Merge `player.json`'s inventory references with the templates they name,
    * instance properties over template defaults. An entry with no template still
    * resolves, through the legacy embedded path in `InventoryItem.fromReference`.
    */
@@ -231,7 +226,7 @@ export class ItemService {
   }
 
   /**
-   * Reduce full inventory items to the reference form `player.yaml` stores,
+   * Reduce full inventory items to the reference form `player.json` stores,
    * creating any missing template. The write is the point: an item conjured
    * mid-turn gets a durable definition at the moment the save file points at it.
    */

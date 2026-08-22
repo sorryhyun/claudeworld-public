@@ -1,0 +1,15 @@
+{
+  "rooms": {
+    "onboarding": {
+      "db_room_id": 1,
+      "agents": [
+        "Onboarding_Manager"
+      ],
+      "created_at": "2026-08-06T13:14:54.939049"
+    }
+  },
+  "current_room": "onboarding",
+  "suggestions": [],
+  "ui": {},
+  "last_updated": "2026-08-06T13:14:54.939377"
+}

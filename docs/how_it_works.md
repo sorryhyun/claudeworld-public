@@ -300,15 +300,15 @@ ClaudeWorld uses **filesystem-primary architecture**—the filesystem is the sou
 ```
 worlds/
   {world_name}/
-    ├── world.yaml              # Config (genre, theme, phase, owner_id)
-    ├── stats.yaml              # Stat system definitions
+    ├── world.json              # Config (genre, theme, phase, owner_id)
+    ├── stats.json              # Stat system definitions
     ├── lore.md                 # World background (8-15 paragraphs)
-    ├── player.yaml             # Player state (stats, inventory, location)
+    ├── player.json             # Player state (stats, inventory, location)
     ├── history.md              # Compressed turn history summaries
     ├── _state.json             # Current runtime state (stats, inventory, effects)
     ├── _initial.json           # Initial state snapshot (for world reset)
     ├── locations/
-    │   ├── _index.yaml         # Location registry with positions
+    │   ├── _index.json         # Location registry with positions
     │   └── {location_name}/
     │       ├── description.md  # Rich 2-3 paragraph description
     │       └── events.md       # Location-specific events
@@ -318,8 +318,8 @@ worlds/
     │       ├── characteristics.md
     │       ├── recent_events.md       # Short-term context (auto-updated)
     │       └── consolidated_memory.md # Long-term memories (via memorize tool)
-    ├── items/                  # Item definitions (YAML files)
-    │   └── {item_id}.yaml      # Item template with properties
+    ├── items/                  # Item definitions (JSON files)
+    │   └── {item_id}.json      # Item template with properties
     └── maps/                   # Optional map assets
 ```
 

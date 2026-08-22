@@ -1,5 +1,5 @@
 /**
- * Locations under `worlds/{name}/locations/`: a row in `locations/_index.yaml`
+ * Locations under `worlds/{name}/locations/`: a row in `locations/_index.json`
  * (position, adjacency, discovery) plus the location's own directory
  * (`description.md`, `events.md`). The index is authoritative for *which*
  * locations exist, but a row whose directory is gone is stale and skipped — the
@@ -9,9 +9,8 @@
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parse as parseYaml } from 'yaml'
 
-import { dumpYaml, MtimeCache, WorldService } from './world-service'
+import { dumpJson, LOCATION_INDEX_FILE, MtimeCache, WorldService } from './world-service'
 import { getLogger } from '../infrastructure/logging/logger'
 
 const logger = getLogger('LocationStorage')
@@ -66,7 +65,7 @@ export class LocationStorage {
   }
 
   private indexFile(worldName: string): string {
-    return join(this.locationsDir(worldName), '_index.yaml')
+    return join(this.locationsDir(worldName), LOCATION_INDEX_FILE)
   }
 
   clearCache(): void {
@@ -80,10 +79,10 @@ export class LocationStorage {
 
     const parsed = this.cache.read(indexFile, (raw): Record<string, unknown> => {
       try {
-        return asMapping(asMapping(parseYaml(raw)).locations)
+        return asMapping(asMapping(JSON.parse(raw)).locations)
       } catch (error) {
         logger.warning(
-          `Malformed locations/_index.yaml for '${worldName}': ${String(error)}`,
+          `Malformed locations/_index.json for '${worldName}': ${String(error)}`,
         )
         return {}
       }
@@ -151,7 +150,7 @@ export class LocationStorage {
 
   // The *whole* document, read fresh for a read-modify-write; `null` when
   // absent. Unlike {@link loadIndex} it keeps the top level (anything up there
-  // must survive the rewrite) and does not swallow a YAML error — degrading to
+  // must survive the rewrite) and does not swallow a parse error — degrading to
   // `{}` would make the next save replace a corrupt index with an empty one.
   private readIndexDocument(worldName: string): Record<string, unknown> | null {
     let raw: string
@@ -162,7 +161,7 @@ export class LocationStorage {
     }
 
     // An existing but empty index is still an index: rows get added to it.
-    const parsed = parseYaml(raw) as unknown
+    const parsed = JSON.parse(raw) as unknown
     return parsed === null || parsed === undefined ? { locations: {} } : asMapping(parsed)
   }
 
@@ -170,7 +169,7 @@ export class LocationStorage {
   // location created and immediately read would serve the pre-write index.
   private saveIndex(worldName: string, document: Record<string, unknown>): void {
     const indexFile = this.indexFile(worldName)
-    writeFileSync(indexFile, dumpYaml(document), 'utf-8')
+    writeFileSync(indexFile, dumpJson(document), 'utf-8')
     this.cache.invalidate(indexFile)
   }
 
@@ -267,7 +266,7 @@ export class LocationStorage {
         kept[name] = row
       } else {
         removed.push(name)
-        logger.info(`Removing stale location '${name}' from _index.yaml`)
+        logger.info(`Removing stale location '${name}' from _index.json`)
       }
     }
 

@@ -1,9 +1,9 @@
 /**
  * Filesystem-first player mutations with a write-through to `player_states`.
- * `player.yaml` is the authoritative save file and the row is a cache the polling
+ * `player.json` is the authoritative save file and the row is a cache the polling
  * endpoint reads; both must move together, which is why this class exists. The
  * filesystem write *is* the operation — the mirror is allowed to fail, so every
- * method returns success once `player.yaml` is written, and it overwrites whole
+ * method returns success once `player.json` is written, and it overwrites whole
  * values rather than replaying the delta.
  *
  * Landmines: the sync never inserts, so a world whose row character creation has
@@ -61,7 +61,7 @@ export class PlayerFacade implements PlayerMutationsPort {
     private readonly worldId?: number | null,
   ) {}
 
-  // Never throws: `player.yaml` is already written, so a failure costs only a
+  // Never throws: `player.json` is already written, so a failure costs only a
   // stale polling read. The `SELECT` is not redundant with the `WHERE` — a bare
   // `UPDATE` matching no rows would log a sync that never happened.
   private syncToDb(worldName: string, state: PlayerState): void {
@@ -91,7 +91,7 @@ export class PlayerFacade implements PlayerMutationsPort {
     }
   }
 
-  /** Clamped by the world's stat definitions. `null` means no `player.yaml`, which
+  /** Clamped by the world's stat definitions. `null` means no `player.json`, which
    * the handler treats as "no stats changed" rather than a failed turn. */
   updateStats(worldName: string, changes: Record<string, number>): Record<string, number> | null {
     const state = this.players.loadPlayerState(worldName)
@@ -150,7 +150,7 @@ export class PlayerFacade implements PlayerMutationsPort {
     return true
   }
 
-  /** `false` covers no `player.yaml`, no such item, and holding fewer than asked
+  /** `false` covers no `player.json`, no such item, and holding fewer than asked
    * for — the last writes nothing, so an item cost cannot be part-paid. */
   removeItem(worldName: string, itemId: string, quantity = 1): boolean {
     const state = this.players.loadPlayerState(worldName)

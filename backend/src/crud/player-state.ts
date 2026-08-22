@@ -2,7 +2,7 @@
  * CRUD for PlayerState: read the row, hand the JSON blob to
  * `domain/player-rules.ts`, write it back. Those rules are shared with
  * `services/player-service.ts`, which runs the same mutations against
- * `player.yaml`, so none of the logic is inlined here.
+ * `player.json`, so none of the logic is inlined here.
  */
 
 import { eq } from 'drizzle-orm'
@@ -152,7 +152,7 @@ export function initializePlayerStats(
 
 /**
  * Add an item to the inventory. The stored shape is the embedded one, *not* the
- * reference shape `player.yaml` uses — the column holds the full item.
+ * reference shape `player.json` uses — the column holds the full item.
  */
 export function addInventoryItem(
   db: Db,

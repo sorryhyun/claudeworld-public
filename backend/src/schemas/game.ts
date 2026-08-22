@@ -1,6 +1,6 @@
 // Three models are not plain reflections of a table: `World` merges a row with
-// `lore.md` and `stats.yaml`, `PlayerState` merges one with the resolved
-// inventory/clock/equipment from `player.yaml`, and `Location` reproduces a live
+// `lore.md` and `stats.json`, `PlayerState` merges one with the resolved
+// inventory/clock/equipment from `player.json`, and `Location` reproduces a live
 // bug — see `toLocation`.
 
 import { z } from 'zod'
@@ -46,7 +46,7 @@ export const WorldUpdate = z.object({
 
 export type WorldUpdate = z.infer<typeof WorldUpdate>
 
-/** As authored in `worlds/<world>/stats.yaml`. `max` is optional because uncapped
+/** As authored in `worlds/<world>/stats.json`. `max` is optional because uncapped
  * stats exist; `min`/`color` have UI fallbacks. */
 export const StatDefinition = z.object({
   name: z.string(),
@@ -284,7 +284,7 @@ export const GameTime = z.object({
 
 export type GameTime = z.infer<typeof GameTime>
 
-/** `player.yaml` keys the reference `item_id` and the response calls it `id`;
+/** `player.json` keys the reference `item_id` and the response calls it `id`;
  * {@link toInventoryItem} renames it so nothing downstream knows both. */
 export const InventoryItem = z.object({
   id: z.string(),
@@ -340,7 +340,7 @@ export const GameStateResponse = z.object({
 
 export type GameStateResponse = z.infer<typeof GameStateResponse>
 
-/** The `player.yaml`-sourced half of a player-state response; the matching
+/** The `player.json`-sourced half of a player-state response; the matching
  * columns are a cache the read path does not consult. */
 export interface PlayerStateOverlay {
   inventory: InventoryEntry[]
@@ -370,7 +370,7 @@ export function toPlayerState(row: PlayerStateWithLocation, overlay: PlayerState
 }
 
 /** `item_id` wins over `id`, and an entry with neither — or with no name —
- * becomes `""` rather than an error: a half-written `player.yaml` produces those
+ * becomes `""` rather than an error: a half-written `player.json` produces those
  * shapes mid-turn, and a blank row beats 500-ing the panel. */
 export function toInventoryItem(entry: InventoryEntry): InventoryItem {
   return {

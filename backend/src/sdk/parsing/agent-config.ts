@@ -6,7 +6,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { parse as parseYaml } from 'yaml'
+import { YAML } from 'bun'
 
 import { getSettings } from '../../config/settings'
 import { parseLongTermMemory } from './memory'
@@ -62,7 +62,7 @@ function readYamlConfig(folderPath: string): Record<string, unknown> {
   const configFile = join(folderPath, 'config.yaml')
   if (!existsSync(configFile)) return {}
   try {
-    const parsed: unknown = parseYaml(readFileSync(configFile, 'utf-8'))
+    const parsed: unknown = YAML.parse(readFileSync(configFile, 'utf-8'))
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>
     }

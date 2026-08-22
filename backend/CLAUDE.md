@@ -248,10 +248,28 @@ source of truth:
 - System prompt: `../config/guidelines_3rd.yaml` (`system_prompt` field), read by
   `src/sdk/loaders/guidelines.ts`
 - Tool definitions: `src/sdk/tools/` (TypeScript modules)
+- World data: `../worlds/{name}/` — `world.json`, `player.json`, `stats.json`,
+  `locations/_index.json`, `items/*.json`
 
 Changes apply immediately on the next agent response (mtime-based hot-reload). File locking
 (`proper-lockfile`) guards read-modify-write; atomic rename and `O_APPEND` carry the real
 durability guarantee.
+
+**Two file formats, and the split is not arbitrary.** There is no YAML *writer* in this
+repo: `Bun.YAML.parse` replaced the `yaml` dependency, and Bun's `YAML.stringify` is shaped
+like `JSON.stringify` — no key ordering, no block scalars, no options at all — so a
+multi-line description would reach disk as one escaped line.
+
+- **`config/` and `agents/` stay YAML.** They are read-only to the server, hand-authored,
+  and full of long prose that block scalars keep readable. `Bun.YAML.parse` reads them.
+- **`worlds/` is JSON.** Written by `dumpJson` in `src/services/world-service.ts` — two-space,
+  keys sorted at every depth (`saveWorldConfig` adds `pending_phase` conditionally; without
+  the sort a key moves position between saves and the whole file reads as changed), trailing
+  newline. Read with `JSON.parse`. The five filenames are constants in the same module.
+- **`src/services/world-json-migration.ts` converts a YAML-era world once**, from `main.ts`
+  before the first request — an install upgraded in place keeps `worlds/` across releases,
+  and nothing else here can read `.yaml` under it. It never overwrites an existing `.json`
+  and leaves a file it cannot parse alone.
 
 `src/config/paths.ts` resolves all of this. It discovers the project root by walking up for
 a directory holding both `agents/` and `backend/`, or takes `CLAUDEWORLD_ROOT` as an

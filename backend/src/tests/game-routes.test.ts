@@ -201,11 +201,11 @@ describe('GET /worlds/{id}', () => {
   })
 
   /**
-   * `world.yaml` is the source of truth for phase, genre, theme and user name.
+   * `world.json` is the source of truth for phase, genre, theme and user name.
    * Reading the world is one of the two places that copies a filesystem change
    * onto the row — the other is the poll.
    */
-  test('syncs phase and genre from world.yaml onto the row', async () => {
+  test('syncs phase and genre from world.json onto the row', async () => {
     const worlds = app.state.services.worlds
     const config = worlds.loadWorldConfig('asdf')!
     config.phase = 'active'
@@ -719,7 +719,7 @@ describe('chat mode', () => {
 // =============================================================================
 
 describe('game state', () => {
-  test('assembles the player state from the row plus player.yaml', async () => {
+  test('assembles the player state from the row plus player.json', async () => {
     const state = await app.json<Record<string, unknown>>('/worlds/1/state')
 
     expect(state).toMatchObject({
@@ -740,7 +740,7 @@ describe('game state', () => {
     expect(await app.json<Record<string, unknown>>('/worlds/1/state/stats')).toEqual({ definitions: [], current: {} })
   })
 
-  test('inventory is resolved from player.yaml, not the column', async () => {
+  test('inventory is resolved from player.json, not the column', async () => {
     expect(await app.json<Record<string, unknown>>('/worlds/1/state/inventory')).toEqual({ items: [], count: 0 })
   })
 

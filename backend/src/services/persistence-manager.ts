@@ -16,7 +16,7 @@ import { updateWorld } from '../crud/worlds'
 import type { Db } from '../db'
 import type { Location, WorldPhase } from '../db/schema'
 import type { InventoryEntry } from '../domain/player-rules'
-// `worlds.stat_definitions`; StatDefinitionsFile is the whole `stats.yaml`.
+// `worlds.stat_definitions`; StatDefinitionsFile is the whole `stats.json`.
 import type { StatDefinitions as StatDefinitionBlob } from '../domain/player-rules'
 import { getLogger } from '../infrastructure/logging/logger'
 import { LocationStorage } from './location-storage'
@@ -59,7 +59,7 @@ function blankPlayerState(): PlayerState {
     inventory: [],
     effects: [],
     recentActions: [],
-    // Must not be empty: the writer dumps it into `player.yaml`, and every
+    // Must not be empty: the writer dumps it into `player.json`, and every
     // reader of that file expects a clock.
     gameTime: { ...DEFAULT_GAME_TIME },
     equipment: {},
@@ -140,7 +140,7 @@ export class PersistenceManager {
   }
 
   /**
-   * Copy `player.yaml` into the database: the onboarding→active handover, and
+   * Copy `player.json` into the database: the onboarding→active handover, and
    * polling's repair path. Empty sections are skipped rather than written as
    * empty, so this cannot wipe what the database has and the file does not.
    */
@@ -170,7 +170,7 @@ export class PersistenceManager {
     if (fsState.inventory.length > 0) {
       for (const item of fsState.inventory) {
         addInventoryItem(this.db, this.worldId, {
-          // `player.yaml` stores the *reference* format, so name/description
+          // `player.json` stores the *reference* format, so name/description
           // are usually empty — the `items/` template holds them, unresolved here.
           id: String(item.item_id ?? item.id ?? ''),
           name: String(item.name ?? ''),
@@ -281,7 +281,7 @@ export class PersistenceManager {
 
   /**
    * Move the world to a new phase on both sides immediately; the deferred
-   * variant is `WorldService.applyPendingPhase`. An unreadable `world.yaml`
+   * variant is `WorldService.applyPendingPhase`. An unreadable `world.json`
    * still gets its row updated, or the player is stranded in onboarding.
    */
   updateWorldPhase(phase: WorldPhase): void {
@@ -309,7 +309,7 @@ export class PersistenceManager {
   /**
    * Write the live database state back over the world's files, for backups and
    * portable exports. `effects`, `recent_actions`, `game_time`, `equipment` and
-   * `flags` have no column and round-trip through the existing `player.yaml` —
+   * `flags` have no column and round-trip through the existing `player.json` —
    * exporting into a world missing that file silently resets the clock to day 1.
    * Locations export discovery status only.
    */
@@ -327,7 +327,7 @@ export class PersistenceManager {
     fsState.turnCount = playerState.turnCount ?? 0
 
     // Bare `JSON.parse` on purpose: a corrupt blob aborts the export rather
-    // than overwriting a good `player.yaml` with nothing.
+    // than overwriting a good `player.json` with nothing.
     if (playerState.stats) {
       fsState.stats = JSON.parse(playerState.stats) as Record<string, number>
     }

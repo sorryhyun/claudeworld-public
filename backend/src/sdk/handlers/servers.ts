@@ -143,7 +143,7 @@ export interface BuildServersOptions {
 /**
  * One turn's tool inputs, resolved once and reused by every request that turn
  * produces. `mutations` must be **one** `PlayerFacade` per turn: two would each
- * cache `player.yaml` and the second write would be stale.
+ * cache `player.json` and the second write would be stale.
  */
 export interface TurnBinding {
   ctx: ToolContext

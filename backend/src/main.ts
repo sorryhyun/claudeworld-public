@@ -15,6 +15,7 @@ import { getLogger, setupLogging } from './infrastructure/logging/logger'
 import { embeddedFrontend } from './exe/assets'
 import { openBrowser, resolveOpenBrowser } from './http/open-browser'
 import { buildDevRoutes, listen, loadDevFrontend } from './http/serve'
+import { migrateWorldDataToJson } from './services/world-json-migration'
 
 const logger = getLogger('Main')
 
@@ -63,6 +64,10 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
   const databasePath = resolveDatabasePath()
   logger.info(`💾 Database: ${databasePath}`)
   const sqlite = openAndInitDb({ path: databasePath })
+
+  // Before any world is read: an install upgraded from a YAML-era release has
+  // `worlds/` preserved on disk and nothing left that can read it.
+  migrateWorldDataToJson(settings.paths.worldsDir)
 
   // The raw `bun:sqlite` handle, wrapped once here so no other module has to.
   const state = createAppState({ db: wrapDb(sqlite) })

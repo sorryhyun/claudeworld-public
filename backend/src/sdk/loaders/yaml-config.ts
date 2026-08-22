@@ -5,7 +5,7 @@
  */
 
 import { readFileSync, statSync } from 'node:fs'
-import { parse as parseYaml } from 'yaml'
+import { YAML } from 'bun'
 
 import { getSettings } from '../../config/settings'
 import { getLogger } from '../../infrastructure/logging/logger'
@@ -45,7 +45,7 @@ export function loadYamlFile(filePath: string): YamlConfig {
   }
 
   try {
-    const parsed: unknown = parseYaml(raw)
+    const parsed: unknown = YAML.parse(raw)
     if (parsed === null || parsed === undefined) return {}
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
       logger.warning(`Expected a mapping at top level of ${filePath}`)

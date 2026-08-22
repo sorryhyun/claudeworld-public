@@ -3,7 +3,7 @@
  *
  * Split out from `game-routes.test.ts` because the poll is the endpoint the
  * whole frontend lives on and is not a read: it syncs the world's phase from
- * `world.yaml`, imports `player.yaml` into the database on the first request
+ * `world.json`, imports `player.json` into the database on the first request
  * after onboarding, writes the arrival message, and starts the opening turn.
  * Each of those is a distinct scenario with its own fixture.
  */
@@ -51,7 +51,7 @@ afterAll(() => {
   resetSettings()
 })
 
-/** Flip `world.yaml`, which is the source of truth the poll syncs *from*. */
+/** Flip `world.json`, which is the source of truth the poll syncs *from*. */
 function setFsPhase(worldName: string, phase: string, pendingPhase: string | null = null): void {
   const worlds = app.state.services.worlds
   const config = worlds.loadWorldConfig(worldName)!
@@ -146,7 +146,7 @@ describe('polling during onboarding', () => {
 
 describe('phase sync', () => {
   /**
-   * The onboarding `complete` tool writes `pending_phase` into `world.yaml`.
+   * The onboarding `complete` tool writes `pending_phase` into `world.json`.
    * Reporting it is what makes the frontend's "Enter World" banner appear, so it
    * has to survive the poll untouched — the phase itself is still `onboarding`.
    */
@@ -202,7 +202,7 @@ describe('phase sync', () => {
 
 /**
  * The most load-bearing behaviour in this file. When onboarding finishes, the
- * seed generator has written `player.yaml` and a location directory, and the
+ * seed generator has written `player.json` and a location directory, and the
  * database knows about neither. The first poll of the now-active world has to
  * import all of it, write the arrival line, and start the opening turn — all
  * without the player having typed anything.

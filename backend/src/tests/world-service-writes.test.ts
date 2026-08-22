@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
 import { HttpError } from '../http/errors'
 import { WorldService } from '../services/world-service'
@@ -26,9 +25,9 @@ afterEach(() => {
   rmSync(worldsDir, { recursive: true, force: true })
 })
 
-/** The raw `world.yaml` mapping, so tests can assert on key *presence*. */
+/** The raw `world.json` mapping, so tests can assert on key *presence*. */
 function rawWorldYaml(name: string): Record<string, unknown> {
-  return parseYaml(readFileSync(join(worldsDir, name, 'world.yaml'), 'utf-8')) as Record<string, unknown>
+  return JSON.parse(readFileSync(join(worldsDir, name, 'world.json'), 'utf-8')) as Record<string, unknown>
 }
 
 /**
@@ -44,8 +43,8 @@ function stamp(value: unknown): string {
 function seedWorld(name: string, ownerId: string, updatedAt: string): void {
   mkdirSync(join(worldsDir, name), { recursive: true })
   writeFileSync(
-    join(worldsDir, name, 'world.yaml'),
-    stringifyYaml({
+    join(worldsDir, name, 'world.json'),
+    JSON.stringify({
       name,
       owner_id: ownerId,
       user_name: null,
@@ -74,10 +73,10 @@ describe('createWorld', () => {
     for (const directory of ['agents', 'locations', 'maps', 'items']) {
       expect(statSync(join(worldPath, directory)).isDirectory()).toBe(true)
     }
-    for (const file of ['world.yaml', 'stats.yaml', 'player.yaml', 'lore.md', 'history.md']) {
+    for (const file of ['world.json', 'stats.json', 'player.json', 'lore.md', 'history.md']) {
       expect(statSync(join(worldPath, file)).isFile()).toBe(true)
     }
-    expect(statSync(join(worldPath, 'locations', '_index.yaml')).isFile()).toBe(true)
+    expect(statSync(join(worldPath, 'locations', '_index.json')).isFile()).toBe(true)
   })
 
   test('seeds the markdown files with their headings', () => {
@@ -95,11 +94,11 @@ describe('createWorld', () => {
     service.createWorld('w', 'admin')
 
     const read = (...parts: string[]): unknown =>
-      parseYaml(readFileSync(join(worldsDir, 'w', ...parts), 'utf-8'))
+      JSON.parse(readFileSync(join(worldsDir, 'w', ...parts), 'utf-8'))
 
-    expect(read('stats.yaml')).toEqual({ stats: [], derived: [] })
-    expect(read('locations', '_index.yaml')).toEqual({ locations: {} })
-    expect(read('player.yaml')).toEqual({
+    expect(read('stats.json')).toEqual({ stats: [], derived: [] })
+    expect(read('locations', '_index.json')).toEqual({ locations: {} })
+    expect(read('player.json')).toEqual({
       current_location: null,
       turn_count: 0,
       stats: {},
@@ -150,7 +149,7 @@ describe('createWorld', () => {
     const nested = join(worldsDir, 'does', 'not', 'exist')
     new WorldService(nested).createWorld('w', 'admin')
 
-    expect(existsSync(join(nested, 'w', 'world.yaml'))).toBe(true)
+    expect(existsSync(join(nested, 'w', 'world.json'))).toBe(true)
   })
 })
 
@@ -264,10 +263,10 @@ describe('applyPendingPhase', () => {
   test('a world with nothing pending is left untouched', () => {
     const service = new WorldService(worldsDir)
     service.createWorld('w', 'admin')
-    const before = readFileSync(join(worldsDir, 'w', 'world.yaml'), 'utf-8')
+    const before = readFileSync(join(worldsDir, 'w', 'world.json'), 'utf-8')
 
     expect(service.applyPendingPhase('w')).toBe(false)
-    expect(readFileSync(join(worldsDir, 'w', 'world.yaml'), 'utf-8')).toBe(before)
+    expect(readFileSync(join(worldsDir, 'w', 'world.json'), 'utf-8')).toBe(before)
   })
 
   test('a missing world reports nothing applied instead of throwing', () => {
@@ -303,7 +302,7 @@ describe('listWorlds', () => {
     ])
   })
 
-  test('a directory without world.yaml is not a world', () => {
+  test('a directory without world.json is not a world', () => {
     seedWorld('real', 'admin', '2023-01-01T00:00:00.000Z')
     mkdirSync(join(worldsDir, 'half-deleted', 'locations'), { recursive: true })
     writeFileSync(join(worldsDir, 'stray.txt'), 'not a world', 'utf-8')
@@ -314,7 +313,7 @@ describe('listWorlds', () => {
   test('a world whose config does not parse is skipped, not fatal', () => {
     seedWorld('good', 'admin', '2023-01-01T00:00:00.000Z')
     mkdirSync(join(worldsDir, 'broken'), { recursive: true })
-    writeFileSync(join(worldsDir, 'broken', 'world.yaml'), '\tnot: [valid', 'utf-8')
+    writeFileSync(join(worldsDir, 'broken', 'world.json'), '\tnot: [valid', 'utf-8')
 
     expect(new WorldService(worldsDir).listWorlds().map((world) => world.name)).toEqual(['good'])
   })

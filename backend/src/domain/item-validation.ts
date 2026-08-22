@@ -18,7 +18,7 @@ export interface ItemValidationResult {
 }
 
 export interface ItemValidationCatalogs {
-  /** Stats from the world's `stats.yaml`. */
+  /** Stats from the world's `stats.json`. */
   statDefinitions?: Catalog
   /** Equipment slots, time domains and recharge events from the world config. */
   slotCatalog?: Catalog

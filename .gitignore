@@ -14,7 +14,10 @@ dist/
 .env*.local
 frontend/.env.local
 frontend/.env.production.local
-worlds
+# Anchored, for the same reason as `/build/`: unanchored `worlds` also swallowed
+# `backend/src/tests/fixtures/worlds/`, the checked-in fixture world, so a fresh
+# clone failed 34 tests in `world-services.test.ts` with ENOENT.
+/worlds
 claudeworld.db
 claudeworld.db-shm
 claudeworld.db-wal

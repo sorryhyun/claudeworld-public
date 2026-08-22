@@ -35,7 +35,7 @@ export function createStateRoutes(state: AppState): Hono<AppEnv> {
     return c.json(
       toPlayerState(playerState, {
         inventory: state.services.players.getResolvedInventory(world.name),
-        // Both null without a `player.yaml` — the frontend renders that as
+        // Both null without a `player.json` — the frontend renders that as
         // "no clock yet" during onboarding.
         gameTime: fsState ? GameTime.parse(fsState.gameTime) : null,
         equipment: fsState ? (fsState.equipment ?? {}) : null,

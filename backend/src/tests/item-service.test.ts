@@ -1,5 +1,5 @@
 /**
- * Item templates (`worlds/<name>/items/*.yaml`) and the player-state save path
+ * Item templates (`worlds/<name>/items/*.json`) and the player-state save path
  * that materialises them.
  *
  * Every test builds its own throwaway worlds root. Nothing here may touch the
@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse as parseYaml } from 'yaml'
 
 import { ItemService } from '../services/item-service'
 import { PlayerService } from '../services/player-service'
@@ -61,7 +60,7 @@ afterEach(() => {
 // ============================================================================
 
 describe('saveItemTemplate', () => {
-  test('round-trips a template through items/<id>.yaml', () => {
+  test('round-trips a template through items/<id>.json', () => {
     const service = new ItemService(worldsDir)
 
     expect(
@@ -81,22 +80,19 @@ describe('saveItemTemplate', () => {
     })
   })
 
-  test('a multi-line description is written in literal block style', () => {
-    // This is the whole reason `_LiteralDumper` exists in Python: a description
-    // written as `|` stays editable by hand instead of turning into one escaped
-    // line. Assert on the bytes, not on the round-tripped value.
+  test('a multi-line description round-trips, and keys reach disk sorted', () => {
+    // Assert on the bytes, not on the round-tripped value: `dumpJson` sorts at
+    // every depth, so the build order in `saveItemTemplate` never reaches disk.
     new ItemService(worldsDir).saveItemTemplate(WORLD, {
       itemId: 'field_journal',
       name: 'Field Journal',
       description: 'Page one is water damaged.\nPage two lists three names.',
     })
 
-    const raw = readTemplateFile('field_journal.yaml')
-    expect(raw).toContain('description: |-\n  Page one is water damaged.\n  Page two lists three names.\n')
+    const raw = readTemplateFile('field_journal.json')
+    expect(raw).toContain('"description": "Page one is water damaged.\\nPage two lists three names."')
 
-    // ...and PyYAML sorts keys on the way out, so the build order in
-    // `item_service.py:127-152` never reaches disk.
-    expect(raw.split('\n').filter(Boolean)[0]).toBe('default_properties: {}')
+    expect(raw.split('\n')[1]).toBe('  "default_properties": {},')
 
     expect(new ItemService(worldsDir).loadItemTemplate(WORLD, 'field_journal')?.description).toBe(
       'Page one is water damaged.\nPage two lists three names.',
@@ -110,7 +106,7 @@ describe('saveItemTemplate', () => {
     const service = new ItemService(worldsDir)
     service.saveItemTemplate(WORLD, { itemId: 'Old Lantern', name: 'Old Lantern' })
 
-    expect(readdirSync(itemsPath())).toEqual(['OldLantern.yaml'])
+    expect(readdirSync(itemsPath())).toEqual(['OldLantern.json'])
     expect(service.loadItemTemplate(WORLD, 'Old Lantern')?.name).toBe('Old Lantern')
     expect(service.loadItemTemplate(WORLD, 'OldLantern')).toBeNull()
   })
@@ -121,7 +117,7 @@ describe('saveItemTemplate', () => {
     const service = new ItemService(worldsDir)
     service.saveItemTemplate(WORLD, { itemId: '../../etc/열쇠', name: 'Key' })
 
-    expect(readdirSync(itemsPath())).toEqual(['....etc열쇠.yaml'])
+    expect(readdirSync(itemsPath())).toEqual(['....etc열쇠.json'])
   })
 
   test('falsy optional fields are omitted, default_properties never is', () => {
@@ -166,9 +162,8 @@ describe('saveItemTemplate', () => {
     expect(template?.equippable).toEqual({ slot: 'main_hand', passive_effects: { attack: 3 } })
     expect(template?.default_properties).toEqual({ damage: 5 })
 
-    // PyYAML writes sequence items flush with their key; the `yaml` package
-    // would indent them, which is what `indentSeq: false` prevents.
-    expect(readTemplateFile('sword.yaml')).toContain('tags:\n- metal\n- sharp\n')
+    // A list keeps its authored order; only object keys are sorted.
+    expect(readTemplateFile('sword.json')).toContain('"tags": [\n    "metal",\n    "sharp"\n  ]')
   })
 
   test('an existing template is not overwritten unless asked', () => {
@@ -198,7 +193,7 @@ describe('saveItemTemplate', () => {
 
 describe('loadAllItemTemplates', () => {
   test('keys by the id inside the file, not by the filename', () => {
-    writeTemplateFile('whatever.yaml', 'id: 真の名前\nname: True Name\ndefault_properties: {}\n')
+    writeTemplateFile('whatever.json', '{"id": "真の名前", "name": "True Name", "default_properties": {}}')
 
     const templates = new ItemService(worldsDir).loadAllItemTemplates(WORLD)
     expect(Object.keys(templates)).toEqual(['真の名前'])
@@ -206,18 +201,18 @@ describe('loadAllItemTemplates', () => {
   })
 
   test('a malformed file is skipped, not fatal', () => {
-    writeTemplateFile('good.yaml', 'id: good\nname: Good\n')
-    writeTemplateFile('broken.yaml', '\tid: [unclosed\n')
-    writeTemplateFile('no_id.yaml', 'name: Nameless\n')
-    writeTemplateFile('a_list.yaml', '- id: nope\n')
+    writeTemplateFile('good.json', '{"id": "good", "name": "Good"}')
+    writeTemplateFile('broken.json', '{"id": [unclosed')
+    writeTemplateFile('no_id.json', '{"name": "Nameless"}')
+    writeTemplateFile('a_list.json', '[{"id": "nope"}]')
 
     expect(Object.keys(new ItemService(worldsDir).loadAllItemTemplates(WORLD))).toEqual(['good'])
   })
 
-  test('only *.yaml is read', () => {
-    writeTemplateFile('good.yaml', 'id: good\nname: Good\n')
-    writeTemplateFile('other.yml', 'id: other\nname: Other\n')
-    writeTemplateFile('notes.md', 'id: notes\n')
+  test('only *.json is read', () => {
+    writeTemplateFile('good.json', '{"id": "good", "name": "Good"}')
+    writeTemplateFile('other.yml', '{"id": "other", "name": "Other"}')
+    writeTemplateFile('notes.md', '{"id": "notes"}')
 
     expect(Object.keys(new ItemService(worldsDir).loadAllItemTemplates(WORLD))).toEqual(['good'])
   })
@@ -233,7 +228,7 @@ describe('loadAllItemTemplates', () => {
   test('an id colliding with an Object prototype key is not resolved to a function', () => {
     // Item ids come from model output, so `templates["toString"]` reaching the
     // prototype is a real hazard, not a hypothetical one.
-    writeTemplateFile('constructor.yaml', 'id: constructor\nname: Ctor\n')
+    writeTemplateFile('constructor.json', '{"id": "constructor", "name": "Ctor"}')
 
     const service = new ItemService(worldsDir)
     expect(service.loadItemTemplate(WORLD, 'constructor')?.name).toBe('Ctor')
@@ -254,7 +249,7 @@ describe('template cache invalidation', () => {
     const service = new ItemService(worldsDir)
     expect(service.loadAllItemTemplates(WORLD)).toEqual({})
 
-    writeTemplateFile('late.yaml', 'id: late\nname: Late\n')
+    writeTemplateFile('late.json', '{"id": "late", "name": "Late"}')
     touchFuture(itemsPath())
 
     expect(Object.keys(service.loadAllItemTemplates(WORLD))).toEqual(['late'])
@@ -262,11 +257,11 @@ describe('template cache invalidation', () => {
 
   test('an edit in place is picked up even though the directory is untouched', () => {
     const service = new ItemService(worldsDir)
-    writeTemplateFile('lamp.yaml', 'id: lamp\nname: Lamp\n')
+    writeTemplateFile('lamp.json', '{"id": "lamp", "name": "Lamp"}')
     expect(service.loadItemTemplate(WORLD, 'lamp')?.name).toBe('Lamp')
 
-    writeTemplateFile('lamp.yaml', 'id: lamp\nname: Rewritten Lamp\n')
-    touchFuture(join(itemsPath(), 'lamp.yaml'))
+    writeTemplateFile('lamp.json', '{"id": "lamp", "name": "Rewritten Lamp"}')
+    touchFuture(join(itemsPath(), 'lamp.json'))
 
     expect(service.loadItemTemplate(WORLD, 'lamp')?.name).toBe('Rewritten Lamp')
   })
@@ -382,7 +377,7 @@ describe('toReferenceFormat', () => {
   })
 
   test('name and description are stripped from the reference itself', () => {
-    // Duplicating them into player.yaml would shadow an edited template.
+    // Duplicating them into player.json would shadow an edited template.
     const refs = new ItemService(worldsDir).toReferenceFormat(WORLD, [
       { item_id: 'rope', name: 'Rope', description: 'Fifty feet.', quantity: 4 },
     ])
@@ -397,7 +392,7 @@ describe('toReferenceFormat', () => {
 
 describe('savePlayerState via ItemService', () => {
   function readPlayerFile(): Record<string, unknown> {
-    return parseYaml(readFileSync(join(worldPath(), 'player.yaml'), 'utf-8')) as Record<string, unknown>
+    return JSON.parse(readFileSync(join(worldPath(), 'player.json'), 'utf-8')) as Record<string, unknown>
   }
 
   function baseState(): PlayerState {
@@ -507,7 +502,7 @@ describe('stat definitions', () => {
     expect(service.updateStats(WORLD, { luck: -3 })).toEqual({ hp: 20, luck: -3 })
   })
 
-  test('updateStats on a world with no player.yaml yields no stats', () => {
+  test('updateStats on a world with no player.json yields no stats', () => {
     expect(new PlayerService(worldsDir).updateStats(WORLD, { hp: 1 })).toEqual({})
   })
 })

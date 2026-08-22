@@ -64,7 +64,7 @@ subagents, character_design) selected by a `ServerRole`
   it that way.
 - **One `TurnBinding` per turn, not per request.** `createTurnBinding` resolves `mutations`
   (`PlayerFacade`) once, so a `change_stat` and a `persist_item` in the same turn share one cached read
-  of `player.yaml`. Building it per HTTP request would write the second mutation against stale state.
+  of `player.json`. Building it per HTTP request would write the second mutation against stale state.
 - **Per-world services are factories.** `PersistenceManager` and `PlayerFacade` each write one world's
   row; `buildServers` binds them per turn.
 - **Third-person perspective in agent config files is mandatory.** The SDK inherits an immutable

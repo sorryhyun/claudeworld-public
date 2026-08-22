@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse as parseYaml } from 'yaml'
 
 import { LocationStorage } from '../services/location-storage'
 import { PlayerService } from '../services/player-service'
@@ -61,7 +60,7 @@ function writeStale(filePath: string, content: string): void {
 describe('WorldService reads', () => {
   const service = new WorldService(REAL_WORLDS_DIR)
 
-  test('loadWorldConfig maps world.yaml onto camelCase fields', () => {
+  test('loadWorldConfig maps world.json onto camelCase fields', () => {
     const config = service.loadWorldConfig(WORLD)
 
     expect(config).not.toBeNull()
@@ -81,7 +80,7 @@ describe('WorldService reads', () => {
   })
 
   test('timestamps without a zone designator are read as UTC', () => {
-    // world.yaml holds '2026-08-06T04:14:54.918838Z'; JS keeps only millis.
+    // world.json holds '2026-08-06T04:14:54.918838Z'; JS keeps only millis.
     expect(service.loadWorldConfig(WORLD)?.createdAt.toISOString()).toBe('2026-08-06T04:14:54.918Z')
   })
 
@@ -98,7 +97,7 @@ describe('WorldService reads', () => {
     expect(service.getHistoryBySubtitle(WORLD, 'anything')).toBeNull()
   })
 
-  test('worldExists tracks world.yaml, not just the directory', () => {
+  test('worldExists tracks world.json, not just the directory', () => {
     expect(service.worldExists(WORLD)).toBe(true)
     expect(service.worldExists('no-such-world')).toBe(false)
   })
@@ -276,7 +275,7 @@ describe('history subtitles', () => {
 describe('PlayerService reads', () => {
   const service = new PlayerService(REAL_WORLDS_DIR)
 
-  test('loadPlayerState maps a freshly created player.yaml', () => {
+  test('loadPlayerState maps a freshly created player.json', () => {
     const state = service.loadPlayerState(WORLD)
 
     expect(state).not.toBeNull()
@@ -294,7 +293,7 @@ describe('PlayerService reads', () => {
     expect(service.loadPlayerState(WORLD)?.gameTime).toEqual({ hour: 8, minute: 0, day: 1 })
   })
 
-  test('a missing player.yaml yields null rather than throwing', () => {
+  test('a missing player.json yields null rather than throwing', () => {
     expect(service.loadPlayerState('no-such-world')).toBeNull()
   })
 
@@ -327,7 +326,7 @@ describe('savePlayerState', () => {
     state.flags = { boss_defeated: true }
     service.savePlayerState(WORLD, state)
 
-    const onDisk = parseYaml(readFileSync(join(tempWorldsDir, WORLD, 'player.yaml'), 'utf-8')) as Record<
+    const onDisk = JSON.parse(readFileSync(join(tempWorldsDir, WORLD, 'player.json'), 'utf-8')) as Record<
       string,
       unknown
     >
@@ -343,7 +342,7 @@ describe('savePlayerState', () => {
   test('recent_actions is truncated to the last 10 entries', () => {
     const service = new PlayerService(tempWorldsDir)
     const state = service.loadPlayerState(WORLD)
-    if (!state) throw new Error('fixture world has no player.yaml')
+    if (!state) throw new Error('fixture world has no player.json')
 
     state.recentActions = Array.from({ length: 14 }, (_, i) => ({ action: `act-${i}` }))
     service.savePlayerState(WORLD, state)
@@ -353,9 +352,9 @@ describe('savePlayerState', () => {
     expect(saved?.recentActions[0]).toEqual({ action: 'act-4' })
   })
 
-  test('a malformed player.yaml opens as a default state', () => {
+  test('a malformed player.json opens as a default state', () => {
     const service = new PlayerService(tempWorldsDir)
-    writeFileSync(join(tempWorldsDir, WORLD, 'player.yaml'), '\tnot: [valid', 'utf-8')
+    writeFileSync(join(tempWorldsDir, WORLD, 'player.json'), '\tnot: [valid', 'utf-8')
 
     const state = service.loadPlayerState(WORLD)
     expect(state?.turnCount).toBe(0)
@@ -383,28 +382,29 @@ describe('LocationStorage', () => {
     mkdirSync(join(locationsDir, 'creek'), { recursive: true })
 
     writeFileSync(
-      join(locationsDir, '_index.yaml'),
-      [
-        'locations:',
-        '  old_mill:',
-        '    name: The Old Mill',
-        '    label: null',
-        '    position: [3, 4]',
-        '    is_discovered: true',
-        '    adjacent: [creek]',
-        '    is_draft: false',
-        '  creek:',
-        '    name: Winding Creek',
-        '    label: quiet',
-        '    position: [4, 4]',
-        '    is_discovered: false',
-        '    adjacent: [old_mill]',
-        '    is_draft: true',
-        '  ghost_town:',
-        '    name: Ghost Town',
-        '    position: [9, 9]',
-        '',
-      ].join('\n'),
+      join(locationsDir, '_index.json'),
+      JSON.stringify({
+        locations: {
+          old_mill: {
+            name: 'The Old Mill',
+            label: null,
+            position: [3, 4],
+            is_discovered: true,
+            adjacent: ['creek'],
+            is_draft: false,
+          },
+          creek: {
+            name: 'Winding Creek',
+            label: 'quiet',
+            position: [4, 4],
+            is_discovered: false,
+            adjacent: ['old_mill'],
+            is_draft: true,
+          },
+          // No directory on disk: the stale-row case.
+          ghost_town: { name: 'Ghost Town', position: [9, 9] },
+        },
+      }),
       'utf-8',
     )
   }

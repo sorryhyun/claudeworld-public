@@ -26,7 +26,7 @@ export interface PlayerMutationsPort {
     },
   ): boolean
   removeItem(worldName: string, itemId: string, quantity?: number): boolean
-  /** `null` when the world has no `player.yaml`, or when `minutes <= 0`. */
+  /** `null` when the world has no `player.json`, or when `minutes <= 0`. */
   advanceTime(worldName: string, minutes: number): TimeAdvanceResult | null
   /** Resolved against `items/` templates — names and descriptions, not ids. */
   getInventory(worldName: string): InventoryEntry[]
@@ -34,7 +34,7 @@ export interface PlayerMutationsPort {
 }
 
 // A factory, not an instance: a long-lived one would mirror the right
-// `player.yaml` onto somebody else's `player_states` row.
+// `player.json` onto somebody else's `player_states` row.
 export type PlayerMutationsFactory = (db: Db, worldId: number) => PlayerMutationsPort
 
 export interface LocationPersistence {

@@ -9,7 +9,7 @@ import { requiredText, requiredTextOfLength, type ToolDefinition } from './defin
  * produces a world whose locations were designed against nothing.
  */
 
-/** One entry in the world's stat system, as written to `stats.yaml`. */
+/** One entry in the world's stat system, as written to `stats.json`. */
 export const statDefinitionSchema = z.object({
   name: z.string().describe("Internal stat name (e.g., 'health', 'mana')"),
   display: z.string().describe("Display name shown to player (e.g., 'HP', 'MP')"),

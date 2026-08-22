@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-08-06T04:14:54.918838Z",
+  "genre": null,
+  "language": "ko",
+  "name": "asdf",
+  "owner_id": "admin",
+  "pending_phase": null,
+  "phase": "onboarding",
+  "settings": {
+    "allow_death": true,
+    "difficulty": "normal",
+    "narrator_style": "atmospheric"
+  },
+  "theme": null,
+  "updated_at": "2026-08-06T04:14:54.918849Z",
+  "user_name": "손님"
+}

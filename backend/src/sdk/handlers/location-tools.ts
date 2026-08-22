@@ -88,7 +88,7 @@ export function createLocationTools(ctx: ToolContext, deps: LocationToolDeps): S
           try {
             const config = deps.locations.loadLocation(worldName, fromLocationName)
             const fromDisplay = config?.displayName ?? fromLocationName
-            // The database's turn count, not the filesystem's: `player.yaml`
+            // The database's turn count, not the filesystem's: `player.json`
             // may not have caught up, which would number the entry one behind.
             const turn = getPlayerState(db, worldId)?.turnCount ?? 0
             deps.worlds.addHistoryEntry(worldName, turn, fromDisplay, chatSummary)

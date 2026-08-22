@@ -9,10 +9,10 @@
 import { Database } from 'bun:sqlite'
 import { mkdirSync, rmSync, symlinkSync, copyFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { stringify as toYaml } from 'yaml'
 import { openDb } from '../db'
 import { formatSqlaDateTime } from '../db/columns'
 import { resolveProjectRoot } from '../config/paths'
+import { dumpJson as toJson } from '../services/world-service'
 
 const scratchDir = process.argv[2]
 const sourceDb = process.argv[3]
@@ -100,8 +100,8 @@ const NPCS: Npc[] = [
 ]
 
 await Bun.write(
-  join(worldDir, 'world.yaml'),
-  toYaml({
+  join(worldDir, 'world.json'),
+  toJson({
     created_at: NOW_ISO,
     genre: 'low fantasy',
     language: 'en',
@@ -117,8 +117,8 @@ await Bun.write(
 )
 
 await Bun.write(
-  join(worldDir, 'player.yaml'),
-  toYaml({
+  join(worldDir, 'player.json'),
+  toJson({
     current_location: PILOT_LOCATION,
     effects: [],
     game_time: { day: 1, hour: 17, minute: 40 },
@@ -165,8 +165,8 @@ await Bun.write(
 )
 
 await Bun.write(
-  join(worldDir, 'locations', '_index.yaml'),
-  toYaml({
+  join(worldDir, 'locations', '_index.json'),
+  toJson({
     locations: {
       [PILOT_LOCATION]: {
         name: 'The Old Mill',

@@ -2,7 +2,7 @@
  * The player facade — `services/player-facade.ts`.
  *
  * The facade's whole job is that two stores move together, so nearly every test
- * below asserts on *both* sides: what `worlds/<world>/player.yaml` now holds,
+ * below asserts on *both* sides: what `worlds/<world>/player.json` now holds,
  * and what the `player_states` row now holds. Asserting one alone would pass
  * for a facade that had quietly stopped writing the other, which is the exact
  * regression the class exists to prevent.
@@ -15,7 +15,7 @@
  *    operation with nothing to store there, like advancing the clock.
  * 2. **A database failure is not a mutation failure.** Python's `_sync_to_db`
  *    swallows everything; a closed database, or a world with no row yet, still
- *    writes `player.yaml` and still reports success.
+ *    writes `player.json` and still reports success.
  *
  * Worlds are throwaway copies of the checked-in fixture at
  * `src/tests/fixtures/worlds/asdf` — the same rule `world-services.test.ts`
@@ -27,7 +27,6 @@ import { eq } from 'drizzle-orm'
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
 import { addInventoryItem } from '../crud/player-state'
 import { openDb, type Db } from '../db'
@@ -97,7 +96,7 @@ function seed(): void {
  * Build the facade under test.
  *
  * Constructed per test rather than per suite so each one gets a private mtime
- * cache: the setup helpers below write `player.yaml` directly, and a cache
+ * cache: the setup helpers below write `player.json` directly, and a cache
  * carried over from a previous test could still be holding the fixture's parse.
  */
 function makeFacade(worldId: number | null = WORLD_ID): PlayerFacade {
@@ -105,25 +104,25 @@ function makeFacade(worldId: number | null = WORLD_ID): PlayerFacade {
 }
 
 function playerFile(world = WORLD): string {
-  return join(worldsDir, world, 'player.yaml')
+  return join(worldsDir, world, 'player.json')
 }
 
-/** Merge fields into the world's `player.yaml`, before the facade reads it. */
+/** Merge fields into the world's `player.json`, before the facade reads it. */
 function writePlayerYaml(fields: Record<string, unknown>): void {
-  const current = parseYaml(readFileSync(playerFile(), 'utf-8')) as Record<string, unknown>
-  writeFileSync(playerFile(), stringifyYaml({ ...current, ...fields }), 'utf-8')
+  const current = JSON.parse(readFileSync(playerFile(), 'utf-8')) as Record<string, unknown>
+  writeFileSync(playerFile(), JSON.stringify({ ...current, ...fields }), 'utf-8')
 }
 
 function writeStatsYaml(stats: Record<string, unknown>[]): void {
   writeFileSync(
-    join(worldsDir, WORLD, 'stats.yaml'),
-    stringifyYaml({ stats, derived: [] }),
+    join(worldsDir, WORLD, 'stats.json'),
+    JSON.stringify({ stats, derived: [] }),
     'utf-8',
   )
 }
 
 function fileState(): Record<string, unknown> {
-  return parseYaml(readFileSync(playerFile(), 'utf-8')) as Record<string, unknown>
+  return JSON.parse(readFileSync(playerFile(), 'utf-8')) as Record<string, unknown>
 }
 
 function fileStats(): Record<string, number> {
@@ -170,7 +169,7 @@ describe('updateStats', () => {
     expect(rowStats()).toEqual({ health: 40, gold: 5 })
   })
 
-  test('clamps to stats.yaml on both sides', () => {
+  test('clamps to stats.json on both sides', () => {
     writeStatsYaml([{ name: 'health', min: 0, max: 100, default: 100 }])
     writePlayerYaml({ stats: { health: 90 } })
 
@@ -188,7 +187,7 @@ describe('updateStats', () => {
     expect(makeFacade().updateStats(WORLD, { gold: 9999 })).toEqual({ gold: 9999 })
   })
 
-  test('a world with no player.yaml reports null instead of raising', () => {
+  test('a world with no player.json reports null instead of raising', () => {
     expect(makeFacade().updateStats('no-such-world', { health: -10 })).toBeNull()
     // Nothing was mirrored either: the row still holds the seeded value.
     expect(rawColumns().stats).toBe('{}')
@@ -270,7 +269,7 @@ describe('addItem', () => {
     expect(fileInventory()).toEqual([{ item_id: 'rope', quantity: 1 }])
   })
 
-  test('a world with no player.yaml reports false', () => {
+  test('a world with no player.json reports false', () => {
     expect(makeFacade().addItem('no-such-world', { itemId: 'sword', name: 'Sword' })).toBe(false)
     expect(rawColumns().inventory).toBe('[]')
   })
@@ -320,7 +319,7 @@ describe('removeItem', () => {
     expect(fileInventory()).toEqual([{ item_id: 'potion', quantity: 3 }])
   })
 
-  test('a world with no player.yaml reports false', () => {
+  test('a world with no player.json reports false', () => {
     expect(makeFacade().removeItem('no-such-world', 'potion')).toBe(false)
   })
 })
@@ -359,7 +358,7 @@ describe('advanceTime', () => {
     expect(readFileSync(playerFile(), 'utf-8')).toBe(before)
   })
 
-  test('a world with no player.yaml reports null', () => {
+  test('a world with no player.json reports null', () => {
     expect(makeFacade().advanceTime('no-such-world', 30)).toBeNull()
   })
 

@@ -115,7 +115,7 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
 
     const newTurn = incrementTurn(state.db, worldId)
 
-    // Onboarding has no clock, so no snapshot — `player.yaml` may not even carry
+    // Onboarding has no clock, so no snapshot — `player.json` may not even carry
     // a `game_time` yet at that point.
     const gameTimeSnapshot =
       world.phase === 'active'

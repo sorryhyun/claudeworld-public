@@ -367,7 +367,7 @@ interface ResetOutcome {
 /**
  * Put a world back to the moment onboarding finished. Shared by enter and reset.
  *
- * The step order is load-bearing three times: stale `_index.yaml` entries are
+ * The step order is load-bearing three times: stale `_index.json` entries are
  * cleaned before the DB is synced against the filesystem, or the sync keeps
  * rows for deleted directories alive; fresh rooms are minted before the
  * starting location is resolved, since a new room is what clears a location's
@@ -397,7 +397,7 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
   const staleEntries = services.locations.cleanupStaleEntries(world.name)
   if (staleEntries.length > 0) {
     logger.info(
-      `Cleaned up ${staleEntries.length} stale entries from _index.yaml: ${staleEntries.join(', ')}`,
+      `Cleaned up ${staleEntries.length} stale entries from _index.json: ${staleEntries.join(', ')}`,
     )
   }
 
@@ -485,7 +485,7 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
     equipment: {},
     flags: {},
   })
-  logger.info(`Reset player.yaml in filesystem (game_time: ${initialGameTime.hour}:00)`)
+  logger.info(`Reset player.json in filesystem (game_time: ${initialGameTime.hour}:00)`)
 
   const transient = services.rooms.loadState(world.name)
   const startingRoomKey = RoomMappingService.locationToRoomKey(startingLocationName)

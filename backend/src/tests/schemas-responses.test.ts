@@ -461,7 +461,7 @@ describe('toWorldSummary / toWorld', () => {
     expect(parseStatDefinitionsColumn(null)).toBeNull()
   })
 
-  test('toStatDefinitions throws on a malformed stats.yaml entry', () => {
+  test('toStatDefinitions throws on a malformed stats.json entry', () => {
     expect(toStatDefinitions([{ name: 'hp', display: 'HP', color: '#f00', extra: 1 }])).toEqual({
       stats: [{ name: 'hp', display: 'HP', min: null, max: null, default: 0, color: '#f00' }],
     })
@@ -495,7 +495,7 @@ describe('toImportableWorld', () => {
     expect(ImportableWorld.parse(result)).toEqual(result)
   })
 
-  test('an unrecognized language or phase in world.yaml falls back to the defaults', () => {
+  test('an unrecognized language or phase in world.json falls back to the defaults', () => {
     const result = toImportableWorld({
       name: 'w',
       ownerId: null,
@@ -660,7 +660,7 @@ describe('toPlayerState', () => {
     ).toBeNull()
   })
 
-  test('a world with no player.yaml has neither a clock nor equipment', () => {
+  test('a world with no player.json has neither a clock nor equipment', () => {
     const result = toPlayerState(playerStateRow(), NO_OVERLAY)
     expect(result.game_time).toBeNull()
     expect(result.equipment).toBeNull()

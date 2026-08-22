@@ -47,7 +47,7 @@ function ensureParentDir(filePath: string): void {
 /**
  * Write `content` to `filePath` atomically. The temp file takes a `.tmp` suffix
  * rather than the target's extension, because these directories are scanned
- * with `*.md`/`*.yaml` globs and a temp file left by a crash must not match. It
+ * with `*.md`/`*.json` globs and a temp file left by a crash must not match. It
  * is unlinked on failure, so a throwing write leaves the original untouched.
  */
 export function atomicWrite(filePath: string, content: string): void {

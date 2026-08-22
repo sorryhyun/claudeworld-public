@@ -279,7 +279,7 @@ describe('addInventoryItem', () => {
   test('stores the embedded shape, with all five keys', () => {
     const inventory = addInventoryItem(db, WORLD_ID, { id: 'torch', name: 'Torch' })
 
-    // The DB column has always held the whole item; `player.yaml` is the file
+    // The DB column has always held the whole item; `player.json` is the file
     // that stores a bare reference. Writing the reference shape here would make
     // an existing database read back as a list of ids with no names.
     expect(inventory).toEqual([

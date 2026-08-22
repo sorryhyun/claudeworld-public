@@ -46,7 +46,7 @@ properties:
 When invoked during gameplay, the stat catalog is known. Create **mechanically complete items** with proper components.
 
 **Do:**
-- Reference actual stats from stats.yaml
+- Reference actual stats from stats.json
 - Add appropriate components (stacking, equippable, usable)
 - Balance costs and effects relative to stat ranges
 - Match mechanics to genre expectations
@@ -288,7 +288,7 @@ cost:
     - {stat: STR, delta: -5}  # "STR" might not exist!
 ```
 
-Use actual stat names from stats.yaml, or omit mechanics in pre-stats mode.
+Use actual stat names from stats.json, or omit mechanics in pre-stats mode.
 
 ### RPG Defaults in Non-RPG Worlds
 Adding combat mechanics to a dating sim:
@@ -330,7 +330,7 @@ Before persisting an item:
 
 **Mode Compliance:**
 - [ ] **[Pre-stats]** Are properties narrative-only (no stat references)?
-- [ ] **[Post-stats]** Do all stat references exist in stats.yaml?
+- [ ] **[Post-stats]** Do all stat references exist in stats.json?
 - [ ] **[Post-stats]** Are values scaled to stat ranges (not fixed tiers)?
 
 **Narrative Quality:**
