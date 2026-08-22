@@ -1,11 +1,10 @@
-import { and, count, eq } from 'drizzle-orm'
-
 import { getSettings } from '../config/settings'
 
 import { getAgentsCached } from '../crud/cached'
 import { getAgentsInRoom, getRoom, markRoomAsFinished } from '../crud/rooms'
 import { getCharactersAtLocation, getLocation } from '../crud/locations'
 import {
+  countAssistantMessages,
   createMessage,
   getMessagesAfterAgentResponse,
   type MessageWithAgent,
@@ -13,7 +12,7 @@ import {
 import { getPlayerState } from '../crud/player-state'
 import { getRoomAgentSession, updateRoomAgentSession } from '../crud/sessions'
 import type { Db } from '../db'
-import { messages, type Agent, type World } from '../db/schema'
+import type { Agent, World } from '../db/schema'
 import { isActionManager, isOnboardingManager } from '../domain/agent'
 import { getLogger } from '../infrastructure/logging/logger'
 import { buildHooks, SubagentTimings, type HookTelemetry } from '../sdk/agent/hooks'
@@ -662,19 +661,6 @@ function discardReason(deps: TurnDeps, roomId: number, startedAt: number): strin
   if (deps.isSuperseded?.(roomId, startedAt)) return 'superseded by a newer player message'
   if (getRoom(deps.db, roomId)?.isPaused === true) return 'room was paused mid-response'
   return null
-}
-
-// Assistant messages in a room, for the `max_interactions` ceiling. Counts on
-// `role`, not "has an agent_id": narration output has both, system messages
-// neither.
-function countAssistantMessages(db: Db, roomId: number): number {
-  return (
-    db
-      .select({ total: count() })
-      .from(messages)
-      .where(and(eq(messages.roomId, roomId), eq(messages.role, 'assistant')))
-      .get()?.total ?? 0
-  )
 }
 
 function emptyResult(): ExecutionResult {

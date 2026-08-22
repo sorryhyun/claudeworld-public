@@ -298,6 +298,115 @@ describe('post-onboarding player-state sync', () => {
 })
 
 // =============================================================================
+// A stalled opening scene
+// =============================================================================
+
+/**
+ * The opening turn runs in the background with nothing behind it, so a backend
+ * that stops before the `narration` tool call leaves a room holding only the
+ * arrival line — which the poll filters out as a system message. The player is
+ * then looking at an empty world. These pin the poll's recovery of that state.
+ */
+describe('restarting a stalled opening scene', () => {
+  let worldId: number
+  let roomId: number
+
+  /** The arrival line as it looks two minutes after nobody answered it. */
+  function backdateArrival(minutes: number): void {
+    rawExec(
+      app.dbPath,
+      `UPDATE messages SET timestamp = datetime('now', '-${minutes} minutes')
+       WHERE room_id = ${roomId} AND participant_type = 'system'`,
+    )
+  }
+
+  beforeEach(async () => {
+    const { worlds, locations, players } = app.state.services
+
+    worlds.createWorld('stalled', 'admin', 'Rin', 'en')
+    setFsPhase('stalled', 'active')
+    locations.createLocation('stalled', 'glade', 'Glade', 'Sunlit.', [0, 0])
+    players.savePlayerState('stalled', {
+      currentLocation: 'glade',
+      turnCount: 0,
+      stats: {},
+      inventory: [],
+      effects: [],
+      recentActions: [],
+      gameTime: { hour: 9, minute: 0, day: 1 },
+      equipment: {},
+      flags: {},
+    })
+
+    const imported = (await app.json('/worlds/import/stalled', { method: 'POST' })) as { id: number }
+    worldId = imported.id
+
+    // The first poll is the one that adopts the location, writes the arrival
+    // line and starts the opening turn — the turn this suite then strands.
+    await app.json<PollBody>(`/worlds/${worldId}/poll`)
+    await settle()
+    roomId = rawQuery<{ room_id: number }>(
+      app.dbPath,
+      `SELECT room_id FROM locations WHERE world_id = ${worldId}`,
+    )[0]!.room_id
+    expect(app.turns).toHaveLength(1)
+    app.turns.length = 0
+  })
+
+  test('restarts the turn, replaying the arrival line the room already holds', async () => {
+    backdateArrival(3)
+
+    await app.json<PollBody>(`/worlds/${worldId}/poll`)
+    await settle()
+
+    expect(app.turns).toHaveLength(1)
+    expect(app.turns[0]).toMatchObject({ kind: 'gameplay', roomId })
+
+    // The stranded arrival is replayed, not duplicated: a second system line
+    // would make the Action Manager narrate two arrivals.
+    const systemLines = rawQuery<{ content: string }>(
+      app.dbPath,
+      `SELECT content FROM messages WHERE room_id = ${roomId} AND participant_type = 'system'`,
+    )
+    expect(systemLines).toHaveLength(1)
+    expect(app.turns[0]!.action).toBe(systemLines[0]!.content)
+  })
+
+  test('restarts once — a turn that keeps failing is not relaunched every poll', async () => {
+    backdateArrival(3)
+
+    await app.json<PollBody>(`/worlds/${worldId}/poll`)
+    await settle()
+    await app.json<PollBody>(`/worlds/${worldId}/poll`)
+    await settle()
+
+    expect(app.turns).toHaveLength(1)
+  })
+
+  test('leaves a fresh arrival alone — the opening is slow, not dead', async () => {
+    await app.json<PollBody>(`/worlds/${worldId}/poll`)
+    await settle()
+
+    expect(app.turns).toEqual([])
+  })
+
+  test('leaves a room that has narrated alone', async () => {
+    backdateArrival(3)
+    rawExec(
+      app.dbPath,
+      `INSERT INTO messages (room_id, agent_id, content, role, participant_type, timestamp)
+       VALUES (${roomId}, ${ACTION_MANAGER_ID}, 'The glade opens up.', 'assistant', NULL, datetime('now'))`,
+    )
+    invalidateRoomCache(roomId)
+
+    await app.json<PollBody>(`/worlds/${worldId}/poll`)
+    await settle()
+
+    expect(app.turns).toEqual([])
+  })
+})
+
+// =============================================================================
 // Chat-mode filtering
 // =============================================================================
 

@@ -1,6 +1,6 @@
 /** CRUD operations for Message entities. Synchronous throughout. */
 
-import { and, asc, desc, eq, gt, gte, isNull, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, gte, isNull, type SQL } from 'drizzle-orm'
 import type { Db } from '../db'
 import type { ParticipantType } from '../domain/enums'
 import { agents, messages, roomAgents, rooms, type Message, type MessageRole } from '../db/schema'
@@ -158,6 +158,21 @@ function selectWithAgent(
   const rows = limit === undefined ? ordered.all() : ordered.limit(limit).all()
   const mapped = rows.map((r) => ({ ...r.message, agent: r.agent }))
   return newestFirst ? mapped.reverse() : mapped
+}
+
+/**
+ * How many agent lines a room holds. Counts on `role`, not "has an agent_id":
+ * narration output has both, system messages neither. Zero is what "this room
+ * has never produced a turn" means — see `routes/game/polling.ts`.
+ */
+export function countAssistantMessages(db: Db, roomId: number): number {
+  return (
+    db
+      .select({ total: count() })
+      .from(messages)
+      .where(and(eq(messages.roomId, roomId), eq(messages.role, 'assistant')))
+      .get()?.total ?? 0
+  )
 }
 
 /** Unbounded, for full-history consumers; polling uses {@link getMessagesSince}. */

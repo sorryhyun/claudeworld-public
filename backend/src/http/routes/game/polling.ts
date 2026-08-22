@@ -17,6 +17,7 @@ import { z } from 'zod'
 import { getAgentsCached } from '../../../crud/cached'
 import { getLocation } from '../../../crud/locations'
 import {
+  countAssistantMessages,
   createMessage,
   getMessages,
   getMessagesExcludingChat,
@@ -187,6 +188,7 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
         if (current?.roomId) {
           location = current
           targetRoomId = current.roomId
+          recoverStalledOpening(state, world, current, current.roomId, playerState.turnCount ?? 0)
         }
       }
     }
@@ -324,6 +326,75 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
   })
 
   return routes
+}
+
+/**
+ * How stale an unanswered arrival line has to be before the opening counts as
+ * dead rather than slow. Comfortably past the ~40s an opening turn takes, and
+ * it is what makes the check safe against a turn that has been handed to
+ * `deferBackground` but has not registered with the orchestrator yet — that
+ * gap is a macrotask, this is two minutes.
+ */
+const OPENING_STALL_MS = 120_000
+
+/**
+ * Restart an opening scene that died before it narrated.
+ *
+ * `POST /worlds/{id}/enter` writes the arrival line and hands the first turn to
+ * a background task with nothing behind it: a backend that stops in the ~40s
+ * before the `narration` tool call — a watch reload, a Ctrl+C, a thrown turn —
+ * leaves the room holding only that arrival message, which this endpoint
+ * filters out as a system line. The player is then looking at an empty world
+ * with no way back but a reset.
+ *
+ * Cheap checks first: this runs on every poll of every active world, and the
+ * message count query is reached only by a world that has taken no turn and has
+ * nothing running.
+ */
+function recoverStalledOpening(
+  state: AppState,
+  world: World,
+  location: Location,
+  roomId: number,
+  turnCount: number,
+): void {
+  if (turnCount !== 0) return
+  if (state.orchestrator.isBusy(roomId)) return
+  if (countAssistantMessages(state.db, roomId) > 0) return
+
+  // No arrival line means no turn was ever started for this room — a world mid
+  // seed generation, not a stalled opening. Starting one here would narrate an
+  // arrival the game has not staged yet.
+  const arrival = getMessages(state.db, roomId).find(
+    (message) => message.participantType === 'system',
+  )
+  if (!arrival) return
+
+  const age = arrival.timestamp ? Date.now() - arrival.timestamp.getTime() : 0
+  if (age < OPENING_STALL_MS) return
+
+  // One restart per room per process: a turn that keeps ending without
+  // narrating must not be relaunched by every poll two seconds later. A reset
+  // mints a new room, so a deliberate retry always gets a fresh claim.
+  if (!state.orchestrator.claimOpeningRestart(roomId)) return
+
+  logger.warning(
+    `Opening scene for '${world.name}' never produced narration (room ${roomId}); restarting it`,
+  )
+
+  deferBackground(
+    async () => {
+      const taskWorld = getWorld(state.db, world.id)
+      if (!taskWorld) return
+      await state.orchestrator.handlePlayerAction({
+        world: taskWorld,
+        roomId,
+        action: arrival.content,
+      })
+    },
+    { name: `recover_opening:world=${world.id}` },
+  )
+  logger.info(`Polling: Restarted the opening scene at '${location.name}'`)
 }
 
 /**

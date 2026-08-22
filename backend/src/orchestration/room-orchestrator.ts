@@ -342,6 +342,21 @@ export class RoomOrchestrator {
     return this.subAgents.get(roomId) ?? null
   }
 
+  /**
+   * Claim the one restart a room's opening scene gets from `/poll` — true the
+   * first time, false ever after. Lives here, with the rest of the per-room
+   * transient state, so it dies with the process: after a restart the poll is
+   * *supposed* to try again, since a restart is what strands an opening in the
+   * first place.
+   */
+  claimOpeningRestart(roomId: number): boolean {
+    if (this.openingRestarted.has(roomId)) return false
+    this.openingRestarted.add(roomId)
+    return true
+  }
+
+  private readonly openingRestarted = new Set<number>()
+
   // Player input unblocks here rather than at turn end: the Action Manager
   // keeps working afterwards with nothing left to wait for.
   setNarrationProduced(roomId: number): void {
