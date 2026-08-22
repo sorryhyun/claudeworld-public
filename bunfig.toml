@@ -3,21 +3,21 @@
 # such a run got no preload at all. That was not merely untidy: the backend's
 # preload is what points `os.tmpdir()` at tmpfs, and without it every fixture
 # database fsynced to disk. A root `bun test` took 79s against the 6.6s the same
-# files take from `backend-ts/`, and its logs were buried under the ERROR lines
-# the preload's sink discards. See backend-ts/src/tests/setup/env.ts.
+# files take from `backend/`, and its logs were buried under the ERROR lines
+# the preload's sink discards. See backend/src/tests/setup/env.ts.
 #
 # The frontend suite needs nothing here: its DOM tests import `src/test/setup`
 # themselves as their first import, because React and Testing Library capture
 # `document` at import time and a preload cannot be made to win that race from
 # a file the test imports later.
 [test]
-preload = ["./backend-ts/src/tests/setup/env.ts"]
+preload = ["./backend/src/tests/setup/env.ts"]
 pathIgnorePatterns = ["**/dist/**", "**/node_modules/**"]
 
 # Bun resolves `bunfig.toml` by current directory for `Bun.serve` plugins too,
 # not just for `bun test` above -- so this block is the root-level twin of the
-# one in backend-ts/bunfig.toml, and the two have to stay in step. Without it a
-# dev server started from the repo root (`bun backend-ts/src/main.ts`) loads the
+# one in backend/bunfig.toml, and the two have to stay in step. Without it a
+# dev server started from the repo root (`bun backend/src/main.ts`) loads the
 # CSS with no Tailwind plugin at all: `@import "tailwindcss"` passes through
 # unexpanded, every utility class is missing, and the page renders unstyled with
 # nothing logged. It is the same trap as the preload, with a quieter failure.

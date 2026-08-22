@@ -3,9 +3,9 @@
 /* Which files Tailwind scans for class names.
  *
  * Left implicit it is derived from the current working directory, and this
- * bundle is produced from three of them: `frontend/` by `build.ts`, `backend-ts/`
- * by `make dev`, and the repo root by a bare `bun backend-ts/src/main.ts`. The
- * `backend-ts/` case silently emitted 48 fewer utility classes than the
+ * bundle is produced from three of them: `frontend/` by `build.ts`, `backend/`
+ * by `make dev`, and the repo root by a bare `bun backend/src/main.ts`. The
+ * `backend/` case silently emitted 48 fewer utility classes than the
  * production build -- `bg-green-600`, `animate-in`, `from-emerald-600` and other
  * classes used only by lazily-imported panels -- so those components rendered
  * unstyled in dev and correctly in the build, with nothing logged either way.

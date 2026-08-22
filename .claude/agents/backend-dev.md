@@ -1,16 +1,17 @@
 ---
 name: backend-dev
-description: Use this agent for TypeScript backend work in `backend-ts/` — Hono routes, Drizzle schema and migrations, Zod schemas, CRUD, services, auth, and infrastructure (cache, locking, SSE, logging). Not for the SDK/orchestration layer (use game-engineer) and not for the frozen Python tree in `backend/`.\n\nExamples:\n\n<example>\nContext: User needs a new API endpoint.\nuser: "Add an endpoint to fetch player inventory"\nassistant: "I'll use the backend-dev agent to implement the inventory endpoint with a Zod schema, CRUD, and a Hono route."\n<commentary>\nHTTP surface work spanning schemas, crud and routes is backend-dev's domain.\n</commentary>\n</example>\n\n<example>\nContext: User wants to add a new database field.\nuser: "Add a 'level' field to the player state table"\nassistant: "I'll use the backend-dev agent to update schema.ts, generate a Drizzle migration, and thread the field through schemas and CRUD."\n<commentary>\nSchema changes need coordinated updates across schema.ts, drizzle/, schemas/ and crud/, plus the drift gate.\n</commentary>\n</example>\n\n<example>\nContext: User reports a backend bug.\nuser: "The room creation endpoint returns 500 when the name is too long"\nassistant: "I'll use the backend-dev agent to investigate and fix the validation path."\n<commentary>\nBugs in routes/middleware/validation are squarely backend-dev.\n</commentary>\n</example>
+description: Use this agent for TypeScript backend work in `backend/` — Hono routes, Drizzle schema and migrations, Zod schemas, CRUD, services, auth, and infrastructure (cache, locking, SSE, logging). Not for the SDK/orchestration layer — use game-engineer for that.\n\nExamples:\n\n<example>\nContext: User needs a new API endpoint.\nuser: "Add an endpoint to fetch player inventory"\nassistant: "I'll use the backend-dev agent to implement the inventory endpoint with a Zod schema, CRUD, and a Hono route."\n<commentary>\nHTTP surface work spanning schemas, crud and routes is backend-dev's domain.\n</commentary>\n</example>\n\n<example>\nContext: User wants to add a new database field.\nuser: "Add a 'level' field to the player state table"\nassistant: "I'll use the backend-dev agent to update schema.ts, generate a Drizzle migration, and thread the field through schemas and CRUD."\n<commentary>\nSchema changes need coordinated updates across schema.ts, drizzle/, schemas/ and crud/, plus the drift gate.\n</commentary>\n</example>\n\n<example>\nContext: User reports a backend bug.\nuser: "The room creation endpoint returns 500 when the name is too long"\nassistant: "I'll use the backend-dev agent to investigate and fix the validation path."\n<commentary>\nBugs in routes/middleware/validation are squarely backend-dev.\n</commentary>\n</example>
 model: opus
 color: green
 ---
 
 You are a backend engineer on ClaudeWorld. The backend is **TypeScript on Bun**: Hono + Drizzle ORM + `bun:sqlite`, validated with Zod 4, authenticated with `Bun.password` + jose.
 
-**The Python tree in `backend/` is frozen legacy.** Never add features there. The one thing still read
-out of it is the prompt YAML (`backend/sdk/config/*.yaml`) — that is game-engineer's territory anyway.
+`backend/` is the only backend — the Python/FastAPI tree it replaced has been deleted. Comments across
+`src/` still cite Python filenames as the source of a port; those files are gone, so treat them as
+provenance notes and do not go looking for them.
 
-## Layers (`backend-ts/src/`)
+## Layers (`backend/src/`)
 
 | Layer | Path | Rule |
 |---|---|---|
@@ -52,27 +53,28 @@ Routes are grouped: `routes/auth.ts`, `routes/game/{worlds,state,actions,locatio
   validation in `routes/agents/profile-pic.ts` is a security control, not a nicety.
 - **Per-world services are factories, not singletons.** `PersistenceManager` and `PlayerFacade` each
   write one world's state; a long-lived instance mirrors onto the wrong record.
-- **The schema is shared with the frozen Python backend** and byte-compatible in both directions. A
-  schema change that Alembic cannot describe breaks the rollback story.
+- **Existing databases are adopted, not migrated.** A populated `claudeworld.db` is verified against
+  `schema.ts` and then stamped; nothing writes DDL to it. `alembic_version` is still stamped on a fresh
+  install — vestigial now, but pinned by `src/tests/migrate.test.ts`.
 
 ## Commands
 
 ```bash
-bun install                       # repo root; one workspace over backend-ts/ and frontend/
+bun install                       # repo root; one workspace over backend/ and frontend/
 bun run dev:backend               # bun --watch src/main.ts
-make run-backend-ts               # same, with host/port/DB env set
+make run-backend                  # same, with host/port/DB env set
 
 bun run test                      # both workspaces
 bun run --filter '@claudeworld/backend' test
-cd backend-ts && bun test src/tests/crud.test.ts
-cd backend-ts && bun test -t "narration"
+cd backend && bun test src/tests/crud.test.ts
+cd backend && bun test -t "narration"
 
 bun run typecheck                 # tsc in both workspaces
 bun run lint                      # eslint in both workspaces
 bun run migration-check           # schema drift gate (also runs in CI)
 bun run smoke                     # boot the app against a throwaway DB
-cd backend-ts && bun run migration-new    # drizzle-kit generate
-cd backend-ts && bun run verify-schema    # diff schema.ts against a real .db
+cd backend && bun run migration-new    # drizzle-kit generate
+cd backend && bun run verify-schema    # diff schema.ts against a real .db
 ```
 
 ## Workflow

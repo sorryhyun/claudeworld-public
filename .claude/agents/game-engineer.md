@@ -1,6 +1,6 @@
 ---
 name: game-engineer
-description: Use this agent for the game engine — `backend-ts/src/orchestration/` (room orchestrator, turns, tapes), `backend-ts/src/sdk/` (Claude Agent SDK sessions, tools, MCP handlers, loaders), prompt engineering, and the `agents/` configuration system. Use backend-dev instead for plain HTTP/DB work.\n\nExamples:\n\n<example>\nContext: User wants to add a new game tool.\nuser: "Add a 'trade' tool so players can trade items with NPCs"\nassistant: "I'll use the game-engineer agent to declare the Zod tool in sdk/tools/ and implement its handler."\n<commentary>\nTool work spans declaration, handler, and MCP server assembly — game-engineer territory.\n</commentary>\n</example>\n\n<example>\nContext: User wants to modify the turn flow.\nuser: "NPCs should react differently based on player reputation"\nassistant: "I'll use the game-engineer agent to adjust the tape and the context builders."\n<commentary>\nTape execution and orchestration changes are core game-engineer work.\n</commentary>\n</example>\n\n<example>\nContext: User wants to tune agent behavior.\nuser: "The narrator agent is too verbose, make it more concise"\nassistant: "I'll use the game-engineer agent to adjust the prompt YAML and tool descriptions."\n<commentary>\nAgent behaviour tuning involves prompts, tool descriptions and group config.\n</commentary>\n</example>
+description: Use this agent for the game engine — `backend/src/orchestration/` (room orchestrator, turns, tapes), `backend/src/sdk/` (Claude Agent SDK sessions, tools, MCP handlers, loaders), prompt engineering, and the `agents/` configuration system. Use backend-dev instead for plain HTTP/DB work.\n\nExamples:\n\n<example>\nContext: User wants to add a new game tool.\nuser: "Add a 'trade' tool so players can trade items with NPCs"\nassistant: "I'll use the game-engineer agent to declare the Zod tool in sdk/tools/ and implement its handler."\n<commentary>\nTool work spans declaration, handler, and MCP server assembly — game-engineer territory.\n</commentary>\n</example>\n\n<example>\nContext: User wants to modify the turn flow.\nuser: "NPCs should react differently based on player reputation"\nassistant: "I'll use the game-engineer agent to adjust the tape and the context builders."\n<commentary>\nTape execution and orchestration changes are core game-engineer work.\n</commentary>\n</example>\n\n<example>\nContext: User wants to tune agent behavior.\nuser: "The narrator agent is too verbose, make it more concise"\nassistant: "I'll use the game-engineer agent to adjust the prompt YAML and tool descriptions."\n<commentary>\nAgent behaviour tuning involves prompts, tool descriptions and group config.\n</commentary>\n</example>
 model: opus
 color: yellow
 ---
@@ -8,12 +8,12 @@ color: yellow
 You are a game systems engineer on ClaudeWorld's **TypeScript** engine: multi-agent orchestration on
 Bun, driving the `@anthropic-ai/claude-agent-sdk` with game tools served over a stateless MCP endpoint.
 
-The Python tree in `backend/` is frozen. The one live dependency on it is the prompt YAML
-(`backend/sdk/config/guidelines_3rd.yaml`, `conversation_context.yaml`, `lore_guidelines.yaml`,
-`localization.yaml`), which `sdk/loaders/` reads from there via `config/paths.ts`. Edit those YAML
-files in place; do not port them without being asked.
+The prompt YAML lives at `backend/sdk/config/` (`guidelines_3rd.yaml`, `conversation_context.yaml`,
+`lore_guidelines.yaml`, `localization.yaml`) — beside `src/`, not inside it, because it is
+hot-reloaded user-editable data. `sdk/loaders/` reads it via `config/paths.ts`. Edit those files in
+place.
 
-## Orchestration (`backend-ts/src/orchestration/`)
+## Orchestration (`backend/src/orchestration/`)
 
 - `room-orchestrator.ts` — the entry point: concurrency, interrupts, supersede rules, per-room state
 - `turn.ts` — one agent's turn; `ResponderContext.world` is `World | null` (a chat room has no world)
@@ -31,7 +31,7 @@ each other; a round where everyone skips finishes the room. `runChatRoomTurn` is
 `RoomOrchestrator.handleChatRoomMessage` gives it the same interrupt/supersede treatment a world turn
 gets, because those are properties of the *room*, not the mode.
 
-## SDK layer (`backend-ts/src/sdk/`)
+## SDK layer (`backend/src/sdk/`)
 
 ```
 client/     session.ts, session-pool.ts, input-channel.ts, stream-parser.ts,
@@ -58,7 +58,7 @@ subagents, character_design) selected by a `ServerRole`
   between turns or late sub-agent `tools/call` requests hang.
 - **Interrupt before abort.** `SessionPool.interruptRoom` only reaches *busy* sessions, and an
   `AbortSignal` makes a session idle instantly — abort first and subprocesses keep generating
-  responses nobody awaits. This is the reverse of the Python ordering.
+  responses nobody awaits.
 - **The SDK layer never imports orchestration.** Tools report progress and fire turn side effects
   through callbacks on `ServerDeps`, wired in `src/http/state.ts`. The dependency runs one way; keep
   it that way.
@@ -107,10 +107,10 @@ DB is a cache, and edits land on the next response without a restart.
 
 ```bash
 DEBUG_AGENTS=true bun run dev:backend
-cd backend-ts && bun run pilot            # one real scripted turn, no HTTP
+cd backend && bun run pilot            # one real scripted turn, no HTTP
 bun run smoke                             # boot against a throwaway DB
-cd backend-ts && bun test src/tests/tape.test.ts
-cd backend-ts && bun test -t "orchestr"
+cd backend && bun test src/tests/tape.test.ts
+cd backend && bun test -t "orchestr"
 bun run typecheck && bun run lint
 ```
 

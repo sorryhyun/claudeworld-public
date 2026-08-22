@@ -1,1 +1,0 @@
-"""ChitChats backend test suite."""

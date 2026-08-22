@@ -115,7 +115,7 @@ Left sidebar with:
 
 ```bash
 # Install dependencies. The repo root is a Bun workspace covering this package
-# and backend-ts/, so install from the root -- there is one lockfile for both.
+# and backend/, so install from the root -- there is one lockfile for both.
 cd .. && bun install
 
 # Copy environment template

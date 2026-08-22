@@ -1,0 +1,245 @@
+/**
+ * Interactive `.env` setup wizard.
+ *
+ * Ported from `backend/scripts/setup_env.py` when the Python tree was deleted;
+ * `make setup` and `scripts/install/install.sh` both call it, so it is the one
+ * thing standing between a fresh clone and a bootable app.
+ *
+ * On a fresh checkout it writes a complete `.env`: a bcrypt hash of a password
+ * it prompts for, a random `JWT_SECRET`, and a display name. When `.env`
+ * already exists it offers to change the password, rewriting *only*
+ * `API_KEY_HASH` and leaving every other setting alone — people keep
+ * `CLAUDE_API_KEY` and `DATABASE_URL` in there.
+ *
+ * `Bun.password.hash` with `algorithm: 'bcrypt'` emits the same `$2b$` hashes
+ * Python's `bcrypt.hashpw` did, which is what lets an existing `.env` survive
+ * the migration untouched (see `src/auth/passwords.ts`).
+ *
+ * Usage:
+ *     bun run setup            # interactive setup / password change
+ *     bun run setup --force    # skip the confirmation prompt
+ *     bun run setup --check    # exit 0 if .env is configured, 1 if not
+ */
+
+import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
+import { join } from 'node:path'
+import { Writable } from 'node:stream'
+
+import { resolveProjectRoot } from '../config/paths'
+
+/** Cost factor. Python's `bcrypt.gensalt()` defaults to 12; match it. */
+const BCRYPT_COST = 12
+
+/**
+ * Placeholder fragments that mark a value as *not yet filled in*.
+ *
+ * `.env.example` ships with `API_KEY_HASH=$2b$12$example_hash_paste_your_…`,
+ * which is a syntactically valid assignment — checking for the key alone would
+ * call a copied example file "configured" and leave the user unable to log in.
+ */
+const HASH_PLACEHOLDERS = ['example_hash', 'paste_your', 'paste_here']
+const JWT_PLACEHOLDERS = ['your-random-secret', 'key-here']
+
+function isConfigured(envFile: string): boolean {
+  if (!existsSync(envFile)) return false
+  const content = readFileSync(envFile, 'utf-8')
+
+  const hasHash =
+    content.includes('API_KEY_HASH=') && !HASH_PLACEHOLDERS.some((p) => content.includes(p))
+  const hasJwt =
+    content.includes('JWT_SECRET=') && !JWT_PLACEHOLDERS.some((p) => content.includes(p))
+
+  return hasHash && hasJwt
+}
+
+/**
+ * Read a line from the terminal, echoing nothing when `hidden`.
+ *
+ * `node:readline` has no `getpass`. Muting is done by intercepting the
+ * interface's own output stream rather than by putting the TTY in raw mode:
+ * raw mode would also cost us line editing, backspace and Ctrl-C.
+ */
+function ask(question: string, hidden = false): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let muted = false
+    const mutedOutput = new Writable({
+      write(chunk, _encoding, callback) {
+        if (!muted) process.stdout.write(chunk as Buffer)
+        callback()
+      },
+    })
+
+    const rl = createInterface({
+      input: process.stdin,
+      output: hidden ? mutedOutput : process.stdout,
+      terminal: true,
+    })
+
+    rl.question(question, (answer) => {
+      if (hidden) process.stdout.write('\n')
+      rl.close()
+      resolve(answer)
+    })
+    rl.on('SIGINT', () => {
+      rl.close()
+      reject(new Error('cancelled'))
+    })
+
+    if (hidden) {
+      process.stdout.write(question)
+      muted = true
+    }
+  })
+}
+
+/** Prompt for a password twice and return its bcrypt hash. */
+async function promptPasswordHash(): Promise<string> {
+  for (;;) {
+    const password = await ask('Enter password: ', true)
+    if (password.length < 4) {
+      console.log('Password must be at least 4 characters. Please try again.')
+      continue
+    }
+
+    const confirm = await ask('Confirm password: ', true)
+    if (password !== confirm) {
+      console.log('Passwords do not match. Please try again.')
+      continue
+    }
+
+    if (password.length < 8) {
+      console.log('\nNote: Password is less than 8 characters.')
+      const proceed = (await ask('Continue? (Y/n): ')).trim().toLowerCase()
+      if (proceed === 'n') continue
+    }
+
+    return await Bun.password.hash(password, { algorithm: 'bcrypt', cost: BCRYPT_COST })
+  }
+}
+
+function envFileContent(passwordHash: string, jwtSecret: string, userName: string): string {
+  return `USER_NAME=${userName}
+CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK=true
+
+# Database Configuration
+# Default: SQLite (file: ./claudeworld.db, no installation needed)
+DATABASE_URL=sqlite+aiosqlite:///./claudeworld.db
+
+# Claude API Configuration
+# Option 1: Use direct API key authentication (recommended for deployment)
+# Get your API key from: https://console.anthropic.com/settings/keys
+# CLAUDE_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# Option 2: Use Claude Code web authentication (when running through Claude Code with subscription)
+# If CLAUDE_API_KEY is not set, the backend will use Claude Code authentication
+
+# Authentication (auto-generated by setup wizard)
+API_KEY_HASH=${passwordHash}
+
+# JWT Secret (auto-generated)
+JWT_SECRET=${jwtSecret}
+
+# Enable Guest Login (Optional)
+ENABLE_GUEST_LOGIN=true
+
+# Agent Debugging
+# Set to "true" to enable detailed debug logging for agent interactions
+DEBUG_AGENTS=false
+`
+}
+
+/** Replace an uncommented `KEY=…` line, or append one if absent. */
+function setEnvVar(content: string, key: string, value: string): string {
+  const pattern = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}=.*$`, 'm')
+  if (pattern.test(content)) return content.replace(pattern, `${key}=${value}`)
+
+  const separator = content === '' || content.endsWith('\n') ? '' : '\n'
+  return `${content}${separator}${key}=${value}\n`
+}
+
+async function runSetupWizard(envFile: string): Promise<void> {
+  console.log('='.repeat(60))
+  console.log('ClaudeWorld - Initial Setup')
+  console.log('='.repeat(60))
+  console.log('\nWelcome! Let’s set up your application.\n')
+
+  const passwordHash = await promptPasswordHash()
+  const jwtSecret = randomBytes(32).toString('hex')
+  const userName = (await ask('\nEnter display name (default: User): ')).trim() || 'User'
+
+  writeFileSync(envFile, envFileContent(passwordHash, jwtSecret, userName), 'utf-8')
+  console.log(`\nConfiguration saved: ${envFile}`)
+}
+
+async function updateExistingEnv(envFile: string): Promise<void> {
+  console.log('='.repeat(60))
+  console.log('ClaudeWorld - Change Password')
+  console.log('='.repeat(60))
+  console.log(`\nUpdating the login password in ${envFile}`)
+  console.log('(all other settings are left untouched)\n')
+
+  const passwordHash = await promptPasswordHash()
+
+  let content = readFileSync(envFile, 'utf-8')
+  content = setEnvVar(content, 'API_KEY_HASH', passwordHash)
+
+  // A .env without a usable JWT secret cannot issue tokens -- fill one in.
+  const hasUsableJwt = /^JWT_SECRET=(?!your-random-secret|.*key-here$).+$/m.test(content)
+  if (!hasUsableJwt) {
+    content = setEnvVar(content, 'JWT_SECRET', randomBytes(32).toString('hex'))
+    console.log('Generated a missing JWT_SECRET.')
+  }
+
+  writeFileSync(envFile, content, 'utf-8')
+  console.log(`\nPassword updated: ${envFile}`)
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2)
+  const force = args.includes('--force')
+  const checkOnly = args.includes('--check')
+
+  const envFile = join(resolveProjectRoot(), '.env')
+
+  if (checkOnly) {
+    if (isConfigured(envFile)) {
+      console.log('✅ .env is configured')
+      process.exit(0)
+    }
+    console.log('❌ .env is not configured')
+    process.exit(1)
+  }
+
+  if (isConfigured(envFile)) {
+    if (!force) {
+      console.log('✅ .env is already configured!')
+      console.log(`   Location: ${envFile}\n`)
+      const answer = (await ask('Change the login password? (y/N): ')).trim().toLowerCase()
+      if (answer !== 'y' && answer !== 'yes') {
+        console.log('Nothing changed.')
+        return
+      }
+      console.log()
+    }
+    await updateExistingEnv(envFile)
+  } else {
+    await runSetupWizard(envFile)
+  }
+
+  console.log()
+  console.log('='.repeat(60))
+  console.log('✅ Setup complete!')
+  console.log('='.repeat(60))
+  console.log('\nYou can now run the application with:\n   make dev\n')
+}
+
+main().catch((error: unknown) => {
+  if (error instanceof Error && error.message === 'cancelled') {
+    console.log('\n\nSetup cancelled.')
+    process.exit(1)
+  }
+  console.error(error)
+  process.exit(1)
+})

@@ -69,7 +69,7 @@
 # TOOL OVERRIDES (Response/Description customization)
 # =============================================================================
 # Override tool responses or descriptions for all agents in this group.
-# Structure mirrors backend/config/tools/tools.yaml
+# Tool names match the declarations in backend/src/sdk/tools/
 
 # Example: Override action tools
 # action:

@@ -167,14 +167,12 @@ make clean         # Clean build artifacts
 
 ### Windows Executable
 
-Build a standalone `.exe` for easy distribution:
-```bash
-make build-exe
-```
-
-Creates `dist/ClaudeWorld.exe` with bundled frontend, backend, and first-time setup wizard.
-
-**Automated builds:** GitHub Actions automatically builds and attaches executables when you create a release. See [docs/deployment.md](docs/deployment.md) for details.
+> **Not currently built.** `ClaudeWorld.exe` was produced by PyInstaller from the
+> Python/FastAPI backend, which was deleted once the TypeScript port reached parity.
+> The replacement is `bun build --compile`; the open question is the native window,
+> since Bun has no pywebview equivalent. Until that is settled, Windows users can run
+> the source install (`scripts/install/install.sh`) under WSL, and
+> [docs/deployment.md](docs/deployment.md) describes a build that no longer runs.
 
 ### Web Deployment
 

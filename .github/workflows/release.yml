@@ -1,4 +1,4 @@
-name: Build and Release Windows Executable
+name: Attach install scripts to release
 
 on:
   release:
@@ -8,70 +8,34 @@ on:
 permissions:
   contents: write
 
+# There is no Windows executable any more.
+#
+# `ClaudeWorld.exe` was built by PyInstaller from the FastAPI backend, which was
+# deleted when the TypeScript backend became the only one. Its replacement is
+# `bun build --compile`, and the open question is the native window: PyInstaller
+# shipped pywebview, and Bun has no equivalent -- so a compiled binary would
+# either open the system browser or need a separate shell (Tauri, Wails, an
+# Electron stub). Until that is decided this workflow only attaches the install
+# scripts, and `scripts/install/install.ps1` -- which downloads the exe from the
+# latest release that has one -- is stale for releases cut after the purge.
+#
+# The macOS/Linux source install (`scripts/install/install.sh`) is unaffected.
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  attach-installers:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install backend dependencies
-        run: uv sync
-
-      # Root Bun workspace: installs frontend and backend-ts together.
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Generate application icon
-        run: uv run python backend/scripts/generate_icon.py
-
-      - name: Build frontend
-        run: bun run build
-
-      - name: Build Windows executable
-        run: uv run pyinstaller ClaudeWorld.spec --noconfirm
-
-      - name: Create release archive
-        run: |
-          cd dist
-          7z a ClaudeWorld-Windows.zip ClaudeWorld.exe
-        shell: bash
-
-      # install.ps1 grabs the bare .exe; install.sh and install.ps1 must be
-      # release assets so the /releases/latest/download/ one-liners resolve.
+      # install.sh and install.ps1 must be release assets so the
+      # /releases/latest/download/ one-liners resolve.
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         if: github.event_name == 'release'
         with:
           files: |
-            dist/ClaudeWorld.exe
-            dist/ClaudeWorld-Windows.zip
             scripts/install/install.sh
             scripts/install/install.ps1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        if: github.event_name != 'release'
-        with:
-          name: ClaudeWorld-Windows
-          path: |
-            dist/ClaudeWorld.exe
-            scripts/install/install.sh
-            scripts/install/install.ps1
-          retention-days: 7

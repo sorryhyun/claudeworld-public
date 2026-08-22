@@ -69,7 +69,7 @@ Write-Info "Version: $tag"
 $exeAsset = $release.assets | Where-Object { $_.name -like '*.exe' } | Select-Object -First 1
 $zipAsset = $release.assets | Where-Object { $_.name -like '*Windows*.zip' } | Select-Object -First 1
 if (-not $exeAsset -and -not $zipAsset) {
-    Write-Fail "Release $tag has no Windows build. Pick another version with -Version, or build from source with 'make build-exe'."
+    Write-Fail "Release $tag has no Windows build. Pick another version with -Version. The Windows executable is not currently built - use the source install (install.sh) under WSL."
 }
 
 # ------------------------------------------------------------------ download

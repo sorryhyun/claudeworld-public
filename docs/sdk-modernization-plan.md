@@ -1,9 +1,9 @@
-# SDK Modernization Plan: adopting current Agent SDK patterns in `backend-ts`
+# SDK Modernization Plan: adopting current Agent SDK patterns in `backend`
 
 **Status:** in progress. §1, §3 and sequencing step 1 landed 2026-08-22. §3 was decided
 **no-go** on its own stated blocker and closed with its fallback branch instead; §2 (the
 runtime-mutation spikes) is still not started, and §4–§7 are untouched.
-**Scope:** `backend-ts/src/sdk/` and its integration points (`orchestration/turn.ts`,
+**Scope:** `backend/src/sdk/` and its integration points (`orchestration/turn.ts`,
 `room-orchestrator.ts`, `http/state.ts`). No REST-contract or schema changes.
 **Baseline:** `@anthropic-ai/claude-agent-sdk` pinned at `0.3.238` (bundling
 Claude Code CLI 2.1.238). The `sdk/` layer was ported from Python against the early-0.3
@@ -22,13 +22,13 @@ verified against a live session here.
 ## Ground rules
 
 1. **Spike first, migrate second.** ✅ **Done.** `src/scripts/spike-session.ts` is now the
-   living SDK-behavior harness, run with `bun run spike` from `backend-ts/`. It probes the
+   living SDK-behavior harness, run with `bun run spike` from `backend/`. It probes the
    pin, streaming-input sessions, MCP tools across turns, hook firing, the *name* of the
    sub-agent dispatch tool, the real `Options.agents` definitions driving a `Task` →
    persist round-trip, and `outputFormat` → `structured_output`. It costs real tokens and
    needs Claude Code auth, so it is deliberately outside `bun test`. Run it on every SDK
    bump; it earned its keep immediately (see **Findings** below).
-2. **Pin the SDK exactly** ✅ **Done** — `backend-ts/package.json` now reads
+2. **Pin the SDK exactly** ✅ **Done** — `backend/package.json` now reads
    `"@anthropic-ai/claude-agent-sdk": "0.3.238"`, no caret, and the spike's `pin` probe
    fails if the declared version regains a range or drifts from what is installed. Three
    separate places document behavior keyed to "a binary this repository does not pin": the
@@ -68,7 +68,7 @@ The single largest finding. Every agent gets `Task`/`TaskOutput` in its tool set
 (`CLAUDE_CODE_DISABLE_BUILTIN_AGENTS=true`, `env.ts:25`), `settingSources: []` blocks
 filesystem agent discovery — and **no production caller ever sets `Options.agents`**.
 `Task` has nothing to dispatch to. Python builds these from
-`backend/sdk/agent/task_subagent_definitions.py`; backend-ts has no equivalent. The
+`backend/sdk/agent/task_subagent_definitions.py` in the retired Python tree; the TypeScript backend has no equivalent. The
 sub-agent identities exist on disk (`agents/group_subagent/*/`) and the parent-side
 callback tools (`mcp__subagents__persist_*`) are fully implemented — only the
 `AgentDefinition` construction is missing.
@@ -105,7 +105,7 @@ The plan assumed the onboarding world-seed path parses JSON out of prose. **It d
 in either backend.** The World Seed Generator was merged into the Onboarding Manager
 (`tape/gameplay-tape.ts`, `trpg_generator.py:193`), and the seed is written through the
 `draft_world` / `persist_world` / `complete` tools — already structured, already validated
-by Zod. There is no "reply in JSON" instruction anywhere in `backend-ts/src/` or
+by Zod. There is no "reply in JSON" instruction anywhere in `backend/src/` or
 `backend/sdk/config/*.yaml`, and no hand parsing to replace. Forcing
 `outputFormat: json_schema` onto the Onboarding Manager would be a regression, not an
 adoption: it is a *conversational* agent whose prose is shown to the player (the onboarding

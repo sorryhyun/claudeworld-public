@@ -34,14 +34,14 @@ expandable agent thinking).
   the base; `VITE_API_BASE_URL` overrides it *only* for the split deployment (frontend on Vercel,
   backend behind a tunnel). Never hardcode a host or port in a component.
 - **There is no Vite and no dev proxy.** The backend bundles this app in-process
-  (`backend-ts/src/http/serve.ts`), so `API_PREFIXES` in `backend-ts/src/http/static.ts` is the single
+  (`backend/src/http/serve.ts`), so `API_PREFIXES` in `backend/src/http/static.ts` is the single
   copy — there is no second list to keep in step any more.
 - **Two run modes, one port each — the same port.** `make dev` → the backend bundles `frontend/` live
   with HMR on :8000 (`FRONTEND_DEV=true`, `SERVE_FRONTEND=false` so a stale `dist/` cannot answer).
   `make serve` → the backend serves the built `frontend/dist` on :8000. A taken port falls back to a
   free one, so read the URL the server prints rather than assuming 8000.
 - **Tailwind config is cwd-sensitive in two places.** `[serve.static]` must exist in *both*
-  `bunfig.toml` files (root and `backend-ts/`), and `@source` in `src/index.css` pins what gets
+  `bunfig.toml` files (root and `backend/`), and `@source` in `src/index.css` pins what gets
   scanned. Get either wrong and classes go missing with nothing logged — verify by diffing the *class
   sets* of dev and built CSS, not their sizes.
 - **Realtime is SSE plus polling, not either.** `useSSE` streams agent thinking/response deltas;

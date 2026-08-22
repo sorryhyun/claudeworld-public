@@ -1,28 +1,23 @@
-# Python
-.venv/
-backend/venv/
-backend/__pycache__/
-backend/**/__pycache__/
-*.pyc
-*.pyo
-*.pyd
-backend/.env
-.env
-test_*.txt
-.python-version
-.ruff_cache
-.uv-cache
-worlds
-claude_soul_doc.md
-
 # Node / Bun (single workspace at the repo root; bun's isolated
 # linker keeps the real packages under node_modules/.bun and
 # symlinks them into each workspace's own node_modules)
 node_modules/
 frontend/dist/
+backend/dist/
+dist/
+build/
+
+# Local configuration and data
+.env
+.env*.local
 frontend/.env.local
 frontend/.env.production.local
-traces.jsonl
+worlds
+claudeworld.db
+claudeworld.db-shm
+claudeworld.db-wal
+key.pem
+.vercel
 
 # IDE
 .vscode/
@@ -35,26 +30,15 @@ traces.jsonl
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs and traces
 *.log
 logs/
 debug.txt
+traces.jsonl
 
-key.pem
-/backend/.coverage
+# Coverage
 .coverage
 coverage.json
 htmlcov/
-.vercel
-.env*.local
-claudeworld.db
 
-# PyInstaller build artifacts
-build/
-dist/
-*.spec.bak
-__pycache__/
-*.manifest
-*.spec~
-claudeworld.db-shm
-claudeworld.db-wal
+claude_soul_doc.md

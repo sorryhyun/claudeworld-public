@@ -3,9 +3,9 @@
  *
  * Empty string by default, i.e. same-origin relative URLs. Both supported ways
  * of running the app put the API on the page's own origin — the backend bundles
- * this app in-process in dev (see `backend-ts/src/http/serve.ts`) and serves the
+ * this app in-process in dev (see `backend/src/http/serve.ts`) and serves the
  * built bundle in the single-port build (see
- * `backend-ts/src/http/static.ts`) — so the app does not need to know a host,
+ * `backend/src/http/static.ts`) — so the app does not need to know a host,
  * and stops being wrong when it is reached over a LAN IP, a tunnel or a
  * forwarded port.
  *

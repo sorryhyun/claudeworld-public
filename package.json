@@ -5,7 +5,7 @@
   "type": "module",
   "description": "ClaudeWorld - a turn-based text adventure run by collaborating Claude agents",
   "workspaces": [
-    "backend-ts",
+    "backend",
     "frontend"
   ],
   "scripts": {
@@ -20,7 +20,8 @@
     "test:backend": "bun run --filter '@claudeworld/backend' test",
     "test:frontend": "bun run --filter '@claudeworld/frontend' test",
     "migration-check": "bun run --filter '@claudeworld/backend' migration-check",
-    "smoke": "bun run --filter '@claudeworld/backend' smoke"
+    "smoke": "bun run --filter '@claudeworld/backend' smoke",
+    "setup": "bun backend/src/scripts/setup-env.ts"
   },
   "engines": {
     "bun": ">=1.4.0"

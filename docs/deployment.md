@@ -1,5 +1,15 @@
 # Deployment Guide
 
+> **⚠️ The Windows executable half of this document is historical.**
+>
+> `ClaudeWorld.exe` was built by PyInstaller from the Python/FastAPI backend, and that
+> tree was deleted once the TypeScript port reached parity. `make build-exe`,
+> `ClaudeWorld.spec`, `backend/launcher.py` and `backend/scripts/generate_icon.py` no
+> longer exist. The replacement is `bun build --compile`, and the open question is the
+> native window: PyInstaller shipped pywebview, and Bun has no equivalent.
+>
+> The web-deployment and tunnel sections below are still accurate.
+
 This guide explains how to build and deploy ClaudeWorld as a standalone Windows executable.
 
 > **Just want to install it?** End users don't build anything — they run one of the release-hosted install scripts:
@@ -128,7 +138,7 @@ Both installers live in `scripts/install/` and are attached to every release, wh
 
 Options (download the script first to pass them): `-Version`, `-InstallDir`, `-Repo`, `-NoShortcut`, `-NoPath`.
 
-**`install.sh`** (macOS / Linux / WSL) does a source install, since there is no prebuilt binary for these platforms. It installs `bun` and `uv` if either is missing, downloads the tagged source tarball to `~/.claudeworld`, runs `uv sync` and `bun install`, runs the `.env` wizard, and writes a `claudeworld` launcher to `~/.local/bin`:
+**`install.sh`** (macOS / Linux / WSL) does a source install, since there is no prebuilt binary for these platforms. It installs `bun` if it is missing, downloads the tagged source tarball to `~/.claudeworld`, runs `bun install`, runs the `.env` wizard, and writes a `claudeworld` launcher to `~/.local/bin`:
 
 ```bash
 claudeworld              # make dev (SQLite + frontend)

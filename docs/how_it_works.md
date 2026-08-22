@@ -4,6 +4,10 @@
 
 This document explains the TRPG system architecture, game flow, and agent collaboration.
 
+> **Note on file paths.** The design here is current, but the code references still point at
+> the Python/FastAPI backend that was deleted after the TypeScript port. The equivalents live
+> under `backend/src/` — see [`backend/CLAUDE.md`](../backend/CLAUDE.md).
+
 ---
 
 ## ClaudeWorld Overview
@@ -380,4 +384,4 @@ The system prompt (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders to
 
 - **[CLAUDE.md](../CLAUDE.md)** - Development commands, agent configuration, environment variables
 - **[README.md](../README.md)** - Quick start, API endpoints, deployment
-- **[backend/README.md](../backend/README.md)** - Backend architecture, debugging
+- **[backend/CLAUDE.md](../backend/CLAUDE.md)** - Backend architecture, debugging

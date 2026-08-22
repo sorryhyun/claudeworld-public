@@ -14,7 +14,7 @@ getting the file format exactly right, not just the writing.
 
 ## The configuration system (TypeScript backend)
 
-Agent folders are parsed by `backend-ts/src/sdk/parsing/agent-config.ts`. **Only these files are read:**
+Agent folders are parsed by `backend/src/sdk/parsing/agent-config.ts`. **Only these files are read:**
 
 ```
 agents/{name}/                    # repo-level agent
@@ -40,8 +40,8 @@ mtime, so an edit lands on the agent's next response with no restart.
 agent calls the `recall` tool to load a body. There is no automatic memory-surfacing mode. Subtitles are
 therefore retrieval keys — make them unique, descriptive and searchable.
 
-**Tools** are Zod modules in `backend-ts/src/sdk/tools/` (`action.ts` holds skip/memorize/recall), with
-handlers in `backend-ts/src/sdk/handlers/`. The system prompt template lives in
+**Tools** are Zod modules in `backend/src/sdk/tools/` (`action.ts` holds skip/memorize/recall), with
+handlers in `backend/src/sdk/handlers/`. The system prompt template lives in
 `backend/sdk/config/guidelines_3rd.yaml`. Per-group overrides go in `agents/group_{name}/group_config.yaml`
 (loaded by `sdk/loaders/group-config.ts`): tool response overrides plus `interrupt_every_turn`,
 `priority`, `transparent`, `can_see_system_messages`. See `agents/group_config.yaml.example`.

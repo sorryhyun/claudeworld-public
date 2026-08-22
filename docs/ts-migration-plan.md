@@ -1,5 +1,11 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
+> **⚠️ Historical.** The migration is finished and the Python backend has been deleted;
+> `backend/` is the TypeScript one. This document is kept for its gotchas table and its
+> record of what the parity contract required — not as a live plan. Every path it names
+> under the old `backend-ts/` is now `backend/`, and every path it names in the Python
+> tree is gone.
+
 **Status:** Phases 0, 1, 2 and 3 complete (Phase 3 on 2026-08-22; its one open item is the live
 frontend onboarding+gameplay pass, which needs a human and a Claude session). The repo root is a Bun workspace over
 `backend-ts/` and `frontend/` (one `bun install`, one `bun.lock`), and the Python helper

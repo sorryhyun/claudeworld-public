@@ -14,7 +14,6 @@ REPO="${CLAUDEWORLD_REPO:-sorryhyun/claudeworld-public}"
 INSTALL_DIR="${CLAUDEWORLD_HOME:-$HOME/.claudeworld}"
 BIN_DIR="${CLAUDEWORLD_BIN_DIR:-$HOME/.local/bin}"
 VERSION="latest"
-INSTALL_UV=1
 INSTALL_BUN=1
 CREATE_ENV=1
 CREATE_LAUNCHER=1
@@ -37,7 +36,6 @@ Options:
   --repo <owner/repo>
                     Source repository (default: sorryhyun/claudeworld-public)
   --bin-dir <path>  Where to put the `claudeworld` launcher (default: ~/.local/bin)
-  --no-uv           Fail instead of installing uv when it is missing
   --no-bun          Fail instead of installing bun when it is missing
   --no-env          Skip the interactive .env setup
   --no-launcher     Skip creating the `claudeworld` launcher
@@ -58,7 +56,6 @@ while [ $# -gt 0 ]; do
         --version)     VERSION="${2:?--version needs a tag}"; shift 2 ;;
         --repo)        REPO="${2:?--repo needs owner/repo}"; shift 2 ;;
         --bin-dir)     BIN_DIR="${2:?--bin-dir needs a path}"; shift 2 ;;
-        --no-uv)       INSTALL_UV=0; shift ;;
         --no-bun)      INSTALL_BUN=0; shift ;;
         --no-env)      CREATE_ENV=0; shift ;;
         --no-launcher) CREATE_LAUNCHER=0; shift ;;
@@ -96,18 +93,6 @@ if ! need bun; then
     need bun || die "bun installed but not on PATH. Open a new shell and re-run this installer."
 fi
 log "bun: $(bun --version)"
-
-if ! need uv; then
-    [ "$INSTALL_UV" -eq 1 ] || die "uv is required but --no-uv was passed. See https://docs.astral.sh/uv/"
-    log "uv not found - installing from https://astral.sh/uv/install.sh"
-    curl -fsSL https://astral.sh/uv/install.sh | sh
-    # The installer drops uv in one of these; pick it up for this session.
-    for candidate in "$HOME/.local/bin" "$HOME/.cargo/bin"; do
-        [ -x "$candidate/uv" ] && PATH="$candidate:$PATH"
-    done
-    need uv || die "uv installed but not on PATH. Open a new shell and re-run this installer."
-fi
-log "uv: $(uv --version)"
 
 if ! need claude; then
     warn "The 'claude' CLI was not found. ClaudeWorld drives agents through it."
@@ -150,7 +135,7 @@ mkdir -p "$STAGE"
 step "Downloading $TARBALL_URL"
 curl -fsSL "$TARBALL_URL" | tar -xz --strip-components=1 -C "$STAGE" \
     || die "Download failed. Check the version tag and your network."
-[ -f "$STAGE/pyproject.toml" ] || die "Downloaded archive does not look like ClaudeWorld."
+[ -f "$STAGE/package.json" ] || die "Downloaded archive does not look like ClaudeWorld."
 printf '%s\n' "$VERSION" > "$STAGE/.claudeworld-version"
 
 # --------------------------------------------------------------------- install
@@ -193,10 +178,8 @@ else
     mv "$STAGE" "$INSTALL_DIR"
 fi
 
-step "Installing backend dependencies (uv sync)"
-(cd "$INSTALL_DIR" && uv sync)
-
-step "Installing JS dependencies (bun install)"
+step "Installing dependencies (bun install)"
+# One Bun workspace over backend/ and frontend/, so this is the whole install.
 (cd "$INSTALL_DIR" && bun install --frozen-lockfile)
 
 # ------------------------------------------------------------------ .env setup
@@ -205,9 +188,9 @@ if [ "$CREATE_ENV" -eq 1 ] && [ ! -f "$INSTALL_DIR/.env" ]; then
     step "Configuring .env"
     # `curl | bash` leaves stdin pointing at the pipe, so borrow the terminal.
     if [ -t 0 ]; then
-        (cd "$INSTALL_DIR" && uv run python backend/scripts/setup_env.py) || warn ".env setup did not complete."
+        (cd "$INSTALL_DIR" && bun run setup) || warn ".env setup did not complete."
     elif [ -r /dev/tty ]; then
-        (cd "$INSTALL_DIR" && uv run python backend/scripts/setup_env.py < /dev/tty) || warn ".env setup did not complete."
+        (cd "$INSTALL_DIR" && bun run setup < /dev/tty) || warn ".env setup did not complete."
     else
         warn "No terminal available - skipping .env setup."
         warn "Run it later with:  claudeworld setup"
@@ -232,9 +215,8 @@ cd "\$CLAUDEWORLD_HOME"
 
 case "\${1:-start}" in
     start)      exec make dev ;;
-    postgresql) exec make dev-postgresql ;;
     perf)       exec make dev-perf ;;
-    setup)      exec uv run python backend/scripts/setup_env.py --force ;;
+    setup)      exec bun run setup --force ;;
     stop)       exec make stop ;;
     dir)        echo "\$CLAUDEWORLD_HOME" ;;
     version)    cat .claudeworld-version 2>/dev/null || echo "unknown" ;;
@@ -243,8 +225,7 @@ case "\${1:-start}" in
         cat <<'USAGE'
 claudeworld [command]
 
-  start       Run backend (SQLite) + frontend (default)
-  postgresql  Run with PostgreSQL instead of SQLite
+  start       Run backend + frontend on one port (default)
   perf        Run with performance logging to latency.log
   setup       Re-run the .env setup wizard
   stop        Stop running servers

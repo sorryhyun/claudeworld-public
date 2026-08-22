@@ -1,10 +1,10 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-ts run-backend-perf run-backend-trace run-tunnel-backend dev dev-python dev-postgresql dev-perf dev-trace diagnose-traces serve prod stop clean generate-icon build-exe
+.PHONY: help install setup dev serve run-backend run-backend-perf run-backend-trace dev-perf dev-trace run-tunnel-backend prod stop clean
 
 # Use bash for all commands
 SHELL := /bin/bash
 
 # Whether the backend serves frontend/dist on its own port. On by default, so
-# `make run-backend-ts` after a build is a working single-port app. `make dev`
+# `make run-backend` after a build is a working single-port app. `make dev`
 # overrides it to false and sets FRONTEND_DEV=true instead: there the backend
 # bundles frontend/ in-process with HMR, and a dist/ left over from an earlier
 # build must not shadow it with a stale bundle.
@@ -13,7 +13,7 @@ FRONTEND_DEV ?= false
 
 # Whether the backend opens a browser once it knows which port it got. Left
 # unset the backend follows FRONTEND_DEV, so `make dev` opens a tab and
-# `make run-backend-ts` does not. `OPEN_BROWSER=false make dev` opts out.
+# `make run-backend` does not. `OPEN_BROWSER=false make dev` opts out.
 # The backend has to be the one to launch it: with a negotiable port, this
 # file no longer knows the URL the tab should land on.
 OPEN_BROWSER ?=
@@ -23,53 +23,41 @@ OPEN_BROWSER ?=
 # in the obvious way, with help text naming a port the recipe below it no longer
 # used. `PORT=9000 make dev` now moves the whole file at once.
 #
-# It is only a *preference* for the TypeScript backend: a taken port falls back
-# to an OS-assigned one (backend-ts/src/http/serve.ts), which is safe because
-# the frontend is served from the API's own origin and issues relative URLs.
-# The Python targets pass it to uvicorn, which has no such fallback and dies.
+# It is only a *preference*: a taken port falls back to an OS-assigned one
+# (backend/src/http/serve.ts), which is safe because the frontend is served from
+# the API's own origin and issues relative URLs.
 PORT ?= 8000
 URL := http://localhost:$(PORT)
 
-# The single SQLite database the whole repo shares, and the uvicorn invocation
-# every Python target starts from. Both were spelled out once per target.
+# The single SQLite database the whole repo shares. The `sqlite+aiosqlite://`
+# spelling is a leftover of the SQLAlchemy era that `sqlitePathFromUrl` still
+# accepts; it is kept because existing `.env` files carry it. `DATABASE_URL`
+# must be set for every target -- the built-in default is Postgres, which this
+# backend cannot open.
 SQLITE_URL := sqlite+aiosqlite:///$(PWD)/claudeworld.db
-UVICORN := uv run uvicorn main:app --host 127.0.0.1 --port $(PORT)
 
-# Printed by every Python dev target. A canned recipe rather than four copies of
-# the same four @echo lines.
-define API_ONLY_NOTE
-	@echo ""
-	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
-	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
-	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
-	@echo "   for a browsable app, and this target to exercise the Python API."
-	@echo ""
-endef
+# Every server target starts from this. One definition rather than one per
+# target, each drifting its own way.
+RUN_BACKEND = HOST=127.0.0.1 PORT=$(PORT) SERVE_FRONTEND=$(SERVE_FRONTEND) \
+	FRONTEND_DEV=$(FRONTEND_DEV) OPEN_BROWSER=$(OPEN_BROWSER) \
+	DATABASE_URL=$(SQLITE_URL)
 
 help:
 	@echo "ClaudeWorld - Available commands:"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev               - Run TypeScript backend + frontend, ONE process  [DEFAULT]"
+	@echo "  make dev               - Run backend + frontend, ONE process  [DEFAULT]"
 	@echo "                           One port: $(URL) (frontend has HMR)."
 	@echo "                           A taken port falls back to a free one, and a"
 	@echo "                           browser opens on whichever port was won."
 	@echo "                           OPEN_BROWSER=false skips the browser."
 	@echo "  make serve             - Same, but from a built frontend/dist (no HMR)"
 	@echo "                           One process, one port: $(URL)"
-	@echo "  make dev-python        - Run Python backend (SQLite) + frontend (legacy, being retired)"
-	@echo "  make dev-postgresql    - Run Python backend (PostgreSQL) + frontend (requires PostgreSQL)"
-	@echo "  make dev-perf          - Run Python backend (SQLite) + frontend with performance logging"
-	@echo "  make install           - Install all dependencies (backend + backend-ts + frontend)"
-	@echo "  make run-backend-ts    - Run TypeScript backend server only (SQLite)"
-	@echo "  make run-backend       - Run Python backend server only (PostgreSQL)"
-	@echo "  make run-backend-sqlite- Run Python backend server only (SQLite)"
-	@echo "  make run-backend-perf  - Run backend server only (SQLite) with performance logging"
-	@echo "  make run-backend-trace - Run backend server only (SQLite) with CLI tracing"
-	@echo ""
-	@echo "CLI Tracing (requires patched CLI with observability patches):"
-	@echo "  make dev-trace         - Run dev mode with CLI tracing (outputs to traces.jsonl)"
-	@echo "  make diagnose-traces   - Analyze trace file for bottlenecks (FILE=traces.jsonl)"
+	@echo "  make install           - Install all dependencies (backend + frontend)"
+	@echo "  make run-backend       - Run the API only, no frontend bundling"
+	@echo "  make dev-perf          - make dev with performance logging (./latency.log)"
+	@echo "  make dev-trace         - make dev with CLI tracing  (./traces.jsonl)"
+	@echo "                           Tracing needs a CLI patched for observability."
 	@echo ""
 	@echo "Setup:"
 	@echo "  make setup             - Set up .env: prompts for your password (re-run to change it)"
@@ -78,10 +66,6 @@ help:
 	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
 	@echo "  make run-tunnel-backend - Run Cloudflare tunnel for backend"
 	@echo ""
-	@echo "Build:"
-	@echo "  make generate-icon     - Regenerate application icon (assets/icon.ico + frontend favicon)"
-	@echo "  make build-exe         - Build standalone executable with native window (requires frontend build first)"
-	@echo ""
 	@echo "Maintenance:"
 	@echo "  make stop              - Stop all running servers"
 	@echo "  make clean             - Clean build artifacts and caches"
@@ -89,9 +73,7 @@ help:
 install:
 	@echo "Installing Claude Code CLI globally..."
 	sudo npm install -g @anthropic-ai/claude-code || echo "Warning: Failed to install Claude Code CLI globally. You may need to run with sudo."
-	@echo "Installing backend dependencies with uv..."
-	uv sync
-	@echo "Installing JS dependencies (backend-ts + frontend) with bun..."
+	@echo "Installing dependencies (backend + frontend) with bun..."
 	@if command -v bun >/dev/null 2>&1; then \
 		bun install; \
 	else \
@@ -100,36 +82,31 @@ install:
 	fi
 	@echo ""
 	@echo "Checking .env configuration..."
-	@if uv run python backend/scripts/setup_env.py --check 2>/dev/null; then \
+	@if bun run setup --check 2>/dev/null; then \
 		echo ""; \
 	else \
 		echo ""; \
 		echo "Running first-time setup wizard..."; \
-		uv run python backend/scripts/setup_env.py; \
+		bun run setup; \
 	fi
 	@echo "Done!"
 
 setup:
 	@echo "Running .env setup wizard..."
-	uv run python backend/scripts/setup_env.py
+	@bun run setup
 
 run-backend:
-	@echo "Starting backend server (PostgreSQL)..."
-	cd backend && $(UVICORN)
-
-run-backend-sqlite:
 	@echo "Starting backend server (SQLite)..."
-	cd backend && DATABASE_URL=$(SQLITE_URL) $(UVICORN)
-
-run-backend-ts:
-	@echo "Starting TypeScript backend server (SQLite)..."
-	HOST=127.0.0.1 PORT=$(PORT) SERVE_FRONTEND=$(SERVE_FRONTEND) FRONTEND_DEV=$(FRONTEND_DEV) OPEN_BROWSER=$(OPEN_BROWSER) DATABASE_URL=$(SQLITE_URL) bun run dev:backend
+	$(RUN_BACKEND) bun run dev:backend
 
 run-backend-perf:
-	@echo "Starting backend server (SQLite) with performance logging..."
 	@echo "Performance metrics will be written to ./latency.log"
 	@echo "Terminal output will be written to ./run.log"
-	cd backend && DATABASE_URL=$(SQLITE_URL) PERF_LOG=true $(UVICORN) 2>&1 | tee $(PWD)/run.log
+	$(RUN_BACKEND) PERF_LOG=true bun run dev:backend 2>&1 | tee $(PWD)/run.log
+
+run-backend-trace:
+	@echo "Traces will be written to ./traces.jsonl"
+	$(RUN_BACKEND) ENABLE_CLI_TRACING=true bun run dev:backend 2>$(PWD)/traces.jsonl
 
 run-tunnel-backend:
 	@echo "Starting Cloudflare tunnel for backend..."
@@ -137,7 +114,7 @@ run-tunnel-backend:
 
 dev:
 	@mkdir -p /tmp/claude-empty
-	@echo "Starting the TypeScript backend with the frontend bundled in-process..."
+	@echo "Starting the backend with the frontend bundled in-process..."
 	@echo ""
 	@echo "ℹ️  One process serves everything: /auth/*, the full /worlds/* game surface"
 	@echo "   (onboarding, turns, travel, chat mode, state, polling) and the whole"
@@ -146,85 +123,33 @@ dev:
 	@echo "A browser opens on the port the server wins -- OPEN_BROWSER=false skips it."
 	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
 	@echo "Press Ctrl+C to stop."
-	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-ts
-
-dev-python:
-	@mkdir -p /tmp/claude-empty
-	@echo "Starting Python backend (SQLite) and frontend..."
-	@echo "Backend will run on $(URL) (SQLite: ./claudeworld.db)"
-	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
-	@echo "Press Ctrl+C to stop all servers"
-	$(API_ONLY_NOTE)
-	@$(MAKE) run-backend-sqlite
-
-dev-postgresql:
-	@mkdir -p /tmp/claude-empty
-	@echo "Starting backend (PostgreSQL) and frontend..."
-	@echo "Backend will run on $(URL)"
-	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
-	@echo "Press Ctrl+C to stop all servers"
-	$(API_ONLY_NOTE)
-	@$(MAKE) run-backend
+	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend
 
 dev-perf:
 	@mkdir -p /tmp/claude-empty
-	@echo "Starting backend (SQLite) and frontend with PERFORMANCE LOGGING..."
-	@echo "Backend will run on $(URL) (SQLite: ./claudeworld.db)"
+	@echo "Starting dev mode with PERFORMANCE LOGGING..."
 	@echo ""
-	@echo "📊 PERFORMANCE LOGGING ENABLED"
 	@echo "   Performance metrics: ./latency.log"
 	@echo "   Terminal output:     ./run.log"
+	@echo "   Monitor with: tail -f latency.log run.log"
 	@echo ""
-	@echo "   Monitor with: tail -f latency.log"
-	@echo "   Or both:      tail -f latency.log run.log"
-	@echo ""
-	@echo "Press Ctrl+C to stop all servers"
-	$(API_ONLY_NOTE)
-	@$(MAKE) run-backend-perf
-
-run-backend-trace:
-	@echo "Starting backend server (SQLite) with CLI tracing..."
-	@echo "Traces will be written to ./traces.jsonl"
-	@echo "Analyze with: make diagnose-traces FILE=traces.jsonl"
-	cd backend && DATABASE_URL=$(SQLITE_URL) ENABLE_CLI_TRACING=true $(UVICORN) 2>$(PWD)/traces.jsonl
+	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-perf
 
 dev-trace:
 	@mkdir -p /tmp/claude-empty
-	@echo "Starting backend (SQLite) and frontend with CLI TRACING..."
-	@echo "Backend will run on $(URL) (SQLite: ./claudeworld.db)"
+	@echo "Starting dev mode with CLI TRACING..."
 	@echo ""
-	@echo "🔍 CLI TRACING ENABLED (requires patched CLI with observability patches)"
-	@echo "   Trace output: ./traces.jsonl"
+	@echo "🔍 Requires a CLI patched with the observability patches."
+	@echo "   Trace output: ./traces.jsonl   (tail -f traces.jsonl)"
 	@echo ""
-	@echo "   Monitor with: tail -f traces.jsonl"
-	@echo "   Analyze with: make diagnose-traces FILE=traces.jsonl"
-	@echo ""
-	@echo "Press Ctrl+C to stop all servers"
-	$(API_ONLY_NOTE)
-	@$(MAKE) run-backend-trace
-
-diagnose-traces:
-	@if [ -z "$(FILE)" ]; then \
-		echo "Usage: make diagnose-traces FILE=traces.jsonl [THRESHOLD=100]"; \
-		echo ""; \
-		echo "Analyzes CLI traces to identify performance bottlenecks."; \
-		echo ""; \
-		echo "Arguments:"; \
-		echo "  FILE      - Path to trace file (JSONL format)"; \
-		echo "  THRESHOLD - Bottleneck threshold in ms (default: 100)"; \
-		echo "  FORMAT    - Output format: text or json (default: text)"; \
-	else \
-		THRESHOLD=$${THRESHOLD:-100}; \
-		FORMAT=$${FORMAT:-text}; \
-		uv run python backend/scripts/diagnose_traces.py "$(FILE)" --threshold $$THRESHOLD --format $$FORMAT; \
-	fi
+	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-trace
 
 serve:
 	@mkdir -p /tmp/claude-empty
 	@echo "Building frontend..."
 	bun run build
 	@echo ""
-	@echo "Starting TypeScript backend with the built frontend on ONE port..."
+	@echo "Starting the backend with the built frontend on ONE port..."
 	@echo "👉 Open $(URL) — frontend and API share the origin."
 	@echo "Press Ctrl+C to stop."
 	HOST=127.0.0.1 PORT=$(PORT) DATABASE_URL=$(SQLITE_URL) bun run --filter '@claudeworld/backend' start
@@ -240,48 +165,21 @@ prod:
 	@echo "Prerequisites: vercel CLI logged in (run 'vercel login' first)"
 	@echo ""
 	@# Start backend in background
-	@cd backend && $(UVICORN) &
+	@$(RUN_BACKEND) bun run --filter '@claudeworld/backend' start &
 	@sleep 2
 	@# Run tunnel script (handles URL detection, Vercel update, and redeploy)
 	@./scripts/deploy/update_vercel_backend_url.sh
 
 stop:
 	@echo "Stopping servers..."
-	@pkill -f "uvicorn main:app" || true
 	@pkill -f "bun.*src/main.ts" || true
 	@pkill -f "cloudflared" || true
 	@echo "Servers stopped."
 
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -rf backend/__pycache__
-	rm -rf backend/**/__pycache__
-	rm -rf backend/*.db
-	rm -f claudeworld.db
-	rm -f latency.log
-	rm -f traces.jsonl
+	rm -f claudeworld.db claudeworld.db-shm claudeworld.db-wal
+	rm -f latency.log run.log traces.jsonl
 	rm -rf frontend/dist
-	rm -rf frontend/node_modules/.vite
-	rm -rf backend-ts/dist
+	rm -rf backend/dist
 	@echo "Clean complete!"
-
-generate-icon:
-	@echo "Generating application icon..."
-	uv run python backend/scripts/generate_icon.py
-	@echo "Done! Generated assets/icon.ico and frontend/public/favicon.svg"
-
-build-exe:
-	@echo "Building standalone executable..."
-	@echo "Step 1: Generating application icon..."
-	uv run python backend/scripts/generate_icon.py
-	@echo "Step 2: Building frontend..."
-	bun run build
-	@echo "Step 3: Building executable with PyInstaller..."
-	uv run pyinstaller ClaudeWorld.spec --noconfirm
-	@# Rename to add .exe suffix if not present (for cross-platform builds)
-	@if [ -f "dist/ClaudeWorld" ] && [ ! -f "dist/ClaudeWorld.exe" ]; then \
-		mv dist/ClaudeWorld dist/ClaudeWorld.exe; \
-	fi
-	@echo ""
-	@echo "Build complete! Executable is in dist/ClaudeWorld.exe"
-	@echo "The application opens in a native window (use --browser flag for browser mode)"

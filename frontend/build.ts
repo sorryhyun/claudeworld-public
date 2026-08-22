@@ -3,12 +3,12 @@
  *
  * Replaces `vite build`. The dev path does not go through this file at all —
  * the backend imports `index.html` directly and lets Bun's dev server bundle it
- * on demand with HMR (see `backend-ts/src/main.ts`), which is why there is no
+ * on demand with HMR (see `backend/src/main.ts`), which is why there is no
  * watch mode here and no dev server to configure.
  *
  * Output layout is dictated by two consumers that already exist:
  *
- * - `backend-ts/src/http/static.ts` serves this directory, and
+ * - `backend/src/http/static.ts` serves this directory, and
  *   `middleware/auth.ts` lets `/assets` through unauthenticated. Everything
  *   hashed therefore has to live under `assets/`, while `index.html` stays at
  *   the root where the SPA fallback looks for it.

@@ -9,45 +9,6 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Lint
-        run: uv run ruff check backend/
-
-      # The SDK suite is run as part of `-m unit`, not as a separate excluded
-      # job. It was excluded from the default suite for memory reasons, had no
-      # CI job of its own, and rotted: by the time anyone ran it, three tests
-      # hung forever and four more failed against a since-changed API. Keeping
-      # it in the one required job is what stops that recurring.
-      - name: Unit tests (including SDK)
-        run: uv run poe test-unit-all
-
-      - name: Integration tests
-        run: uv run poe test-integration
-
-      # Catches the drift that used to be silent: a column added to models.py
-      # with no matching revision. Builds a database from the revisions, then
-      # asks Alembic whether autogenerate would still have anything to say.
-      - name: Schema drift check (models.py vs migrations)
-        run: uv run poe migration-check
-
-  # The TypeScript backend under construction in backend-ts/. It runs alongside
-  # the Python job, not instead of it: until cutover, master's backend is still
-  # the Python one and both have to stay green.
-  backend-ts:
-    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -62,36 +23,35 @@ jobs:
           bun-version-file: .bun-version
 
       # One lockfile for the whole repo: the root package.json is a Bun
-      # workspace over backend-ts/ and frontend/, so this installs both.
+      # workspace over backend/ and frontend/, so this installs both.
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Typecheck
-        working-directory: backend-ts
+        working-directory: backend
         run: bun run typecheck
 
       - name: Lint
-        working-directory: backend-ts
+        working-directory: backend
         run: bun run lint
 
       # `bun run test`, not `bun test src/tests`: the package script carries
       # `--parallel`, and CI should run the command developers run rather than a
       # second spelling of it that can drift.
       - name: Unit tests
-        working-directory: backend-ts
+        working-directory: backend
         run: bun run test
 
-      # The counterpart of the Python drift check above, and the half of it that
-      # was missing after Phase 0: builds a database from the committed Drizzle
-      # migrations alone and asserts the result is what src/db/schema.ts says.
-      # A column added to schema.ts with no migration fails here rather than on
-      # somebody's fresh install.
+      # Builds a database from the committed Drizzle migrations alone and
+      # asserts the result is what src/db/schema.ts says. A column added to
+      # schema.ts with no migration fails here rather than on somebody's fresh
+      # install.
       - name: Schema drift check (schema.ts vs migrations)
-        working-directory: backend-ts
+        working-directory: backend
         run: bun run migration-check
 
   # The React app. Its suite runs on `bun test` (happy-dom registered by
-  # src/test/setup.ts), same runner as backend-ts, so there is no second test
+  # src/test/setup.ts), same runner as the backend, so there is no second test
   # toolchain to keep alive.
   frontend:
     runs-on: ubuntu-latest
