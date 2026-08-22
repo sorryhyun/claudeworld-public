@@ -15,6 +15,7 @@
     "serve": "bun run build && bun run --filter '@claudeworld/backend' start",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
+    "lint:fix": "bun run --filter '*' lint:fix",
     "test": "bun run --filter '*' test",
     "test:backend": "bun run --filter '@claudeworld/backend' test",
     "test:frontend": "bun run --filter '@claudeworld/frontend' test",

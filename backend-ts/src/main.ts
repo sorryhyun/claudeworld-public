@@ -18,6 +18,7 @@ import { openAndInitDb, sqlitePathFromUrl } from './db/migrate'
 import { createApp } from './http/app'
 import { createAppState } from './http/state'
 import { getLogger, setupLogging } from './infrastructure/logging/logger'
+import { openBrowser, resolveOpenBrowser } from './http/open-browser'
 import { buildDevRoutes, listen, loadDevFrontend } from './http/serve'
 
 const logger = getLogger('Main')
@@ -142,10 +143,20 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
   const port = server.port ?? 0
 
   logger.info(`✅ Application startup complete — listening on http://${server.hostname}:${port}`)
+  const url = `http://localhost:${port}`
   if (devHtml) {
-    logger.info(`🌐 Frontend (HMR) and API share this origin — open http://localhost:${port}`)
+    logger.info(`🌐 Frontend (HMR) and API share this origin — open ${url}`)
   } else if (frontendDir) {
-    logger.info(`🌐 Frontend and API are on the same origin — open http://localhost:${port}`)
+    logger.info(`🌐 Frontend and API are on the same origin — open ${url}`)
+  }
+
+  // After the listener, never before: the port in `url` is the one that was
+  // actually won, which on a fallback is not the one anybody asked for. This
+  // is the only place that knows it, so it is the only place that can point a
+  // browser at it. Serving a page is a precondition — an API-only process has
+  // nothing to show.
+  if ((devHtml || frontendDir) && resolveOpenBrowser()) {
+    openBrowser(url)
   }
 
   return {

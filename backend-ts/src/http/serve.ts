@@ -9,6 +9,10 @@
  * told about, so the port had to be fixed for the proxy's benefit.
  */
 
+import { readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { getLogger } from '../infrastructure/logging/logger'
 import { API_PREFIXES } from './static'
 
@@ -44,6 +48,33 @@ export interface ListenOptions {
   /** Turns on Bun's bundler-side HMR for the `routes` HTML entry. */
   development?: { hmr: boolean }
   fetch: (request: Request, server: Bun.Server<unknown>) => Response | Promise<Response>
+  /**
+   * Where to remember a fallback port, so `bun --watch` restarts keep it.
+   * Null disables the memory entirely, which is what a one-shot process wants.
+   */
+  stickyPortFile?: string | null
+}
+
+/**
+ * Where a fallback port is remembered, for this run and no other.
+ *
+ * Keyed on the pid, which `bun --watch` keeps stable across restarts while
+ * resetting everything inside the process. Two dev servers running at once
+ * therefore remember separate ports, and neither inherits a port from a
+ * `make dev` that has already exited.
+ */
+export function stickyPortPath(pid: number = process.pid, dir: string = tmpdir()): string {
+  return join(dir, `claudeworld-port-${pid}`)
+}
+
+function readStickyPort(path: string | null | undefined): number | null {
+  if (!path) return null
+  try {
+    const port = Number.parseInt(readFileSync(path, 'utf8').trim(), 10)
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -60,15 +91,43 @@ export interface ListenOptions {
  * API call. Falling back keeps the two halves together.
  */
 export function listen(options: ListenOptions): Bun.Server<unknown> {
-  const { port, ...rest } = options
+  const { port, stickyPortFile = stickyPortPath(), ...rest } = options
+  const serve = (on: number): Bun.Server<unknown> =>
+    Bun.serve({ ...rest, port: on } as Parameters<typeof Bun.serve>[0])
+
   try {
-    return Bun.serve({ ...rest, port } as Parameters<typeof Bun.serve>[0])
+    return serve(port)
   } catch (error) {
     if (!isAddressInUse(error)) throw error
-    const server = Bun.serve({ ...rest, port: 0 } as Parameters<typeof Bun.serve>[0])
-    logger.warning(`Port ${port} is already in use — listening on ${server.port} instead`)
-    return server
   }
+
+  // The port this same run was relocated to before, if there was one. Reusing
+  // it is what keeps a `bun --watch` restart on the URL already open in a
+  // browser tab: port 0 hands back a *different* ephemeral port every time, so
+  // without this every save would strand the tab on a dead port. It is only a
+  // second preference — if something else took it in the meantime, fall
+  // through to a fresh one rather than failing.
+  const remembered = readStickyPort(stickyPortFile)
+  if (remembered !== null && remembered !== port) {
+    try {
+      const server = serve(remembered)
+      logger.warning(`Port ${port} is already in use — listening on ${remembered} again`)
+      return server
+    } catch (error) {
+      if (!isAddressInUse(error)) throw error
+    }
+  }
+
+  const server = serve(0)
+  logger.warning(`Port ${port} is already in use — listening on ${server.port} instead`)
+  if (stickyPortFile && server.port) {
+    try {
+      writeFileSync(stickyPortFile, `${server.port}\n`)
+    } catch {
+      // Costs a new port (and a stale tab) on the next restart, nothing more.
+    }
+  }
+  return server
 }
 
 /**

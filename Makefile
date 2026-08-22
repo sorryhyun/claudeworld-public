@@ -11,6 +11,13 @@ SHELL := /bin/bash
 SERVE_FRONTEND ?= true
 FRONTEND_DEV ?= false
 
+# Whether the backend opens a browser once it knows which port it got. Left
+# unset the backend follows FRONTEND_DEV, so `make dev` opens a tab and
+# `make run-backend-ts` does not. `OPEN_BROWSER=false make dev` opts out.
+# The backend has to be the one to launch it: with a negotiable port, this
+# file no longer knows the URL the tab should land on.
+OPEN_BROWSER ?=
+
 # The port every target prefers, and the URL built from it. One definition
 # rather than the sixteen literal 8000s this file used to carry -- they drifted
 # in the obvious way, with help text naming a port the recipe below it no longer
@@ -45,8 +52,9 @@ help:
 	@echo "Development:"
 	@echo "  make dev               - Run TypeScript backend + frontend, ONE process  [DEFAULT]"
 	@echo "                           One port: $(URL) (frontend has HMR)."
-	@echo "                           A taken port falls back to a free one; check with"
-	@echo "                           'ss -ltnp' if the page does not load."
+	@echo "                           A taken port falls back to a free one, and a"
+	@echo "                           browser opens on whichever port was won."
+	@echo "                           OPEN_BROWSER=false skips the browser."
 	@echo "  make serve             - Same, but from a built frontend/dist (no HMR)"
 	@echo "                           One process, one port: $(URL)"
 	@echo "  make dev-python        - Run Python backend (SQLite) + frontend (legacy, being retired)"
@@ -115,7 +123,7 @@ run-backend-sqlite:
 
 run-backend-ts:
 	@echo "Starting TypeScript backend server (SQLite)..."
-	HOST=127.0.0.1 PORT=$(PORT) SERVE_FRONTEND=$(SERVE_FRONTEND) FRONTEND_DEV=$(FRONTEND_DEV) DATABASE_URL=$(SQLITE_URL) bun run dev:backend
+	HOST=127.0.0.1 PORT=$(PORT) SERVE_FRONTEND=$(SERVE_FRONTEND) FRONTEND_DEV=$(FRONTEND_DEV) OPEN_BROWSER=$(OPEN_BROWSER) DATABASE_URL=$(SQLITE_URL) bun run dev:backend
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
@@ -135,6 +143,7 @@ dev:
 	@echo "   (onboarding, turns, travel, chat mode, state, polling) and the whole"
 	@echo "   /rooms/* + /agents/* chat surface including SSE streaming."
 	@echo ""
+	@echo "A browser opens on the port the server wins -- OPEN_BROWSER=false skips it."
 	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
 	@echo "Press Ctrl+C to stop."
 	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-ts

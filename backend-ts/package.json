@@ -9,6 +9,7 @@
     "start": "bun src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "bun test src/tests --parallel",
     "pilot": "bun src/scripts/pilot-turn.ts",
     "migration-new": "drizzle-kit generate",
