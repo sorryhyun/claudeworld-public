@@ -23,6 +23,7 @@ backend/
 │   ├── crud/              Database operations (pure CRUD, no business logic)
 │   ├── db/                Drizzle schema, migrations, introspection, drift diff
 │   ├── domain/            Enums, errors, player rules, serializers, slash commands
+│   ├── exe/               The `bun build --compile` entry point and its embedded assets
 │   ├── http/              Hono app, middleware (auth, rate limit), routes/, state.ts
 │   ├── infrastructure/    cache.ts, locking.ts, background.ts, scheduler.ts, sse*, logging/
 │   ├── lib/               Shared helpers (async queue, Korean particles, WebP compression)
@@ -48,7 +49,7 @@ http/routes/agents/  index · profile-pic
 
 ```bash
 bun run dev                       # bun --watch src/main.ts
-bun run test                      # bun test src/tests --parallel  (~3.8s, 1589 tests)
+bun run test                      # bun test src/tests --parallel  (~3.8s, 1608 tests)
 bun test src/tests/tape.test.ts   # single file
 bun test -t "narration"           # tests matching a pattern
 bun run typecheck                 # tsc --noEmit
@@ -257,6 +258,38 @@ durability guarantee.
 a directory holding both `agents/` and `backend/`, or takes `CLAUDEWORLD_ROOT` as an
 override — which is what makes `bun test` work from any cwd and what a relocated install
 uses.
+
+## The Standalone Executable
+
+`src/exe/entry.ts` is what `bun build --compile` is pointed at; `src/exe/assets.ts` is the
+contract with `scripts/build/exe-bundle.ts`. Building and shipping are in
+[`../docs/deployment.md`](../docs/deployment.md); what matters *here* is which branches
+the binary takes that a `bun run` never does:
+
+- **`IS_BUNDLED_EXE` (`config/bundled.ts`) is the single switch**, a `--define` baked in at
+  compile time. Every "the repository is not there" branch keys off it rather than
+  sniffing `process.execPath` or `Bun.embeddedFiles`, so a test can say which side it is
+  on — and `src/tests/exe-bundle.test.ts` asserts a test run is on the repo side.
+- **The project root is `dirname(process.execPath)`.** Inside the binary `import.meta.dir`
+  is the embedded mount (`/$bunfs/root`, `B:\~BUN\root` on Windows), so the marker walk in
+  `config/paths.ts` would climb to `/` and hand back nonsense.
+- **`migrationsFolder()` follows.** `readMigrationFiles` reads real files, so `drizzle/` is
+  unpacked beside the binary rather than embedded.
+- **`buildAgentOptions` sets `pathToClaudeCodeExecutable`, but only when something is
+  found.** Unset, the SDK resolves its own `node_modules` copy — right for a repo run,
+  impossible in the binary. `sdk/client/cli-path.ts` is the search.
+- **Entry order is load-bearing.** `entry.ts` reaches `main.ts` through a *dynamic* import
+  because static imports are hoisted: a statically imported `main.ts` would pull in
+  `config/settings.ts`, and with it the `.env` read, before the wizard had written one.
+
+**A `.env` in the process's own working directory gets shredded by Bun.** Bun auto-loads
+`.env` from the cwd *and expands `$VAR`*, so a bcrypt hash (`$2b$12$…`) reaches
+`process.env` with its cost and salt eaten and every login fails. The exe's cwd is the
+directory holding its `.env`, so it hits this every time; `make dev` runs from `backend/`,
+which has none, which is why it never showed up. `restoreExpandedDotEnv` in
+`config/settings.ts` puts back exactly the values that match what Bun's expansion would
+have produced, and writes them back into `process.env` because `auth/config.ts` layers the
+raw environment over the settings.
 
 ## Tool Configuration
 

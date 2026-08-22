@@ -9,6 +9,7 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { IS_BUNDLED_EXE } from '../config/bundled'
 import { getLogger } from '../infrastructure/logging/logger'
 
 const logger = getLogger('Serve')
@@ -17,11 +18,15 @@ const logger = getLogger('Serve')
 // either direction costs one tab.
 const MARKER_TTL_MS = 12 * 60 * 60 * 1000
 
-// `OPEN_BROWSER` decides outright when set; otherwise this follows dev mode.
+// `OPEN_BROWSER` decides outright when set; otherwise this follows dev mode —
+// or the executable, where the browser *is* the UI. Someone who double-clicked
+// an icon has no terminal to read a URL out of, and the exe has no equivalent of
+// the native window the PyInstaller build shipped.
 export function resolveOpenBrowser(env: Record<string, string | undefined> = process.env): boolean {
   const explicit = env.OPEN_BROWSER?.trim().toLowerCase()
   if (explicit === 'true' || explicit === '1') return true
   if (explicit === 'false' || explicit === '0') return false
+  if (IS_BUNDLED_EXE) return true
   return env.FRONTEND_DEV?.trim().toLowerCase() === 'true'
 }
 

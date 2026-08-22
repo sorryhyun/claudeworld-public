@@ -161,18 +161,29 @@ make dev           # Run full stack
 make install       # Install dependencies
 make stop          # Stop servers
 make clean         # Clean build artifacts
+make exe           # Build the standalone binary for this platform
 ```
 
 ## Deployment
 
 ### Windows Executable
 
-> **Not currently built.** `ClaudeWorld.exe` was produced by PyInstaller from the
-> Python/FastAPI backend, which was deleted once the TypeScript port reached parity.
-> The replacement is `bun build --compile`; the open question is the native window,
-> since Bun has no pywebview equivalent. Until that is settled, Windows users can run
-> the source install (`scripts/install/install.sh`) under WSL, and
-> [docs/deployment.md](docs/deployment.md) describes a build that no longer runs.
+```powershell
+irm https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.ps1 | iex
+```
+
+One file. The backend, the built frontend and the default agents and prompts are all
+inside it; on first launch it unpacks the editable parts beside itself, asks for a
+password, and opens the app in your browser. Your `.env`, database, agents and worlds live
+next to the exe, so replacing the exe *is* the upgrade — and an agent or prompt you edited
+is never overwritten by one.
+
+It does need the [Claude Code CLI](https://claude.ai/code) on the machine: the SDK ships it
+as a ~330MB native binary per platform, so it stays outside the bundle. The installer says
+so if it is missing.
+
+Build it yourself with `make exe-windows` (cross-compiles from any platform).
+[docs/deployment.md](docs/deployment.md) has the rest.
 
 ### Web Deployment
 

@@ -190,13 +190,51 @@ export function createSettings(env: EnvRecord = process.env): Settings {
 
 let cachedSettings: Settings | null = null
 
-// Two passes: find the root so `<root>/.env` can be read, then layer its values
-// *underneath* the process env.
+// A `$VAR` reference as Bun's own dotenv loader recognises it. Deliberately
+// looser than a shell's: Bun expands `$2b` and `$12`, which a shell would not.
+const BUN_ENV_REFERENCE = /\$\{[^}]*\}|\$[A-Za-z0-9_]+/g
+
+/**
+ * Undo Bun's `.env` expansion where it destroyed a value.
+ *
+ * Bun auto-loads `.env` **from the current directory** and expands `$VAR` inside
+ * it, undefined variables becoming the empty string. A bcrypt hash is
+ * `$2b$12$<salt><digest>`, so any run whose cwd is the directory holding the
+ * `.env` — the standalone executable's install folder, or `bun
+ * backend/src/main.ts` from the repo root — finds a *shredded* `API_KEY_HASH` in
+ * `process.env`, and every login fails with "Invalid password". (`make dev` runs
+ * from `backend/`, which has no `.env`, which is why this never showed up
+ * there.) `parseDotEnv` reads the same file correctly.
+ *
+ * The repair is deliberately narrow: a file value is restored only when the
+ * process value is *exactly* what Bun's expansion would have produced from it
+ * with every reference undefined. A genuine shell override survives, because it
+ * will not match that.
+ */
+export function restoreExpandedDotEnv(fileEnv: Record<string, string>, processEnv: EnvRecord): EnvRecord {
+  const repaired: EnvRecord = {}
+  for (const [key, fileValue] of Object.entries(fileEnv)) {
+    if (!fileValue.includes('$')) continue
+    const processValue = processEnv[key]
+    if (processValue === undefined || processValue === fileValue) continue
+    if (fileValue.replace(BUN_ENV_REFERENCE, '') === processValue) repaired[key] = fileValue
+  }
+  return repaired
+}
+
+// Three passes: find the root so `<root>/.env` can be read, layer its values
+// *underneath* the process env, then put back the ones Bun's loader expanded on
+// its way into that process env.
 export function getSettings(): Settings {
   if (cachedSettings === null) {
     const projectRoot = resolveProjectRoot()
-    const merged: EnvRecord = { ...loadDotEnv(projectRoot), ...process.env }
-    cachedSettings = createSettings(merged)
+    const fileEnv = loadDotEnv(projectRoot)
+    const repaired = restoreExpandedDotEnv(fileEnv, process.env)
+    // Written back into `process.env`, not merely into the record below:
+    // `auth/config.ts` layers the raw environment *over* these settings, so a
+    // shredded `API_KEY_HASH` left in place there would win the repair.
+    for (const [key, value] of Object.entries(repaired)) process.env[key] = value
+    cachedSettings = createSettings({ ...fileEnv, ...process.env })
   }
   return cachedSettings
 }

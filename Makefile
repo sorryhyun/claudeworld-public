@@ -1,4 +1,4 @@
-.PHONY: help install setup dev serve run-backend run-backend-perf run-backend-trace dev-perf dev-trace run-tunnel-backend prod stop clean
+.PHONY: help install setup dev serve exe exe-windows run-backend run-backend-perf run-backend-trace dev-perf dev-trace run-tunnel-backend prod stop clean
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -61,6 +61,12 @@ help:
 	@echo ""
 	@echo "Setup:"
 	@echo "  make setup             - Set up .env: prompts for your password (re-run to change it)"
+	@echo ""
+	@echo "Packaging:"
+	@echo "  make exe               - Build the standalone binary for this platform"
+	@echo "  make exe-windows       - Cross-compile dist/ClaudeWorld.exe"
+	@echo "                           One file; it unpacks agents/ and the prompt"
+	@echo "                           config beside itself and needs the claude CLI."
 	@echo ""
 	@echo "Deployment (Cloudflare tunnels for remote access):"
 	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
@@ -154,6 +160,19 @@ serve:
 	@echo "Press Ctrl+C to stop."
 	HOST=127.0.0.1 PORT=$(PORT) DATABASE_URL=$(SQLITE_URL) bun run --filter '@claudeworld/backend' start
 
+exe:
+	@echo "Building the standalone binary for this platform..."
+	bun run build:exe
+	@echo ""
+	@echo "👉 dist/claudeworld — copy it anywhere; it unpacks agents/ and the"
+	@echo "   prompt config beside itself on first launch."
+
+exe-windows:
+	@echo "Cross-compiling the Windows executable..."
+	bun run build:exe:windows
+	@echo ""
+	@echo "👉 dist/ClaudeWorld.exe"
+
 prod:
 	@echo "Starting production deployment..."
 	@echo "This will:"
@@ -182,4 +201,5 @@ clean:
 	rm -f latency.log run.log traces.jsonl
 	rm -rf frontend/dist
 	rm -rf backend/dist
+	rm -rf dist
 	@echo "Clean complete!"

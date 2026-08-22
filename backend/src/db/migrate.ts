@@ -13,6 +13,8 @@ import { readMigrationFiles, type MigrationMeta } from 'drizzle-orm/migrator'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { IS_BUNDLED_EXE } from '../config/bundled'
+import { resolveProjectRoot } from '../config/paths'
 import { getLogger } from '../infrastructure/logging/logger'
 import { describeDeclaredSchema, describeLiveSchema, diffSchemas } from './introspect'
 
@@ -25,7 +27,14 @@ const MIGRATIONS_TABLE = '__drizzle_migrations'
 // and empty table reads as "under Alembic control but at no revision".
 export const ALEMBIC_HEAD_REVISION = 'e872d9c86c83'
 
+/**
+ * Where the `.sql` files live. `readMigrationFiles` reads them off the real
+ * filesystem, so the executable cannot keep them embedded — `exe/assets.ts`
+ * unpacks `backend/drizzle/` beside the binary and this points there. In a repo
+ * run it is `src/db/` → `src/` → `backend/drizzle`, unchanged.
+ */
 export function migrationsFolder(): string {
+  if (IS_BUNDLED_EXE) return join(resolveProjectRoot(), 'backend', 'drizzle')
   return join(dirname(dirname(import.meta.dir)), 'drizzle')
 }
 

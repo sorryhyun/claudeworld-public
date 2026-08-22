@@ -7,6 +7,10 @@
  *     bun run setup            # interactive setup / password change
  *     bun run setup --force    # skip the confirmation prompt
  *     bun run setup --check    # exit 0 if .env is configured, 1 if not
+ *
+ * The standalone executable calls {@link ensureEnvConfigured} instead — same
+ * wizard, reached on first launch rather than from a Makefile the user of a
+ * downloaded binary never sees.
  */
 
 import { randomBytes } from 'node:crypto'
@@ -25,7 +29,7 @@ const BCRYPT_COST = 12
 const HASH_PLACEHOLDERS = ['example_hash', 'paste_your', 'paste_here']
 const JWT_PLACEHOLDERS = ['your-random-secret', 'key-here']
 
-function isConfigured(envFile: string): boolean {
+export function isConfigured(envFile: string): boolean {
   if (!existsSync(envFile)) return false
   const content = readFileSync(envFile, 'utf-8')
 
@@ -136,7 +140,7 @@ function setEnvVar(content: string, key: string, value: string): string {
   return `${content}${separator}${key}=${value}\n`
 }
 
-async function runSetupWizard(envFile: string): Promise<void> {
+export async function runSetupWizard(envFile: string): Promise<void> {
   console.log('='.repeat(60))
   console.log('ClaudeWorld - Initial Setup')
   console.log('='.repeat(60))
@@ -171,6 +175,26 @@ async function updateExistingEnv(envFile: string): Promise<void> {
 
   writeFileSync(envFile, content, 'utf-8')
   console.log(`\nPassword updated: ${envFile}`)
+}
+
+/**
+ * Bring `<root>/.env` into a usable state before the server reads it, running
+ * the wizard when it is not.
+ *
+ * Returns false when there is no way to ask — a service manager, a double-click
+ * on a platform that gave the process no console — in which case the caller
+ * should print instructions and exit rather than start a server that will 401
+ * every login. The TTY check is on *stdin* specifically: that is what readline
+ * needs, and a binary launched from Explorer gets a console with a usable one.
+ */
+export async function ensureEnvConfigured(projectRoot: string): Promise<boolean> {
+  const envFile = join(projectRoot, '.env')
+  if (isConfigured(envFile)) return true
+
+  if (!process.stdin.isTTY) return false
+
+  await runSetupWizard(envFile)
+  return true
 }
 
 async function main(): Promise<void> {
@@ -212,11 +236,15 @@ async function main(): Promise<void> {
   console.log('\nYou can now run the application with:\n   make dev\n')
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof Error && error.message === 'cancelled') {
-    console.log('\n\nSetup cancelled.')
+// Guarded: the executable imports this module for `ensureEnvConfigured`, and an
+// unguarded call would run the whole argv-parsing wizard on import.
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    if (error instanceof Error && error.message === 'cancelled') {
+      console.log('\n\nSetup cancelled.')
+      process.exit(1)
+    }
+    console.error(error)
     process.exit(1)
-  }
-  console.error(error)
-  process.exit(1)
-})
+  })
+}

@@ -103,6 +103,50 @@ async function respondWithFile(
   return new Response(file, { headers })
 }
 
+/**
+ * Serve the frontend the compiled executable carries inside it.
+ *
+ * `files` maps rooted URL paths to paths `Bun.file()` can open — built by
+ * `exe/assets.ts` from `Bun.embeddedFiles`. A map lookup rather than
+ * {@link resolveStaticFile}: the embedded mount is a virtual filesystem, so
+ * `statSync` on it is not the same question as "is this an entry in the
+ * binary", and the traversal guard the disk path needs is answered here by
+ * there being nothing to traverse into.
+ */
+export function createEmbeddedFrontendMiddleware(files: Record<string, string>) {
+  const indexPath = files['/index.html']
+
+  return createMiddleware<AppEnv>(async (c, next) => {
+    const method = c.req.method
+    if (method !== 'GET' && method !== 'HEAD') return next()
+
+    const urlPath = new URL(c.req.url).pathname
+    if (isApiPath(urlPath)) return next()
+
+    // Decoded before the lookup — the map is keyed on real names, and a request
+    // for `/assets/a%20b.png` is a request for `a b.png`. A malformed escape is
+    // simply not a file and falls through to the shell.
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(urlPath)
+    } catch {
+      decoded = urlPath
+    }
+
+    const file = files[decoded]
+    if (file !== undefined) {
+      return respondWithFile(file, urlPath, urlPath === '/index.html', method)
+    }
+
+    // Client-side route: the shell, same as the on-disk path does.
+    if (indexPath === undefined) {
+      logger.error('The embedded frontend has no index.html')
+      return c.json({ detail: 'Not Found' }, 404)
+    }
+    return respondWithFile(indexPath, urlPath, true, method)
+  })
+}
+
 /** Serve `distDir` (a directory containing `index.html`) for every non-API GET. */
 export function createFrontendMiddleware(distDir: string) {
   const root = resolve(distDir)

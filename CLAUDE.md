@@ -133,8 +133,8 @@ dev proxy, the second port and the duplicated API-prefix list.
 ## Testing
 
 Both workspaces run on `bun test`. `bun run test` is the entry point; from the repo
-root a bare `bun test` also collects everything. Current state: 1589 backend tests
-across 64 files (~3.8s), 13 frontend tests across 2 files.
+root a bare `bun test` also collects everything. Current state: 1608 backend tests
+across 65 files (~3.8s), 13 frontend tests across 2 files.
 
 **`--parallel` (Bun 1.4) is in both `test` scripts.** It runs the files across N worker
 processes (N = core count) and implies `--isolate`, so each file gets a fresh global.
@@ -233,15 +233,30 @@ GitHub release so the `latest/download/` URLs resolve:
 `core.autocrlf=true`.
 
 Releases are cut with `gh release create <tag> --target master --generate-notes`;
-`.github/workflows/release.yml` attaches the installers on `published`.
+`.github/workflows/release.yml` builds the binaries on `published`, smoke-tests the Linux
+one, and attaches them with the installers and a `SHA256SUMS`.
 
-> **Open gap: there is no Windows executable any more.** `ClaudeWorld.exe` was built by
-> PyInstaller from the FastAPI backend, which no longer exists. The replacement is
-> `bun build --compile`, and the open question is the native window — PyInstaller
-> shipped pywebview and Bun has no equivalent, so a compiled binary would either open
-> the system browser or need a separate shell. Until that is decided, `install.ps1` is
-> stale for releases cut after the purge and `docs/deployment.md` describes a build that
-> cannot run.
+```bash
+bun run build:exe            # dist/claudeworld      (linux-x64)
+bun run build:exe:windows    # dist/ClaudeWorld.exe  (windows-x64, cross-compiled)
+```
+
+**The Windows executable is `bun build --compile` output**, not the PyInstaller bundle it
+was in the Python era. `scripts/build/exe-bundle.ts` stages the two embedded trees and
+`backend/src/exe/` is the runtime half. Three things are load-bearing:
+
+- **The frontend rides inside the binary; the data trees do not.** `agents/` and
+  `backend/sdk/config/` are hot-reloaded, user-edited and *written to*, so the exe unpacks
+  them beside itself and never overwrites a file the user changed — see
+  `backend/src/exe/assets.ts` and the seed manifest it keeps.
+- **The `claude` CLI is not in there.** The SDK ships it as a ~330MB native binary per
+  platform, so the exe resolves whatever Claude Code the user has installed
+  (`backend/src/sdk/client/cli-path.ts`). Both installers check for it.
+- **There is no native window.** PyInstaller shipped pywebview; Bun has no equivalent, so
+  the binary opens the system browser at the port it won. macOS binaries are not published
+  because an unsigned download is quarantined on arrival.
+
+[`docs/deployment.md`](docs/deployment.md) has the details.
 
 ## History
 

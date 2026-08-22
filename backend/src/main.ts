@@ -12,6 +12,7 @@ import { openAndInitDb, sqlitePathFromUrl } from './db/migrate'
 import { createApp } from './http/app'
 import { createAppState } from './http/state'
 import { getLogger, setupLogging } from './infrastructure/logging/logger'
+import { embeddedFrontend } from './exe/assets'
 import { openBrowser, resolveOpenBrowser } from './http/open-browser'
 import { buildDevRoutes, listen, loadDevFrontend } from './http/serve'
 
@@ -77,8 +78,11 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
   // wants the `agents` table already populated.
   state.scheduler.start()
 
-  const frontendDir = resolveFrontendDir()
-  const app = createApp(state, { frontendDir })
+  // The binary's own frontend first: `Bun.embeddedFiles` is empty in a repo run,
+  // so this is null there and the disk lookup decides as before.
+  const embedded = embeddedFrontend()
+  const frontendDir = embedded ? null : resolveFrontendDir()
+  const app = createApp(state, { frontendDir, embeddedFrontend: embedded })
 
   // `getConnInfo` reads the peer address off the second argument; without it
   // rate limiting buckets every client together.
@@ -105,12 +109,12 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
   const url = `http://localhost:${port}`
   if (devHtml) {
     logger.info(`🌐 Frontend (HMR) and API share this origin — open ${url}`)
-  } else if (frontendDir) {
+  } else if (embedded || frontendDir) {
     logger.info(`🌐 Frontend and API are on the same origin — open ${url}`)
   }
 
   // After the listener, never before: `url` carries the port actually won.
-  if ((devHtml || frontendDir) && resolveOpenBrowser()) {
+  if ((devHtml || embedded || frontendDir) && resolveOpenBrowser()) {
     openBrowser(url)
   }
 

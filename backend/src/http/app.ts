@@ -15,7 +15,7 @@ import { createGameRoutes } from './routes/game'
 import { createMcpToolsRoutes } from './routes/mcp-tools'
 import { createReadmeRoutes } from './routes/readme'
 import { HttpError } from './errors'
-import { createFrontendMiddleware } from './static'
+import { createEmbeddedFrontendMiddleware, createFrontendMiddleware } from './static'
 import type { AppState } from './state'
 import type { AppEnv } from './types'
 
@@ -28,6 +28,13 @@ export interface CreateAppOptions {
    * test suite's expected JSON 404s into HTML.
    */
   readonly frontendDir?: string | null
+  /**
+   * The frontend the compiled executable carries inside it, as rooted URL path
+   * → embedded file path. Takes precedence over {@link frontendDir}: a binary
+   * dropped into a directory that happens to contain a `frontend/dist` must
+   * still serve the build it was compiled with.
+   */
+  readonly embeddedFrontend?: Record<string, string> | null
 }
 
 /** @param state Optional only so tests can stand up the auth surface alone. */
@@ -52,7 +59,11 @@ export function createApp(state?: AppState, options: CreateAppOptions = {}): Hon
 
   // Ahead of auth on purpose: a deep link carries no API key, and the page it
   // wants is the one that will *do* the logging in.
-  if (options.frontendDir) {
+  if (options.embeddedFrontend) {
+    const count = Object.keys(options.embeddedFrontend).length
+    logger.info(`📦 Serving ${count} frontend files embedded in the executable`)
+    app.use('*', createEmbeddedFrontendMiddleware(options.embeddedFrontend))
+  } else if (options.frontendDir) {
     logger.info(`📦 Serving frontend from ${options.frontendDir}`)
     app.use('*', createFrontendMiddleware(options.frontendDir))
   }

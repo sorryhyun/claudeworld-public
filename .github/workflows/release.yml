@@ -1,4 +1,4 @@
-name: Attach install scripts to release
+name: Build and attach release artifacts
 
 on:
   release:
@@ -8,33 +8,120 @@ on:
 permissions:
   contents: write
 
-# There is no Windows executable any more.
+# The Windows executable is back, built by `bun build --compile` instead of
+# PyInstaller. What that changed, relative to the FastAPI-era build:
 #
-# `ClaudeWorld.exe` was built by PyInstaller from the FastAPI backend, which was
-# deleted when the TypeScript backend became the only one. Its replacement is
-# `bun build --compile`, and the open question is the native window: PyInstaller
-# shipped pywebview, and Bun has no equivalent -- so a compiled binary would
-# either open the system browser or need a separate shell (Tauri, Wails, an
-# Electron stub). Until that is decided this workflow only attaches the install
-# scripts, and `scripts/install/install.ps1` -- which downloads the exe from the
-# latest release that has one -- is stale for releases cut after the purge.
+#   * There is no native window. PyInstaller shipped pywebview; Bun has no
+#     equivalent, so the binary serves the app on localhost and opens the
+#     system browser at it (`http/open-browser.ts`, defaulted on for the exe).
+#   * The `claude` CLI is not inside it. The SDK's platform binary is ~330MB
+#     against a ~105MB exe, so the installers check for Claude Code and the
+#     binary resolves whatever the user has (`sdk/client/cli-path.ts`).
 #
-# The macOS/Linux source install (`scripts/install/install.sh`) is unaffected.
+# macOS is deliberately absent: an unsigned binary downloaded from GitHub is
+# quarantined on arrival and needs a Gatekeeper override to run at all, so the
+# source install (`install.sh`) remains the honest macOS story.
 jobs:
-  attach-installers:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # install.sh and install.ps1 must be release assets so the
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build the frontend
+        run: bun run build
+
+      - name: Build Windows x64
+        run: bun scripts/build/exe-bundle.ts --target windows --arch x64
+
+      - name: Build Linux x64
+        run: |
+          bun scripts/build/exe-bundle.ts --target linux --arch x64
+          mv dist/claudeworld dist/claudeworld-linux-x64
+
+      # Boot the artifact we are about to publish, in the layout a user gets:
+      # one binary in an empty directory, everything else unpacked by the binary
+      # itself. A green test suite says nothing about whether the embedded
+      # frontend or the seed trees survived bundling. linux-x64 is the only
+      # target this runner can execute, and both come out of the same script.
+      - name: Smoke test the Linux artifact
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          cp dist/claudeworld-linux-x64 "$work/claudeworld"
+          cd "$work"
+
+          # The binary runs its own .env wizard on first launch and there is no
+          # TTY here, so write one first. The hash is bcrypt of the password
+          # used below, and nothing else.
+          printf '%s\n' \
+            'API_KEY_HASH=$2b$10$sf0untPvG/q3QK2Toh/85uy8HEaSt9uJeuGuyA/pcbIwyl91N2HO2' \
+            'JWT_SECRET=smoke-test-jwt-secret-not-used-anywhere-else' > .env
+
+          PORT=8123 OPEN_BROWSER=false ./claudeworld > boot.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+
+          base="http://127.0.0.1:8123"
+          up=""
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "::error::the binary exited during boot"; cat boot.log; exit 1
+            fi
+            if curl -fsS "$base/" -o index.html; then up=1; break; fi
+            sleep 1
+          done
+          [ -n "$up" ] || { echo "::error::never served within 60s"; cat boot.log; exit 1; }
+
+          # The embedded frontend survived bundling.
+          grep -q 'id="root"' index.html \
+            || { echo "::error::/ did not serve the app shell"; head -c 500 index.html; exit 1; }
+
+          # The seed trees were unpacked beside the binary: agents/ and the
+          # prompt YAML are what the first turn reads.
+          test -d agents/group_gameplay/Action_Manager \
+            || { echo "::error::agents/ was not unpacked"; ls -R . | head -40; exit 1; }
+          test -f backend/sdk/config/guidelines_3rd.yaml \
+            || { echo "::error::prompt config was not unpacked"; exit 1; }
+
+          # Migrations ran off the unpacked drizzle/ folder, and auth works
+          # against a .env that lives in the process's own working directory —
+          # the case Bun's dotenv expansion shreds if nothing repairs it.
+          test -f claudeworld.db || { echo "::error::no database was created"; cat boot.log; exit 1; }
+          curl -fsS -X POST "$base/auth/login" -H 'content-type: application/json' \
+            -d '{"password":"smoke-test-password"}' -o login.json
+          grep -q '"success":true' login.json \
+            || { echo "::error::login failed: $(cat login.json)"; exit 1; }
+
+          echo "Smoke test passed: shell served, seed unpacked, database created, login works."
+
+      # Generated after every artifact exists, so a partial build cannot publish
+      # sums describing files it did not ship. Not a signature — it travels the
+      # same HTTPS channel the binaries do — but it catches a truncated download
+      # and a stale CDN copy.
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum ClaudeWorld.exe claudeworld-linux-x64 > SHA256SUMS
+          cat SHA256SUMS
+
+      # install.sh and install.ps1 must be release assets too, so the
       # /releases/latest/download/ one-liners resolve.
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         if: github.event_name == 'release'
         with:
           files: |
+            dist/ClaudeWorld.exe
+            dist/claudeworld-linux-x64
+            dist/SHA256SUMS
             scripts/install/install.sh
             scripts/install/install.ps1
         env:

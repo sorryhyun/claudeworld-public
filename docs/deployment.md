@@ -1,394 +1,161 @@
 # Deployment Guide
 
-> **⚠️ The Windows executable half of this document is historical.**
+Building and shipping ClaudeWorld as a standalone executable.
+
+> This replaces the PyInstaller build. `ClaudeWorld.exe` used to be a PyInstaller
+> bundle of the Python/FastAPI backend, and that backend no longer exists — the whole
+> tree was deleted once the TypeScript port reached parity. The executable is now
+> `bun build --compile` output, which changes three user-visible things:
 >
-> `ClaudeWorld.exe` was built by PyInstaller from the Python/FastAPI backend, and that
-> tree was deleted once the TypeScript port reached parity. `make build-exe`,
-> `ClaudeWorld.spec`, `backend/launcher.py` and `backend/scripts/generate_icon.py` no
-> longer exist. The replacement is `bun build --compile`, and the open question is the
-> native window: PyInstaller shipped pywebview, and Bun has no equivalent.
->
-> The web-deployment and tunnel sections below are still accurate.
+> - **No native window.** PyInstaller shipped pywebview (Edge WebView2); Bun has no
+>   equivalent. The binary serves the app on localhost and opens the system browser.
+>   There is no `--browser` flag any more because there is nothing else to be.
+> - **No Python, no runtime.** One file, nothing to install alongside it.
+> - **The `claude` CLI still has to be on the machine.** See below.
 
-This guide explains how to build and deploy ClaudeWorld as a standalone Windows executable.
+## What the binary is
 
-> **Just want to install it?** End users don't build anything — they run one of the release-hosted install scripts:
->
-> ```powershell
-> # Windows (PowerShell)
-> irm https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.ps1 | iex
-> ```
->
-> ```bash
-> # macOS / Linux / WSL
-> curl -fsSL https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.sh | bash
-> ```
->
-> See [Install Scripts](#install-scripts) for how these are published and what they do. The rest of this guide covers building the executable they download.
+One file that contains:
 
-## Overview
+| Inside the exe | Why |
+|---|---|
+| The backend (Hono, Drizzle, the SDK layer, orchestration) | it *is* the program |
+| `frontend/dist` | served from `Bun.embeddedFiles`, never written to disk |
+| `agents/`, `backend/sdk/config/`, `backend/drizzle/`, the readme files | unpacked beside the exe on launch — see [Seed data](#seed-data) |
 
-ClaudeWorld can be packaged into a single Windows `.exe` file using PyInstaller. The executable runs as a **standalone desktop application** with a native window (powered by pywebview + Edge WebView2) instead of opening in the default browser.
+and, deliberately, does **not** contain the `claude` CLI. The Agent SDK ships that as a
+platform-specific native binary of roughly 330MB — three times the size of everything
+else here, per platform — so the exe uses whatever Claude Code the user already has.
+`backend/src/sdk/client/cli-path.ts` looks for it beside the executable, then in
+`~/.local/bin`, then on `PATH`, with `CLAUDE_CODE_PATH` overriding all three. Both
+installers check for it and say so if it is missing.
 
-This executable includes:
-- FastAPI backend server
-- Pre-built React frontend rendered in a native window
-- All agent configurations
-- Configuration files
-- Application icon
-- SQLite database support
-
-The packaged application includes a first-time setup wizard that guides users through password creation and configuration.
-
-## Prerequisites
-
-### Development Environment
-
-1. **Python 3.11 or 3.12** (required by PyInstaller)
-2. **Node.js** (for building the frontend)
-3. **uv** (Python package manager)
-4. **Windows** (for building Windows executables)
-
-### Dependencies
-
-Install all dependencies:
-```bash
-make install
-```
-
-This will install:
-- Backend Python dependencies (including PyInstaller)
-- Frontend npm dependencies
-
-## Building the Executable
-
-### Quick Build
+## Building
 
 ```bash
-make build-exe
+bun install
+bun run build:exe              # linux-x64  → dist/claudeworld
+bun run build:exe:windows      # windows-x64 → dist/ClaudeWorld.exe
 ```
 
-This command will:
-1. Build the React frontend (`bun run build`)
-2. Package everything with PyInstaller
-3. Create `dist/ClaudeWorld.exe`
+Both are `bun run build` (the frontend) followed by `scripts/build/exe-bundle.ts`, which
+takes `--target windows|linux|macos` and `--arch x64|arm64`. **Cross-compilation works**:
+the Windows binary is built on the Linux CI runner. There are no native dependencies left
+to block it — the last one, `sharp`, was replaced by `Bun.Image`.
 
-### Manual Build Steps
+The build script's real job is staging. `bun build --compile --asset <dir>` keys every
+embedded file on its path *under that directory's basename*, so the source trees have to
+be presented under the names the runtime looks for (`frontend/`, `seed/`). It builds a
+staging directory under `dist/.exe-assets/` and deletes it afterwards.
+`backend/src/exe/assets.ts` is the other half of that contract.
 
-If you prefer to build manually:
+## Seed data
 
-1. **Build the frontend:**
-   ```bash
-   bun run build
-   ```
+`agents/` and `backend/sdk/config/` are read at runtime, hot-reloaded on mtime, and
+written to — agent memory is a file. They cannot be served from inside the binary, so the
+exe unpacks them next to itself on every launch, guided by a `.claudeworld-seed.json`
+manifest recording what it wrote and what was in it:
 
-2. **Run PyInstaller:**
-   ```bash
-   uv run pyinstaller ClaudeWorld.spec --noconfirm
-   ```
+| On disk | Result |
+|---|---|
+| absent | written |
+| identical to what a previous release wrote | replaced with this release's copy |
+| anything else (you edited it, or it predates the manifest) | left alone |
 
-3. **Find the executable:**
-   The executable will be in `dist/ClaudeWorld.exe`
+So a new release can ship a better prompt without silently reverting the prompt you
+tuned. `decideSeedAction` in `backend/src/exe/assets.ts` is that rule, and it is unit
+tested.
 
-## Build Configuration
+## What lives beside the executable
 
-### PyInstaller Spec File
+```
+ClaudeWorld.exe
+.env                       written by the first-launch wizard
+claudeworld.db             SQLite, created on first boot
+.claudeworld-seed.json     what the binary unpacked, and its hashes
+agents/                    yours to edit
+backend/sdk/config/        prompt YAML, yours to edit
+backend/drizzle/           migrations (read by the migrator, not interesting)
+worlds/                    your saved worlds
+```
 
-The build is configured in `ClaudeWorld.spec`, which defines:
+The executable's own directory *is* the project root — `resolveProjectRoot()` returns
+`dirname(process.execPath)` in a bundled run — which is what makes the install portable
+and an upgrade a matter of replacing one file. `CLAUDEWORLD_ROOT` still overrides.
 
-- **Entry point:** `backend/launcher.py`
-- **Included data:**
-  - Frontend static files (`frontend/dist` → `static/`)
-  - Agent configurations (`agents/` → `agents/`)
-  - Backend config files (`backend/config/` → `backend/config/`)
-  - `.env.example` template
-- **Hidden imports:** All necessary Python modules
-- **Excluded modules:** Unused heavy libraries (tkinter, matplotlib, etc.)
+## First launch
 
-### Launcher Script
+1. Unpacks the seed data.
+2. If `.env` is not configured, runs the same wizard `make setup` does: password (bcrypt,
+   cost 12) and a generated `JWT_SECRET`. With no console to ask on, it prints where to
+   write `.env` by hand and exits rather than starting a server that would 401 every
+   login.
+3. Starts on `PORT` (default 8000, falling back to an OS-assigned port if it is taken)
+   and opens the browser at the port it actually won.
 
-The `backend/launcher.py` script:
-- Detects if running as bundled executable or in development
-- Sets up Python paths correctly
-- Copies default agents to working directory
-- Runs first-time setup wizard if needed
-- Starts the uvicorn server
-- Opens the browser automatically
+> **A `.env` in the process's own working directory is a hazard**, and this is where it
+> bites. Bun auto-loads `.env` from the current directory *and expands `$VAR` in it*, so a
+> bcrypt hash — `$2b$12$…` — arrives in `process.env` with its salt eaten, and every login
+> fails with "Invalid password". `restoreExpandedDotEnv` in `config/settings.ts` puts back
+> any value that is exactly what Bun's expansion would have produced. `make dev` never hit
+> this because it runs from `backend/`, which has no `.env`.
 
-## Distribution
+## Releasing
 
-### What to Distribute
+`gh release create <tag> --target master --generate-notes`, then
+`.github/workflows/release.yml` (on `published`) builds both binaries, boots the Linux one
+in a scratch directory to prove the embedded frontend and the seed trees survived
+bundling, and attaches:
 
-Distribution happens through GitHub releases. A published release carries four assets:
+| Asset | Notes |
+|---|---|
+| `ClaudeWorld.exe` | windows-x64 |
+| `claudeworld-linux-x64` | also what the smoke test runs |
+| `SHA256SUMS` | checked by `install.ps1` |
+| `install.sh`, `install.ps1` | so the `latest/download/` one-liners resolve |
 
-| Asset | Purpose |
-|-------|---------|
-| `ClaudeWorld.exe` | The standalone executable, fetched by `install.ps1` |
-| `ClaudeWorld-Windows.zip` | Same exe, zipped — kept for manual downloads and older installers |
-| `install.ps1` | Windows installer |
-| `install.sh` | macOS / Linux / WSL installer |
+**macOS is deliberately absent.** `bun build --compile --target=bun-darwin-arm64` works,
+but an unsigned binary downloaded from GitHub arrives quarantined and needs a Gatekeeper
+override to run at all. Until there is a signing identity, `install.sh` (source install)
+is the honest macOS story.
 
-The spec file produces a single self-contained executable, so `dist/ClaudeWorld.exe` is the only build output that needs shipping.
+`.gitattributes` pins `*.sh` to LF because the release runner may check out with
+`core.autocrlf=true`.
 
-### Install Scripts
+## Installing
 
-Both installers live in `scripts/install/` and are attached to every release, which is what makes the `latest/download/` one-liners work — GitHub serves release assets at a stable URL that always points at the newest published release.
+**Windows** — `install.ps1` downloads `ClaudeWorld.exe` into `%LOCALAPPDATA%\ClaudeWorld`,
+verifies it against `SHA256SUMS`, creates Start Menu and Desktop shortcuts and adds the
+directory to the user `PATH`. It refuses to overwrite a running instance. Because user
+data sits next to the exe, replacing the exe *is* the upgrade.
 
-**`install.ps1`** (Windows) downloads `ClaudeWorld.exe` into `%LOCALAPPDATA%\ClaudeWorld`, creates Start Menu and Desktop shortcuts, and adds the directory to the user PATH. It refuses to overwrite a running instance. Because user data lives next to the exe, replacing the exe is a complete upgrade — nothing else is touched. If a release has no bare `.exe` asset it falls back to extracting `ClaudeWorld-Windows.zip`, so it still works against pre-`beta.5` releases.
+```powershell
+irm https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.ps1 | iex
+```
 
-Options (download the script first to pass them): `-Version`, `-InstallDir`, `-Repo`, `-NoShortcut`, `-NoPath`.
-
-**`install.sh`** (macOS / Linux / WSL) does a source install, since there is no prebuilt binary for these platforms. It installs `bun` if it is missing, downloads the tagged source tarball to `~/.claudeworld`, runs `bun install`, runs the `.env` wizard, and writes a `claudeworld` launcher to `~/.local/bin`:
+**macOS / Linux / WSL** — `install.sh` does a source install to `~/.claudeworld` plus a
+`claudeworld` launcher, preserving `.env`, `claudeworld.db`, `worlds/` and edited agents
+across upgrades.
 
 ```bash
-claudeworld              # make dev (SQLite + frontend)
-claudeworld postgresql   # make dev-postgresql
-claudeworld perf         # make dev-perf
-claudeworld setup        # re-run the .env wizard
-claudeworld stop         # stop servers
-claudeworld update       # re-run the installer in place
-claudeworld dir version help
-```
-
-Options: `--dir`, `--version`, `--repo`, `--bin-dir`, `--no-uv`, `--no-env`, `--no-launcher`. Environment: `CLAUDEWORLD_HOME`, `CLAUDEWORLD_BIN_DIR`, `CLAUDEWORLD_REPO`.
-
-Re-running `install.sh` upgrades in place. It preserves `.env`, `.env.bak`, `claudeworld.db` and `worlds/`, merges `agents/` so edits to shipped agents and user-created characters survive while new agents from the release still land, and carries over `.venv` and `frontend/node_modules` rather than rebuilding them. The installed version is recorded in `.claudeworld-version`.
-
-> **`.gitattributes` matters here.** The release workflow runs on `windows-latest`, which checks out with `core.autocrlf=true`. Without `*.sh text eol=lf`, the attached `install.sh` would ship with CRLF line endings and fail to run under any shell.
-
-### User Setup Experience
-
-When users run `ClaudeWorld.exe` for the first time:
-
-1. **Agent Setup:** Default agents are copied from the bundled resources to the working directory
-2. **Configuration Wizard** (console window):
-   - Password creation (with confirmation)
-   - Display name selection
-   - Auto-generation of JWT secret
-3. **Auto-start:** Server starts and the application opens in a native window
-   - The console window is automatically hidden after startup
-   - To force browser mode instead: `ClaudeWorld.exe --browser`
-
-### User Data Location
-
-User data is stored in the same directory as the executable:
-- `.env` - User configuration
-- `agents/` - Agent configurations (editable by user)
-- `claudeworld.db` - SQLite database (if using SQLite)
-
-## Build Customization
-
-### Application Icon
-
-The build automatically uses `assets/icon.ico` for the executable icon and taskbar. To regenerate or customize:
-
-```bash
-# Regenerate from the script (editable at backend/scripts/generate_icon.py)
-make generate-icon
-
-# Or provide your own .ico file at assets/icon.ico
-```
-
-The icon is also used as the pywebview window icon at runtime.
-
-### Changing Executable Name
-
-Edit `ClaudeWorld.spec`:
-```python
-exe = EXE(
-    # ... other parameters ...
-    name='YourAppName',  # Change from 'ClaudeWorld'
-)
-```
-
-### Native Window vs. Browser Mode
-
-By default, the bundled executable opens in a **native window** using pywebview (Edge WebView2 on Windows). This provides a standalone desktop experience without browser chrome.
-
-To use the traditional browser mode:
-```bash
-ClaudeWorld.exe --browser
-```
-
-The spec file uses `console=True` so the first-time setup wizard can accept keyboard input. The console window is hidden programmatically once the native window opens.
-
-### Debug Mode
-
-To keep the console window visible for debugging, set the environment variable:
-```
-CLAUDEWORLD_SHOW_CONSOLE=1
-```
-
-### Adding More Data Files
-
-To include additional files in the bundle, edit `ClaudeWorld.spec`:
-```python
-datas = [
-    # ... existing entries ...
-    ('path/to/source', 'destination/in/bundle'),
-]
+curl -fsSL https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.sh | bash
 ```
 
 ## Troubleshooting
 
-### Build Fails with Module Not Found
+**"Invalid password" right after setting one.** See the dotenv note above; if it survives
+that, check whether `API_KEY_HASH` is exported in the environment, since a real
+environment variable still wins over the file.
 
-If PyInstaller can't find a module, add it to `hiddenimports` in `ClaudeWorld.spec`:
-```python
-hiddenimports = [
-    # ... existing imports ...
-    'your_missing_module',
-]
-```
+**A turn fails immediately with nothing useful.** The `claude` CLI is missing or not where
+the resolver looks. `CLAUDE_CODE_PATH=<abs path>` in `.env` settles it. An override that
+points at nothing resolves to *nothing* rather than falling back, on purpose: a wrong
+override should fail loudly instead of quietly running a different binary.
 
-### Executable is Too Large
+**The port in the log is not 8000.** `PORT` is a preference. A taken port falls back to an
+OS-assigned one, and the startup log names the URL that actually won — that printed URL is
+the authoritative one.
 
-The executable includes all dependencies. To reduce size:
-1. Remove unused dependencies from `pyproject.toml`
-2. Add more excludes to `ClaudeWorld.spec`:
-   ```python
-   excludes=[
-       'tkinter',
-       'matplotlib',
-       # Add more here
-   ],
-   ```
-
-### Missing Data Files at Runtime
-
-If the executable can't find configuration files or agents:
-1. Check that paths in `datas` section of `ClaudeWorld.spec` are correct
-2. Verify `get_base_path()` in `launcher.py` is working correctly
-
-### First-time Setup Not Running
-
-The setup wizard runs when `.env` file doesn't exist or has placeholder values. If it's not running:
-1. Delete the `.env` file next to the executable
-2. Run the executable again
-
-## Development vs. Production
-
-### Development Mode
-
-When running from source code:
-```bash
-make dev
-```
-
-The launcher script detects this and uses source paths directly.
-
-### Production Mode
-
-When running as bundled executable:
-- Resources are extracted from PyInstaller bundle
-- User data is stored in executable directory
-- Setup wizard runs on first launch
-
-## Testing the Build
-
-Before distributing:
-
-1. **Test the executable:**
-   ```bash
-   ./dist/ClaudeWorld.exe
-   ```
-
-2. **Verify first-time setup:**
-   - Delete `.env` if it exists
-   - Run the executable
-   - Complete the setup wizard
-   - Verify server starts and browser opens
-
-3. **Test agent functionality:**
-   - Create a new world
-   - Verify agents respond correctly
-   - Check that agent configurations are editable
-
-4. **Test database:**
-   - Create some data (worlds, messages, etc.)
-   - Close and restart the executable
-   - Verify data persists
-
-## Advanced Topics
-
-### Multi-file vs. Single-file Bundle
-
-Current configuration creates a single-file executable. To create a multi-file bundle (faster startup):
-
-Edit `ClaudeWorld.spec`:
-```python
-exe = EXE(
-    pyz,
-    a.scripts,
-    # Remove these two lines:
-    # a.binaries,
-    # a.datas,
-    [],
-    name='ClaudeWorld',
-    # ... rest of config ...
-)
-
-# Add this:
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    name='ClaudeWorld'
-)
-```
-
-### Cross-compilation
-
-PyInstaller generally requires building on the target platform:
-- Build Windows executables on Windows
-- Build macOS executables on macOS
-- Build Linux executables on Linux
-
-For cross-platform distribution, build on each platform separately.
-
-### Continuous Integration
-
-ClaudeWorld includes a GitHub Actions workflow (`.github/workflows/release.yml`) that automatically builds Windows executables.
-
-#### Automated Release Builds
-
-The workflow fires when a release is **published** (not merely created, so drafts don't trigger a build). It then:
-1. Generates the icon and builds the frontend
-2. Packages everything with PyInstaller
-3. Creates a ZIP archive
-4. Uploads `ClaudeWorld.exe`, `ClaudeWorld-Windows.zip`, `install.sh` and `install.ps1` to the release
-
-**To cut a release:**
-
-```bash
-gh release create <tag> --title "<title>" --target master --generate-notes
-```
-
-The workflow attaches all four assets a few minutes later. Verify with:
-
-```bash
-gh release view <tag> --json assets --jq '.assets[].name'
-curl -fsSL https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.sh | head -5
-```
-
-Or create the release via the GitHub UI at `https://github.com/sorryhyun/claudeworld-public/releases/new` — publishing it there triggers the same build.
-
-Note that a release ships the `install.sh` / `install.ps1` from **its own tag**, so installer changes only reach users once a release is published from a commit containing them.
-
-#### Manual Workflow Trigger
-
-You can also trigger the build manually from GitHub:
-1. Go to Actions tab
-2. Select "Build and Release Windows Executable"
-3. Click "Run workflow"
-
-The artifact will be available for download in the workflow run.
-
-## Support
-
-For issues or questions:
-- Check the [main README](../README.md) for general ClaudeWorld documentation
-- Review [CLAUDE.md](../CLAUDE.md) for project architecture
-- Open an issue on the GitHub repository
+**The binary is ~105MB.** About 60MB of that is the Bun runtime and 13MB the frontend
+(fonts included). `--minify` is deliberately not passed: it saves a couple of MB against a
+risk this build has no reason to take.

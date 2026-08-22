@@ -2,11 +2,14 @@
  * Filesystem layout of the ClaudeWorld project. `agents/`, `worlds/` and
  * `backend/sdk/config/` are *user-editable data*, not bundled code, and a
  * `bun build --compile` binary embeds modules rather than those trees — so the
- * root comes from a `CLAUDEWORLD_ROOT` override or from walking up from here.
+ * root comes from a `CLAUDEWORLD_ROOT` override, from the executable's own
+ * directory, or from walking up from here.
  */
 
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+
+import { IS_BUNDLED_EXE } from './bundled'
 
 /** Env var that pins the project root, bypassing directory discovery. */
 export const PROJECT_ROOT_ENV_VAR = 'CLAUDEWORLD_ROOT'
@@ -36,14 +39,25 @@ function looksLikeProjectRoot(candidate: string): boolean {
 }
 
 /**
- * Locate the project root: `CLAUDEWORLD_ROOT` → walk up for a directory holding
- * both `agents/` and `backend/` → `<backend>/..`. The walk is what makes
- * `bun test` work from any cwd; the env var is what makes a relocated install
- * work, where this file may sit outside the repo.
+ * Locate the project root: `CLAUDEWORLD_ROOT` → the executable's own directory
+ * when bundled → walk up for a directory holding both `agents/` and `backend/`
+ * → `<backend>/..`. The walk is what makes `bun test` work from any cwd; the env
+ * var is what makes a relocated install work, where this file may sit outside
+ * the repo.
+ *
+ * The bundled branch comes before the walk and cannot be folded into it. Inside
+ * the binary `import.meta.dir` is the embedded mount (`/$bunfs/root`, or
+ * `B:\~BUN\root` on Windows), which holds no marker directories, so the walk
+ * would climb to the filesystem root and hand back the fallback — a path with
+ * no relation to where the user put the exe. `exe/assets.ts` unpacks the seed
+ * data *into* this directory, which is what makes the markers appear there at
+ * all.
  */
 export function resolveProjectRoot(env: Record<string, string | undefined> = process.env): string {
   const override = env[PROJECT_ROOT_ENV_VAR]
   if (override) return resolve(override)
+
+  if (IS_BUNDLED_EXE) return dirname(process.execPath)
 
   let current = import.meta.dir
   // Bounded by the filesystem root, where dirname() is a fixed point.

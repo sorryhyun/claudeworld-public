@@ -8,6 +8,11 @@
     shortcuts. Re-running upgrades in place and keeps your .env, database,
     agents and worlds - they all live next to the exe.
 
+    The exe is one file: the backend, the built frontend and the default agents
+    and prompts are all inside it. On first launch it unpacks the editable parts
+    (agents\, backend\sdk\config\) beside itself, asks for a password, then
+    serves the app on localhost and opens your browser at it.
+
     One-liner:
       irm https://github.com/sorryhyun/claudeworld-public/releases/latest/download/install.ps1 | iex
 
@@ -65,12 +70,16 @@ try {
 $tag = $release.tag_name
 Write-Info "Version: $tag"
 
-# Newer releases ship a bare ClaudeWorld.exe; older ones only the zip.
 $exeAsset = $release.assets | Where-Object { $_.name -like '*.exe' } | Select-Object -First 1
-$zipAsset = $release.assets | Where-Object { $_.name -like '*Windows*.zip' } | Select-Object -First 1
-if (-not $exeAsset -and -not $zipAsset) {
-    Write-Fail "Release $tag has no Windows build. Pick another version with -Version. The Windows executable is not currently built - use the source install (install.sh) under WSL."
+if (-not $exeAsset) {
+    Write-Fail "Release $tag has no Windows executable. Pick a newer release with -Version, or use the source install (install.sh) under WSL."
 }
+
+# Published beside the binaries by release.yml. It travels the same HTTPS
+# channel they do, so it is no defence against a compromised release - it
+# catches a truncated download and a stale CDN copy. Releases cut before it
+# existed have none, so a missing manifest warns rather than fails.
+$sumsAsset = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS' } | Select-Object -First 1
 
 # ------------------------------------------------------------------ download
 
@@ -80,19 +89,40 @@ New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 try {
     $exeTemp = Join-Path $tempDir 'ClaudeWorld.exe'
 
-    if ($exeAsset) {
-        Write-Step "Downloading $($exeAsset.name) ($([math]::Round($exeAsset.size / 1MB, 1)) MB)"
+    Write-Step "Downloading $($exeAsset.name) ($([math]::Round($exeAsset.size / 1MB, 1)) MB)"
+    # Invoke-WebRequest redraws its progress bar on every response chunk, which
+    # throttles a 100 MB download by an order of magnitude. Silencing it is the
+    # single biggest speedup here.
+    $previousProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    try {
         Invoke-WebRequest -Uri $exeAsset.browser_download_url -OutFile $exeTemp -Headers $headers
-    } else {
-        Write-Step "Downloading $($zipAsset.name) ($([math]::Round($zipAsset.size / 1MB, 1)) MB)"
-        $zipTemp = Join-Path $tempDir 'windows.zip'
-        Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipTemp -Headers $headers
+    } finally {
+        $ProgressPreference = $previousProgress
+    }
 
-        $extractDir = Join-Path $tempDir 'extracted'
-        Expand-Archive -Path $zipTemp -DestinationPath $extractDir -Force
-        $found = Get-ChildItem -Path $extractDir -Filter '*.exe' -Recurse | Select-Object -First 1
-        if (-not $found) { Write-Fail "No .exe inside $($zipAsset.name)." }
-        Copy-Item $found.FullName $exeTemp -Force
+    if ($sumsAsset) {
+        Write-Step "Verifying checksum"
+        $sumsTemp = Join-Path $tempDir 'SHA256SUMS'
+        Invoke-WebRequest -Uri $sumsAsset.browser_download_url -OutFile $sumsTemp -Headers $headers
+
+        # sha256sum writes "<hash>  <name>", the name possibly prefixed with a
+        # `*` binary marker. Anchor on the name so one asset cannot match
+        # another's suffix.
+        $pattern = "\s\*?$([regex]::Escape($exeAsset.name))$"
+        $line = Get-Content $sumsTemp | Where-Object { $_ -match $pattern } | Select-Object -First 1
+        if (-not $line) {
+            Write-Warn "No published checksum for $($exeAsset.name) - skipping verification."
+        } else {
+            $want = (($line -split '\s+')[0]).ToLowerInvariant()
+            $have = (Get-FileHash -Path $exeTemp -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($want -ne $have) {
+                Write-Fail "Checksum mismatch: expected $want, got $have. Download aborted."
+            }
+            Write-Info "SHA256 matches"
+        }
+    } else {
+        Write-Warn "This release publishes no SHA256SUMS - skipping verification."
     }
 
     # ----------------------------------------------------------------- install
@@ -110,8 +140,10 @@ try {
     Copy-Item $exeTemp $exePath -Force
     Write-Info "ClaudeWorld.exe"
 
-    # The exe carries the default agents inside it and unpacks them next to
-    # itself on first launch, so an upgrade leaves your edited agents alone.
+    # The exe carries the default agents and prompts inside it and unpacks them
+    # next to itself on launch. Files you have edited are left alone; ones you
+    # never touched are moved forward to this release. See
+    # backend/src/exe/assets.ts.
     Write-Info "Your .env, claudeworld.db, agents\ and worlds\ stay in $InstallDir"
 
     $tag | Set-Content -Path (Join-Path $InstallDir '.claudeworld-version') -Encoding ascii
@@ -153,18 +185,23 @@ try {
 # --------------------------------------------------------------- prerequisites
 
 Write-Step "Checking AI provider"
-if (Get-Command claude -ErrorAction SilentlyContinue) {
+# ClaudeWorld spawns the Claude Code CLI for every agent turn. It is NOT inside
+# the exe - the CLI binary is ~330 MB per platform, several times the size of
+# everything else - so it has to be on this machine already. ClaudeWorld looks
+# for it beside itself, then in ~\.local\bin, then on PATH.
+if ((Get-Command claude -ErrorAction SilentlyContinue) -or
+    (Test-Path (Join-Path $HOME '.local\bin\claude.exe'))) {
     Write-Info "claude CLI found"
 } else {
     Write-Warn "The 'claude' CLI was not found. ClaudeWorld drives agents through it."
     Write-Warn "Install it before creating a world:"
-    Write-Warn "  npm install -g @anthropic-ai/claude-code"
-    Write-Warn "Or set CLAUDE_API_KEY in .env to use the API directly."
+    Write-Warn "  irm https://claude.ai/install.ps1 | iex"
+    Write-Warn "Or set CLAUDE_API_KEY in $InstallDir\.env to use the API directly."
 }
 
 Write-Step "Done"
 Write-Info "Installed $tag to $InstallDir"
 Write-Host ""
 Write-Info "Start it from the Start Menu, or run:  $exePath"
-Write-Info "It sets up your password on first launch, then opens the app in a native window."
+Write-Info "It asks for a password on first launch, then opens the app in your browser."
 Write-Host ""
