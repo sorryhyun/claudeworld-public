@@ -9,9 +9,8 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "bun run --filter '*' dev",
+    "dev": "bun run --filter '@claudeworld/backend' dev",
     "dev:backend": "bun run --filter '@claudeworld/backend' dev",
-    "dev:frontend": "bun run --filter '@claudeworld/frontend' dev",
     "build": "bun run --filter '@claudeworld/frontend' build",
     "serve": "bun run build && bun run --filter '@claudeworld/backend' start",
     "typecheck": "bun run --filter '*' typecheck",
@@ -24,5 +23,8 @@
   },
   "engines": {
     "bun": ">=1.4.0"
+  },
+  "devDependencies": {
+    "bun-plugin-tailwind": "^0.1.2"
   }
 }

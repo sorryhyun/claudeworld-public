@@ -18,6 +18,7 @@ import { openAndInitDb, sqlitePathFromUrl } from './db/migrate'
 import { createApp } from './http/app'
 import { createAppState } from './http/state'
 import { getLogger, setupLogging } from './infrastructure/logging/logger'
+import { buildDevRoutes, listen, loadDevFrontend } from './http/serve'
 
 const logger = getLogger('Main')
 
@@ -47,9 +48,10 @@ export function resolveDatabasePath(): string {
  * explicit override is for a relocated install where the bundle does not sit
  * next to the source tree.
  *
- * A missing directory is not an error — `make dev` runs Vite on 5173 and never
- * builds `dist/` — but an override that points nowhere is worth a warning,
- * because the person who set it expected pages, not JSON 404s.
+ * A missing directory is not an error — `make dev` bundles `frontend/` in-process
+ * ({@link resolveFrontendDev}) and never builds `dist/` — but an override that
+ * points nowhere is worth a warning, because the person who set it expected
+ * pages, not JSON 404s.
  */
 export function resolveFrontendDir(env: Record<string, string | undefined> = process.env): string | null {
   if (env.SERVE_FRONTEND?.trim().toLowerCase() === 'false') return null
@@ -67,7 +69,20 @@ export function resolveFrontendDir(env: Record<string, string | undefined> = pro
   return null
 }
 
-export function startServer(): { port: number; stop: () => Promise<void> } {
+/**
+ * Whether to bundle and serve `frontend/` in-process with HMR.
+ *
+ * Opt-in (`make dev` sets it) rather than inferred from `NODE_ENV`, because the
+ * cost of guessing wrong is asymmetric: a production process that decides it is
+ * in dev mode would bundle the React app on the fly and ship unminified code,
+ * while `make serve` and the packaged build both want the prebuilt `dist/` that
+ * {@link resolveFrontendDir} finds.
+ */
+export function resolveFrontendDev(env: Record<string, string | undefined> = process.env): boolean {
+  return env.FRONTEND_DEV?.trim().toLowerCase() === 'true'
+}
+
+export async function startServer(): Promise<{ port: number; stop: () => Promise<void> }> {
   const settings = getSettings()
   setupLogging({ debugMode: settings.debugAgents })
 
@@ -102,19 +117,34 @@ export function startServer(): { port: number; stop: () => Promise<void> } {
 
   const frontendDir = resolveFrontendDir()
   const app = createApp(state, { frontendDir })
-  const port = Number(process.env.PORT ?? 8000)
 
-  const server = Bun.serve({
-    port,
+  // The second argument is what `getConnInfo` reads the peer address from;
+  // without threading it through, rate limiting would bucket every client
+  // together.
+  const fetchApi = (request: Request, bunServer: Bun.Server<unknown>): Response | Promise<Response> =>
+    app.fetch(request, { server: bunServer })
+
+  // Dev mode bundles the frontend in this process, with HMR, instead of serving
+  // a prebuilt `dist/`. That is what collapses `make dev` to one command on one
+  // port — and, because the page is then same-origin by construction, what lets
+  // the port itself be negotiable below.
+  const devHtml = resolveFrontendDev() ? await loadDevFrontend() : null
+
+  const server = listen({
+    port: Number(process.env.PORT ?? 8000),
     hostname: process.env.HOST ?? '0.0.0.0',
-    // The second argument is what `getConnInfo` reads the peer address from;
-    // without threading it through, rate limiting would bucket every client
-    // together.
-    fetch: (request, bunServer) => app.fetch(request, { server: bunServer }),
+    ...(devHtml ? { routes: buildDevRoutes(devHtml, fetchApi), development: { hmr: true } } : {}),
+    fetch: fetchApi,
   })
+  // `Bun.Server.port` is optional only because a server can be bound to a unix
+  // socket instead; this one always binds TCP. Read it back rather than reusing
+  // the requested value — they differ whenever the fallback in `listen` fired.
+  const port = server.port ?? 0
 
   logger.info(`✅ Application startup complete — listening on http://${server.hostname}:${port}`)
-  if (frontendDir) {
+  if (devHtml) {
+    logger.info(`🌐 Frontend (HMR) and API share this origin — open http://localhost:${port}`)
+  } else if (frontendDir) {
     logger.info(`🌐 Frontend and API are on the same origin — open http://localhost:${port}`)
   }
 
@@ -134,7 +164,7 @@ export function startServer(): { port: number; stop: () => Promise<void> } {
 }
 
 if (import.meta.main) {
-  const { stop } = startServer()
+  const { stop } = await startServer()
   const shutdown = (): void => {
     void stop().then(() => process.exit(0))
   }

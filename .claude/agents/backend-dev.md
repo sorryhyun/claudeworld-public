@@ -41,9 +41,10 @@ Routes are grouped: `routes/auth.ts`, `routes/game/{worlds,state,actions,locatio
 - **Route order is load-bearing.** `GET /agents/configs` must be registered before `GET /agents/:agent_id`,
   and `/worlds/importable` before `/worlds/:id`, or the literal parses as an id and the request 422s.
 - **The static middleware runs before `authMiddleware`.** A deep link like `/game/abc` carries no
-  `X-API-Key`. The cost: `API_PREFIXES` in `http/static.ts` must name every top-level router, and the
-  proxy keys in `frontend/vite.config.ts` must match. **A new top-level router means editing both** —
-  otherwise it returns HTML instead of a JSON 404.
+  `X-API-Key`. The cost: `API_PREFIXES` in `http/static.ts` must name every top-level router —
+  otherwise it returns HTML instead of a JSON 404. `buildDevRoutes` in `http/serve.ts` reads that same
+  array for the dev server's route table, so **one edit covers both run modes** (it used to need a
+  matching edit in `frontend/vite.config.ts`, which no longer exists).
 - **SSE authenticates with a ticket, not the JWT.** `middleware/auth.ts` excludes
   `GET /rooms/{id}/stream` *because* `routes/rooms/sse.ts` validates a 60-second single-use ticket
   instead. The exclusion and the `validateTicket` call are two halves of one check.
@@ -82,8 +83,8 @@ cd backend-ts && bun run verify-schema    # diff schema.ts against a real .db
 3. **Adding a field:** `db/schema.ts` → `bun run migration-new` → review the generated SQL →
    `schemas/` → `crud/` → service → route → `bun run migration-check`.
 4. **Adding an endpoint:** Zod schema in `schemas/` → CRUD in `crud/` → route in `http/routes/`,
-   registered in `routes/game/index.ts` or `http/app.ts` (and in `static.ts` + `vite.config.ts` if
-   it is a new top-level prefix).
+   registered in `routes/game/index.ts` or `http/app.ts` (and in `API_PREFIXES` in `static.ts` if
+   it is a new top-level prefix — that one list now covers dev and `make serve` both).
 5. **Run `bun run typecheck` and the relevant test file** before reporting done. Report failures with
    their output rather than describing them.
 6. **Keep it simple.** Follow the existing pattern over a cleaner one you would rather have.

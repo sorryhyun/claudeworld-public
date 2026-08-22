@@ -67,7 +67,8 @@ bun run smoke                   # boot the app against a throwaway DB
 
 **Backend**
 - Layer separation: no business logic in `crud/`, no queries in routes, no orchestration import inside `sdk/`
-- New top-level router prefixes must appear in `http/static.ts` *and* `frontend/vite.config.ts`
+- New top-level router prefixes must appear in `API_PREFIXES` in `http/static.ts` (one list, read by
+  both `static.ts` and `http/serve.ts` — there is no Vite config any more)
 - Drizzle: `$defaultFn` for client-side defaults, `.default()` only for real server defaults
 
 **Frontend**

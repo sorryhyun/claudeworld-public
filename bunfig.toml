@@ -13,3 +13,13 @@
 [test]
 preload = ["./backend-ts/src/tests/setup/env.ts"]
 pathIgnorePatterns = ["**/dist/**", "**/node_modules/**"]
+
+# Bun resolves `bunfig.toml` by current directory for `Bun.serve` plugins too,
+# not just for `bun test` above -- so this block is the root-level twin of the
+# one in backend-ts/bunfig.toml, and the two have to stay in step. Without it a
+# dev server started from the repo root (`bun backend-ts/src/main.ts`) loads the
+# CSS with no Tailwind plugin at all: `@import "tailwindcss"` passes through
+# unexpanded, every utility class is missing, and the page renders unstyled with
+# nothing logged. It is the same trap as the preload, with a quieter failure.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

@@ -43,8 +43,11 @@ const logger = getLogger('StaticFiles')
  *
  * Matching here is *segment-aware* ({@link isApiPath}), unlike Python's bare
  * `str.startswith` — so `/mcp` does not cover `/mcp-tools` and the two are
- * listed separately, as they are in `frontend/vite.config.ts`. Python gets away
- * with one entry; this list cannot.
+ * listed separately. Python gets away with one entry; this list cannot.
+ *
+ * `buildDevRoutes` in `serve.ts` reads this same array to build the dev server's
+ * route table, so there is exactly one copy of it — the Vite proxy used to keep
+ * a second, hand-synchronised list.
  */
 export const API_PREFIXES: readonly string[] = [
   '/auth',

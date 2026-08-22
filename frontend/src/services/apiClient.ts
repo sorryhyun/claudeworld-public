@@ -2,16 +2,18 @@
  * Base URL every request is built on.
  *
  * Empty string by default, i.e. same-origin relative URLs. Both supported ways
- * of running the app put the API on the page's own origin — Vite proxies the
- * API prefixes to the backend in dev (see `vite.config.ts`), and the backend
- * serves this bundle itself in the single-port build (see
+ * of running the app put the API on the page's own origin — the backend bundles
+ * this app in-process in dev (see `backend-ts/src/http/serve.ts`) and serves the
+ * built bundle in the single-port build (see
  * `backend-ts/src/http/static.ts`) — so the app does not need to know a host,
  * and stops being wrong when it is reached over a LAN IP, a tunnel or a
  * forwarded port.
  *
  * `VITE_API_BASE_URL` overrides it for the split deployment, where the frontend
  * is on Vercel and the backend behind a Cloudflare tunnel and the two genuinely
- * do have different origins.
+ * do have different origins. `frontend/build.ts` substitutes it at build time;
+ * it is never read at runtime, because `import.meta.env` does not exist in a
+ * browser.
  */
 function getApiUrl(): string {
   const configured = import.meta.env.VITE_API_BASE_URL;

@@ -33,12 +33,17 @@ expandable agent thinking).
 - **The app is same-origin and issues relative URLs** (`/worlds/...`). `services/apiClient.ts` resolves
   the base; `VITE_API_BASE_URL` overrides it *only* for the split deployment (frontend on Vercel,
   backend behind a tunnel). Never hardcode a host or port in a component.
-- **`vite.config.ts` proxies the API prefixes to `BACKEND_URL`** with **anchored** regexes so `/agents`
-  cannot swallow `/agent-configs`. Its `API_PREFIXES` list must stay in step with the one in
-  `backend-ts/src/http/static.ts` — a prefix added on one side only 404s in exactly one run mode.
-  SSE entries carry `timeout: 0` / `proxyTimeout: 0` so the stream stays open.
-- **Two run modes, one URL each.** `make dev` → Vite on :5173 (backend gets `SERVE_FRONTEND=false` so a
-  stale `dist/` cannot answer). `make serve` → the backend serves `frontend/dist` on :8000.
+- **There is no Vite and no dev proxy.** The backend bundles this app in-process
+  (`backend-ts/src/http/serve.ts`), so `API_PREFIXES` in `backend-ts/src/http/static.ts` is the single
+  copy — there is no second list to keep in step any more.
+- **Two run modes, one port each — the same port.** `make dev` → the backend bundles `frontend/` live
+  with HMR on :8000 (`FRONTEND_DEV=true`, `SERVE_FRONTEND=false` so a stale `dist/` cannot answer).
+  `make serve` → the backend serves the built `frontend/dist` on :8000. A taken port falls back to a
+  free one, so read the URL the server prints rather than assuming 8000.
+- **Tailwind config is cwd-sensitive in two places.** `[serve.static]` must exist in *both*
+  `bunfig.toml` files (root and `backend-ts/`), and `@source` in `src/index.css` pins what gets
+  scanned. Get either wrong and classes go missing with nothing logged — verify by diffing the *class
+  sets* of dev and built CSS, not their sizes.
 - **Realtime is SSE plus polling, not either.** `useSSE` streams agent thinking/response deltas;
   `usePolling` polls every 5s, dropping to 30s as a safety net while SSE is connected. SSE authenticates
   with a short-lived ticket the client POSTs for — `EventSource` cannot send a header.
@@ -63,14 +68,12 @@ expandable agent thinking).
 
 ```bash
 bun install                       # repo root
-bun run dev:frontend              # vite on :5173 (backend must be up for the proxy)
-make dev                          # both, one URL
+make dev                          # backend + frontend, one process, one URL
+bun run build                     # frontend/build.ts -> frontend/dist
 bun run --filter '@claudeworld/frontend' typecheck
 bun run --filter '@claudeworld/frontend' lint
 bun run --filter '@claudeworld/frontend' test
 cd frontend && bun test src/hooks/usePolling.test.ts
-bun run build                     # vite build
-cd frontend && bun run build:analyze
 ```
 
 ## Workflow

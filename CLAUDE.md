@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Validation: **Zod 4**
 - Auth: `Bun.password` (bcrypt-compatible) + **jose** (HS256 JWT)
 - AI Integration: **`@anthropic-ai/claude-agent-sdk`**, with game tools served over a stateless **MCP** endpoint
-- Frontend: React + TypeScript + Vite + Tailwind CSS
+- Frontend: React + TypeScript + Tailwind CSS, bundled by **Bun's own bundler** (no Vite)
 - Real-time: SSE for streaming, HTTP polling as the safety net
 - Tests: `bun test --parallel` for both workspaces
 
@@ -29,8 +29,8 @@ The Python/FastAPI backend in `backend/` is the **legacy tree being retired**. S
 bun install
 
 # Run backend + frontend -- either way, the app lives on ONE origin
-make dev                 # Two processes, one URL: http://localhost:5173
-                         # Vite proxies the API prefixes to the backend on :8000
+make dev                 # One process, one URL: http://localhost:8000
+                         # The backend bundles frontend/ in-process, with HMR
 make serve               # One process, one URL:  http://localhost:8000
                          # Builds the frontend, then the backend serves it
 make stop                # Stop all servers
@@ -39,9 +39,6 @@ make clean               # Clean build artifacts (including SQLite database)
 # Backend only
 bun run dev:backend                                # bun --watch src/main.ts
 make run-backend-ts                                # same, with host/port/DB env set
-
-# Frontend only
-bun run dev:frontend
 
 # Checks -- run these from the repo root; each fans out to both workspaces
 bun run test             # Every test in the repo, per-workspace via package scripts (~3s)
@@ -64,7 +61,7 @@ cd backend-ts && bun run verify-schema             # Diff schema.ts against a re
 cd backend-ts && bun run migration-new             # drizzle-kit generate
 
 # Frontend build
-bun run build                                      # vite build
+bun run build                                      # bun run frontend/build.ts
 ```
 
 ## LSP Support
@@ -223,15 +220,27 @@ issues **relative** URLs (`/worlds/...`) and never has to know a backend host:
 
 | Mode | Port | Who serves the HTML | Who serves the API |
 |---|---|---|---|
-| `make dev` | 5173 | Vite (with HMR) | Vite proxies to the backend on :8000 |
+| `make dev` | 8000 | the backend, bundling `frontend/` live (HMR) | the backend |
 | `make serve` | 8000 | the backend, from `frontend/dist` | the backend |
 
-- **Dev proxy:** `frontend/vite.config.ts` maps each API prefix to
-  `BACKEND_URL` (default `http://127.0.0.1:8000`) with anchored regex keys, so
-  `/agents` cannot swallow `/agent-configs`. SSE passes through unbuffered.
-- **`make dev` passes `SERVE_FRONTEND=false`** so the backend does *not* serve
-  `frontend/dist`. Vite is authoritative in dev, and a leftover `dist/` would
-  otherwise have :8000 quietly answering with a stale bundle.
+There is one process and one port in **both** modes. Vite is gone, and with it
+the dev proxy, the second port and the duplicated API-prefix list.
+
+- **The port is negotiable.** `PORT` (default 8000) is a preference: if it is
+  taken, `http/serve.ts` falls back to an OS-assigned ephemeral port and logs
+  which one it got. That is only safe because the page is same-origin — nothing
+  has to be told the port. It was *not* safe while Vite proxied to a hardcoded
+  `127.0.0.1:8000`, which is why the port was fixed before.
+- **`make dev` passes `FRONTEND_DEV=true`** (and `SERVE_FRONTEND=false`, so a
+  stale `dist/` cannot shadow the live bundle). `main.ts` then dynamically
+  imports `frontend/index.html` and hands it to `Bun.serve`'s `routes`. The
+  import is dynamic so that backend-only entry points — the test suite,
+  `bun run smoke`, the pilot — never bundle React just to reach `main.ts`.
+- **A bare `/*` route would shadow `fetch` entirely.** Bun's router always beats
+  the `fetch` fallback, so `buildDevRoutes` registers every entry of
+  `API_PREFIXES` as its own route (twice — `/auth/*` does not match `/auth`) and
+  gives `/*` to the SPA. Bun's matcher is segment-aware, so `/mcp-tools` misses
+  `/mcp/*` without the anchored regexes the Vite proxy needed.
 - **Single process:** `backend-ts/src/http/static.ts` serves `frontend/dist`
   with an SPA fallback. `main.ts` decides *whether* to (`resolveFrontendDir`);
   `createApp()` with no `frontendDir` is API-only, which is what keeps the test
@@ -241,13 +250,42 @@ issues **relative** URLs (`/worlds/...`) and never has to know a backend host:
   that will do the logging in — so auth cannot run first. The cost is that
   `API_PREFIXES` in `static.ts` has to name every top-level router explicitly;
   a new router missing from that list gets HTML back instead of a JSON 404.
-  Keep it in step with the list in `vite.config.ts`.
+  `API_PREFIXES` is now the *single* copy — `buildDevRoutes` in `http/serve.ts`
+  reads the same list, so dev and `make serve` cannot drift apart the way
+  `static.ts` and `vite.config.ts` could.
 - `VITE_API_BASE_URL` overrides the relative default, and is now only for the
   split deployment (frontend on Vercel, backend behind a tunnel) — the one case
-  where the two origins genuinely differ. CORS only matters there.
+  where the two origins genuinely differ. CORS only matters there. The name kept
+  its `VITE_` prefix deliberately: it is baked into the Vercel project's
+  settings, and renaming it would break that deployment silently.
+- **`build.ts` must `define` it.** Bun leaves an unmatched `import.meta.env.X`
+  in the output verbatim, and `import.meta.env` does not exist in a browser — so
+  dropping the define does not fall back to the relative default, it throws on
+  the first line of `apiClient.ts` and the page renders white. Vite substituted
+  this automatically; Bun does not.
+
+**Two things about the Bun bundler are cwd-sensitive and fail silently:**
+
+- **`[serve.static]` must exist in both `bunfig.toml` files.** `Bun.serve` has no
+  in-code `plugins` option (unlike `Bun.build`), so the dev server can only get
+  the Tailwind plugin from `bunfig.toml` — and Bun picks that file by *current
+  directory*, exactly as it does for `[test] preload`. The root copy and the
+  `backend-ts/` copy have to stay in step. Without the right one, the CSS is
+  served with `@import "tailwindcss"` unexpanded: every utility class is missing
+  and the page renders unstyled, with nothing logged.
+- **`@source` in `src/index.css` pins what Tailwind scans.** Left implicit the
+  scan root follows the cwd, and the bundle is produced from three of them
+  (`frontend/` by `build.ts`, `backend-ts/` by `make dev`, the repo root by a
+  bare `bun backend-ts/src/main.ts`). The `backend-ts/` case emitted 48 fewer
+  classes than the production build — `bg-green-600`, `animate-in`,
+  `from-emerald-600`, all used only by lazily-imported panels — so those
+  components rendered unstyled in dev and fine in the build. The `@source` line
+  makes all three emit the same stylesheet; the check that matters is comparing
+  *class sets*, not file sizes, since dev CSS is unminified and uses modern
+  media-range syntax (`width >= 480px`) where the build downlevels it.
 
 ### Frontend (`frontend/`)
-- **React + TypeScript + Vite** with Tailwind CSS
+- **React + TypeScript** with Tailwind CSS, bundled by `frontend/build.ts` (`Bun.build`)
 - **Key components:**
   - GameApp - TRPG mode entry point
   - WorldSelector - Create/select game worlds
@@ -402,14 +440,13 @@ Agent files use **third-person** descriptions (e.g., "프리렌은 엘프 마법
    make dev
    ```
 
-4. **Access application:** http://localhost:5173
+4. **Access application:** http://localhost:8000
 
-   That is the only URL you need — Vite proxies `/auth`, `/worlds`, `/rooms`,
-   `/agents`, … through to the backend on :8000, so the app runs same-origin.
-   Hitting :8000 directly still works for poking at the API with curl.
+   One process serves the frontend and the API on one origin, and the frontend
+   has hot module replacement. If 8000 is taken the server picks a free port and
+   prints it — **that printed URL is the authoritative one.**
 
-   For a single process on a single port, run `make serve` instead and open
-   http://localhost:8000.
+   `make serve` is the same thing from a prebuilt `frontend/dist` (no HMR).
 
    Login with the password you used to generate the hash.
 
@@ -456,6 +493,10 @@ Read by `backend-ts/src/config/settings.ts`. All names are unchanged from the Py
 - `FRONTEND_DIST` - Directory of a built frontend to serve on the API's port
   (default: `<projectRoot>/frontend/dist` when it exists)
 - `SERVE_FRONTEND` - Set to "false" to serve the API only, ignoring `frontend/dist`
+- `FRONTEND_DEV` - Set to "true" to bundle and serve `frontend/` in-process with
+  HMR instead of a built `dist/` (`make dev` sets it)
+- `PORT` - Preferred port (default 8000). Taken ports fall back to an
+  OS-assigned one rather than failing; the startup log names the port in use
 - `ENABLE_CLI_TRACING`, `CLI_TRACE_OUTPUT` - CLI tracing (requires a patched CLI)
 
 **Claude API:**
