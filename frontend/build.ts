@@ -27,11 +27,15 @@ const OUT_DIR = join(ROOT, 'dist')
 /**
  * The API origin baked into the bundle.
  *
- * **This define is not optional.** Bun leaves an unmatched `import.meta.env.X`
- * in the output verbatim, and `import.meta.env` does not exist in a browser —
- * so omitting it does not fall back to the default, it throws a TypeError on
- * the first line of `apiClient.ts` and the page renders white. Vite substituted
- * this automatically; Bun does not.
+ * **This define is not optional.** Bun leaves an unmatched `process.env.X` in
+ * the output verbatim, and `process` does not exist in a browser — so omitting
+ * it does not fall back to the default, it throws on the first line of
+ * `apiClient.ts` and the page renders white. Vite substituted this
+ * automatically; Bun does not.
+ *
+ * The dev server substitutes the same read through `env` in `bunfig.toml`
+ * instead, which is why `apiClient.ts` spells it `process.env` — see the note
+ * there. The two mechanisms must keep naming the same variable.
  *
  * Empty is the normal value: both supported ways of running the app put the API
  * on the page's own origin, so the app issues relative URLs. Only the split
@@ -57,7 +61,7 @@ const result = await Bun.build({
     asset: 'assets/[name]-[hash].[ext]',
   },
   define: {
-    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBaseUrl),
+    'process.env.VITE_API_BASE_URL': JSON.stringify(apiBaseUrl),
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
 })

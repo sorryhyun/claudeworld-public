@@ -23,3 +23,14 @@ pathIgnorePatterns = ["**/dist/**", "**/node_modules/**"]
 # nothing logged. It is the same trap as the preload, with a quieter failure.
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
+
+# `env` is the dev server's only substitution mechanism, and the reason
+# `apiClient.ts` reads `process.env.VITE_API_BASE_URL` rather than
+# `import.meta.env.*`. `Bun.serve` takes no `define` (bunfig ignores one here
+# too -- tested), and it rewrites `import.meta` to an HMR shim whose `.env` is
+# undefined, so the `import.meta` spelling threw a TypeError on the first line
+# of apiClient.ts and rendered a white page in `make dev` while `bun run build`
+# -- which does have a `define` -- was fine. Bun's default glob is
+# `BUN_PUBLIC_*`; the name has to stay `VITE_`-prefixed because it is baked into
+# the Vercel project's settings.
+env = "VITE_*"

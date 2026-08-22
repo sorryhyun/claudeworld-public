@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="./public/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Claude World</title>
+    <!--
+      `apiClient.ts` reads `process.env.VITE_API_BASE_URL`. `bun run build`
+      substitutes that read with a literal through `define`, but the dev server
+      has no `define` -- it can only inline variables matching the `env` glob in
+      `bunfig.toml` that are actually *set*, and the normal case is unset. The
+      read is then emitted verbatim into a browser, where `process` does not
+      exist, so it threw on the first line of the module and rendered a white
+      page. This shim makes the unsubstituted read evaluate to `undefined`, i.e.
+      the same-origin default. Inline and ahead of the module script because a
+      module cannot win the race: its own imports are evaluated first.
+    -->
+    <script>window.process ??= { env: {} };</script>
   </head>
   <body>
     <div id="root"></div>

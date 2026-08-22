@@ -1,15 +1,17 @@
 /**
  * Build-time environment baked into the bundle.
  *
- * `frontend/build.ts` substitutes `import.meta.env.VITE_API_BASE_URL` with a
- * literal via Bun's `define`. Nothing reads this object at runtime — in a
- * browser `import.meta.env` does not exist, so any property left unsubstituted
- * would throw rather than read as undefined.
+ * `VITE_API_BASE_URL` is substituted as a literal — by `define` in
+ * `frontend/build.ts`, and by the `env` glob in `bunfig.toml` for the dev
+ * server. Nothing reads `process` at runtime: it does not exist in a browser,
+ * so a property left unsubstituted would throw rather than read as undefined.
+ *
+ * Declared narrowly here rather than pulled in from `@types/node`, which would
+ * put the whole Node API on a browser bundle's autocomplete.
  */
-interface ImportMetaEnv {
-  readonly VITE_API_BASE_URL?: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
+declare const process: {
+  readonly env: {
+    readonly VITE_API_BASE_URL?: string;
+    readonly NODE_ENV?: string;
+  };
+};

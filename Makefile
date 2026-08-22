@@ -11,16 +11,44 @@ SHELL := /bin/bash
 SERVE_FRONTEND ?= true
 FRONTEND_DEV ?= false
 
+# The port every target prefers, and the URL built from it. One definition
+# rather than the sixteen literal 8000s this file used to carry -- they drifted
+# in the obvious way, with help text naming a port the recipe below it no longer
+# used. `PORT=9000 make dev` now moves the whole file at once.
+#
+# It is only a *preference* for the TypeScript backend: a taken port falls back
+# to an OS-assigned one (backend-ts/src/http/serve.ts), which is safe because
+# the frontend is served from the API's own origin and issues relative URLs.
+# The Python targets pass it to uvicorn, which has no such fallback and dies.
+PORT ?= 8000
+URL := http://localhost:$(PORT)
+
+# The single SQLite database the whole repo shares, and the uvicorn invocation
+# every Python target starts from. Both were spelled out once per target.
+SQLITE_URL := sqlite+aiosqlite:///$(PWD)/claudeworld.db
+UVICORN := uv run uvicorn main:app --host 127.0.0.1 --port $(PORT)
+
+# Printed by every Python dev target. A canned recipe rather than four copies of
+# the same four @echo lines.
+define API_ONLY_NOTE
+	@echo ""
+	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
+	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
+	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
+	@echo "   for a browsable app, and this target to exercise the Python API."
+	@echo ""
+endef
+
 help:
 	@echo "ClaudeWorld - Available commands:"
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev               - Run TypeScript backend + frontend, ONE process  [DEFAULT]"
-	@echo "                           One port: http://localhost:8000 (frontend has HMR)."
-	@echo "                           Falls back to a free port if 8000 is taken -- the URL"
-	@echo "                           it prints is authoritative."
+	@echo "                           One port: $(URL) (frontend has HMR)."
+	@echo "                           A taken port falls back to a free one; check with"
+	@echo "                           'ss -ltnp' if the page does not load."
 	@echo "  make serve             - Same, but from a built frontend/dist (no HMR)"
-	@echo "                           One process, one port: http://localhost:8000"
+	@echo "                           One process, one port: $(URL)"
 	@echo "  make dev-python        - Run Python backend (SQLite) + frontend (legacy, being retired)"
 	@echo "  make dev-postgresql    - Run Python backend (PostgreSQL) + frontend (requires PostgreSQL)"
 	@echo "  make dev-perf          - Run Python backend (SQLite) + frontend with performance logging"
@@ -79,34 +107,29 @@ setup:
 
 run-backend:
 	@echo "Starting backend server (PostgreSQL)..."
-	cd backend && uv run uvicorn main:app --host 127.0.0.1 --port 8000
+	cd backend && $(UVICORN)
 
 run-backend-sqlite:
 	@echo "Starting backend server (SQLite)..."
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db uv run uvicorn main:app --host 127.0.0.1 --port 8000
+	cd backend && DATABASE_URL=$(SQLITE_URL) $(UVICORN)
 
 run-backend-ts:
 	@echo "Starting TypeScript backend server (SQLite)..."
-	HOST=127.0.0.1 PORT=8000 SERVE_FRONTEND=$(SERVE_FRONTEND) FRONTEND_DEV=$(FRONTEND_DEV) DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev:backend
+	HOST=127.0.0.1 PORT=$(PORT) SERVE_FRONTEND=$(SERVE_FRONTEND) FRONTEND_DEV=$(FRONTEND_DEV) DATABASE_URL=$(SQLITE_URL) bun run dev:backend
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
 	@echo "Performance metrics will be written to ./latency.log"
 	@echo "Terminal output will be written to ./run.log"
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --host 127.0.0.1 --port 8000 2>&1 | tee $(PWD)/run.log
+	cd backend && DATABASE_URL=$(SQLITE_URL) PERF_LOG=true $(UVICORN) 2>&1 | tee $(PWD)/run.log
 
 run-tunnel-backend:
 	@echo "Starting Cloudflare tunnel for backend..."
-	cloudflared tunnel --url http://localhost:8000
+	cloudflared tunnel --url $(URL)
 
 dev:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting the TypeScript backend with the frontend bundled in-process..."
-	@echo ""
-	@echo "👉 Open http://localhost:8000 — frontend and API share the origin."
-	@echo "   If 8000 is taken the server picks a free port instead and prints it;"
-	@echo "   that printed URL is the authoritative one."
-	@echo "   (SQLite: ./claudeworld.db, frontend has hot module replacement)"
 	@echo ""
 	@echo "ℹ️  One process serves everything: /auth/*, the full /worlds/* game surface"
 	@echo "   (onboarding, turns, travel, chat mode, state, polling) and the whole"
@@ -119,35 +142,25 @@ dev:
 dev-python:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting Python backend (SQLite) and frontend..."
-	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
+	@echo "Backend will run on $(URL) (SQLite: ./claudeworld.db)"
 	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
 	@echo "Press Ctrl+C to stop all servers"
-	@echo ""
-	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
-	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
-	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
-	@echo "   for a browsable app, and this target to exercise the Python API."
-	@echo ""
+	$(API_ONLY_NOTE)
 	@$(MAKE) run-backend-sqlite
 
 dev-postgresql:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend (PostgreSQL) and frontend..."
-	@echo "Backend will run on http://localhost:8000"
+	@echo "Backend will run on $(URL)"
 	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
 	@echo "Press Ctrl+C to stop all servers"
-	@echo ""
-	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
-	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
-	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
-	@echo "   for a browsable app, and this target to exercise the Python API."
-	@echo ""
+	$(API_ONLY_NOTE)
 	@$(MAKE) run-backend
 
 dev-perf:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend (SQLite) and frontend with PERFORMANCE LOGGING..."
-	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
+	@echo "Backend will run on $(URL) (SQLite: ./claudeworld.db)"
 	@echo ""
 	@echo "📊 PERFORMANCE LOGGING ENABLED"
 	@echo "   Performance metrics: ./latency.log"
@@ -157,24 +170,19 @@ dev-perf:
 	@echo "   Or both:      tail -f latency.log run.log"
 	@echo ""
 	@echo "Press Ctrl+C to stop all servers"
-	@echo ""
-	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
-	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
-	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
-	@echo "   for a browsable app, and this target to exercise the Python API."
-	@echo ""
+	$(API_ONLY_NOTE)
 	@$(MAKE) run-backend-perf
 
 run-backend-trace:
 	@echo "Starting backend server (SQLite) with CLI tracing..."
 	@echo "Traces will be written to ./traces.jsonl"
 	@echo "Analyze with: make diagnose-traces FILE=traces.jsonl"
-	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db ENABLE_CLI_TRACING=true uv run uvicorn main:app --host 127.0.0.1 --port 8000 2>$(PWD)/traces.jsonl
+	cd backend && DATABASE_URL=$(SQLITE_URL) ENABLE_CLI_TRACING=true $(UVICORN) 2>$(PWD)/traces.jsonl
 
 dev-trace:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend (SQLite) and frontend with CLI TRACING..."
-	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
+	@echo "Backend will run on $(URL) (SQLite: ./claudeworld.db)"
 	@echo ""
 	@echo "🔍 CLI TRACING ENABLED (requires patched CLI with observability patches)"
 	@echo "   Trace output: ./traces.jsonl"
@@ -183,12 +191,7 @@ dev-trace:
 	@echo "   Analyze with: make diagnose-traces FILE=traces.jsonl"
 	@echo ""
 	@echo "Press Ctrl+C to stop all servers"
-	@echo ""
-	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
-	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
-	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
-	@echo "   for a browsable app, and this target to exercise the Python API."
-	@echo ""
+	$(API_ONLY_NOTE)
 	@$(MAKE) run-backend-trace
 
 diagnose-traces:
@@ -213,9 +216,9 @@ serve:
 	bun run build
 	@echo ""
 	@echo "Starting TypeScript backend with the built frontend on ONE port..."
-	@echo "👉 Open http://localhost:8000 — frontend and API share the origin."
+	@echo "👉 Open $(URL) — frontend and API share the origin."
 	@echo "Press Ctrl+C to stop."
-	HOST=127.0.0.1 PORT=8000 DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run --filter '@claudeworld/backend' start
+	HOST=127.0.0.1 PORT=$(PORT) DATABASE_URL=$(SQLITE_URL) bun run --filter '@claudeworld/backend' start
 
 prod:
 	@echo "Starting production deployment..."
@@ -228,7 +231,7 @@ prod:
 	@echo "Prerequisites: vercel CLI logged in (run 'vercel login' first)"
 	@echo ""
 	@# Start backend in background
-	@cd backend && uv run uvicorn main:app --host 127.0.0.1 --port 8000 &
+	@cd backend && $(UVICORN) &
 	@sleep 2
 	@# Run tunnel script (handles URL detection, Vercel update, and redeploy)
 	@./scripts/deploy/update_vercel_backend_url.sh

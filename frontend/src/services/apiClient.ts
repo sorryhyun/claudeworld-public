@@ -11,12 +11,18 @@
  *
  * `VITE_API_BASE_URL` overrides it for the split deployment, where the frontend
  * is on Vercel and the backend behind a Cloudflare tunnel and the two genuinely
- * do have different origins. `frontend/build.ts` substitutes it at build time;
- * it is never read at runtime, because `import.meta.env` does not exist in a
- * browser.
+ * do have different origins. It is substituted at bundle time and never read at
+ * runtime, because `process` does not exist in a browser.
+ *
+ * It has to be spelled `process.env.X`, not `import.meta.env.X`. Only the first
+ * form can be substituted in *both* ways this app is bundled: `Bun.build` takes
+ * either through `define`, but the dev server has no `define` — it inlines
+ * `process.env` matches of the `env` glob in `bunfig.toml` and nothing else, and
+ * rewrites `import.meta` to an HMR shim whose `.env` is undefined. That mismatch
+ * is what made `make dev` throw here while the build was fine.
  */
 function getApiUrl(): string {
-  const configured = import.meta.env.VITE_API_BASE_URL;
+  const configured = process.env.VITE_API_BASE_URL;
   if (!configured) return "";
 
   try {
