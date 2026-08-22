@@ -53,6 +53,7 @@ for creating comprehensive world lore before calling draft_world or persist_worl
   inputSchema: {},
   // Filled from `lore_guidelines.yaml`'s active version, not from this template.
   response: '{lore_guidelines_content}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 

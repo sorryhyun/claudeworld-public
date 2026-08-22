@@ -14,6 +14,7 @@ import type { SessionKey } from '../client/session'
 import {
   buildToolSets,
   isServerName,
+  SERVER_INSTRUCTIONS,
   type ServerDeps,
   type ServerName,
 } from '../handlers/servers'
@@ -48,6 +49,15 @@ import type { TurnRegistry } from './turn-registry'
  * Transport auth is one process-wide bearer token; there is no privilege tier
  * *between* agents to defend, unlike yaar's session principal, so the pair is
  * carried in the clear rather than behind per-agent tokens.
+ *
+ * ## Two things reach the model besides the tools
+ *
+ * `server/discover` carries each namespace's `SERVER_INSTRUCTIONS`, which
+ * Claude Code renders as one "MCP Server Instructions" block in context — the
+ * home for guidance that spans a namespace rather than one tool. And
+ * `tools/list` carries `annotations.readOnlyHint` for the query tools, which
+ * the CLI reads as `isConcurrencySafe()`: without it every tool call is
+ * executed alone.
  *
  * ## One protocol era
  *
@@ -92,6 +102,11 @@ export function startMcpEndpoint(
    * SSE keep-alive router, so building one per request would leak both.
    */
   const factory = (serverName: ServerName) => (ctx: { requestInfo?: Request }): McpServer => {
+    // Namespace-wide guidance: the same string whatever the binding says, and
+    // supplied even on the no-binding path below, because `server/discover` is
+    // its own request and answering it without instructions would cost the
+    // model the block for the life of the connection.
+    const instructions = SERVER_INSTRUCTIONS[serverName]
     const route = ctx.requestInfo ? parseRoute(new URL(ctx.requestInfo.url).pathname) : null
     const binding = route ? registry.get(route) : undefined
     if (!binding) {
@@ -100,9 +115,9 @@ export function startMcpEndpoint(
       // server answers `tools/list` with nothing rather than throwing, which is
       // the shape a model can act on.
       logger.warning(`No binding for ${ctx.requestInfo?.url ?? 'an unidentified request'}`)
-      return createToolServer(serverName, [])
+      return createToolServer(serverName, [], instructions)
     }
-    return createToolServer(serverName, buildToolSets(binding, deps)[serverName] ?? [])
+    return createToolServer(serverName, buildToolSets(binding, deps)[serverName] ?? [], instructions)
   }
 
   const handlerFor = (serverName: ServerName): McpHttpHandler => {

@@ -145,6 +145,19 @@ sdk/
   is what `Task` dispatches to. It drops any designer whose `mcp__subagents__persist_*`
   tool the turn does not serve — a definition naming a tool that is not there leaves the
   sub-agent with no tools at all and no diagnostic.
+- **`readOnlyHint` is a scheduling flag, not documentation.** Claude Code's tool wrapper
+  reads `annotations.readOnlyHint` as `isConcurrencySafe()`, so an unannotated tool is
+  always executed on its own. The query tools declare `readOnly: true` on their
+  `ToolDefinition` and `buildToolSets` stamps the annotation in one pass; a tool that
+  writes must never be marked, and `group_config.yaml` deliberately cannot override it.
+  Namespace-wide guidance goes in `SERVER_INSTRUCTIONS` (served on `server/discover`,
+  rendered by the CLI as one context block), not repeated across tool descriptions.
+- **In-process MCP servers are a closed question.** The SDK accepts one only as
+  `{ type: 'sdk', instance }` typed against `@modelcontextprotocol/sdk` v1, whose
+  `CallToolResult.structuredContent` is incompatible with the v2
+  `@modelcontextprotocol/server` this backend standardized on. See §3 of
+  `docs/sdk-modernization-plan.md` for the compiler output; do not re-litigate it
+  without checking whether the SDK's peer dependency has moved to v2.
 - **`bun:sqlite` is synchronous.** A statement runs to completion before any other code does, so
   there is no retry-on-lock or serialized-write layer. An `async` function handed to a "background"
   helper runs synchronously to its first `await`; use `startBackground` (microtask) or

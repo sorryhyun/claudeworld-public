@@ -1,6 +1,8 @@
 # SDK Modernization Plan: adopting current Agent SDK patterns in `backend-ts`
 
-**Status:** in progress. §1 and sequencing step 1 landed 2026-08-22; §2 onwards not started.
+**Status:** in progress. §1, §3 and sequencing step 1 landed 2026-08-22. §3 was decided
+**no-go** on its own stated blocker and closed with its fallback branch instead; §2 (the
+runtime-mutation spikes) is still not started, and §4–§7 are untouched.
 **Scope:** `backend-ts/src/sdk/` and its integration points (`orchestration/turn.ts`,
 `room-orchestrator.ts`, `http/state.ts`). No REST-contract or schema changes.
 **Baseline:** `@anthropic-ai/claude-agent-sdk` pinned at `0.3.238` (bundling
@@ -158,39 +160,98 @@ if it only supports the one-shot prompt form, skip this item.
 
 ---
 
-## 3. MCP transport: consider moving back in-process (optional; biggest deletion, highest risk)
+## 3. MCP transport: in-process — **no-go**, decided 2026-08-22 ✅
 
-`sdk/mcp/` (~440 lines: loopback `Bun.serve`, bearer auth, DNS-rebind checks, JSON-RPC
-error shaping, protocol-era gating) exists because per-turn in-process
-`createSdkMcpServer` closures went stale on warm-session reuse — turn 40 ran turn 1's
-closures (`servers.ts:55-64`). Two things have changed since that decision:
+The proposal was to delete `sdk/mcp/` (~440 lines of loopback `Bun.serve`, bearer
+auth, DNS-rebind checks, JSON-RPC error shaping, protocol-era gating) and go back to
+in-process servers, now that `TurnRegistry` has made per-turn state external to the
+handlers and the stale-closure failure mode no longer applies to the current design.
 
-1. `TurnRegistry` already made per-turn state external to the handlers. An in-process
-   server whose handlers read the registry by `(roomId, agentId)` is stable across turns —
-   the stale-closure failure mode no longer applies to the current handler design.
-2. `setMcpServers()` (§2) covers tool-set changes on a warm session without eviction.
+**The first blocker held, and it is the one the section said to stop on.** There is no
+in-process path that does not put MCP v1 shapes back in the tool layer, because
+`Options.mcpServers` accepts an in-process server only as `{ type: 'sdk', instance }`,
+and `instance` is typed as v1's `McpServer`. Both spellings were compiled against the
+pinned SDK:
 
-**Go/no-go blockers to spike, in order:**
+```
+createSdkMcpServer({ tools: ourGameTools })
+  TS2322: Type 'SdkTool[]' is not assignable to type 'SdkMcpToolDefinition<any>[]'.
+    … Two different types with this name exist, but they are unrelated.
+      Types of property 'structuredContent' are incompatible.
+        Type 'unknown' is not assignable to type '{ [x: string]: unknown; } | undefined'.
 
-- **`tool()` / `CallToolResult` v1-vs-v2.** The SDK's peer dependency is still
-  `@modelcontextprotocol/sdk ^1.29` (v1). `handlers/context.ts:6-18` dropped the SDK's
-  `tool()` precisely to get off v1 (`structuredContent` incompatibility with the v2
-  `@modelcontextprotocol/server` this backend standardized on). If in-process servers
-  drag v1 shapes back in, **stop — keep the HTTP endpoint.**
-- Late sub-agent `tools/call` over the in-process transport between turns (worked in the
-  Phase-0 spike; re-verify against the current CLI with the pump running).
-- `_meta` passthrough (`anthropic/maxResultSizeChars`) survives the in-process path.
+{ type: 'sdk', name, instance: ourV2McpServer }
+  TS2739: Type 'McpServer' is missing the following properties from type
+    'McpServer': experimental, handleAutomaticTaskPolling, resource, tool, prompt
+```
 
-**If go:** delete `endpoint.ts` + `adapter.ts`, keep `TurnRegistry` and `buildToolSets`,
-map `ToolDefinition` → SDK `tool()`; the ephemeral port also leaves the fingerprint,
-compounding §2. **If no-go:** keep the HTTP endpoint and instead adopt the cheap wins on
-the current transport — `instructions` on each server (today usage guidance lives only in
-tool descriptions) and `ToolAnnotations` (`readOnlyHint` on `recall`/read-style tools).
+`structuredContent` is the exact incompatibility `handlers/context.ts:6-18` dropped the
+SDK's `tool()` helper to escape. `@anthropic-ai/claude-agent-sdk@0.3.238` still declares
+`@modelcontextprotocol/sdk: ^1.29.0` as a peer (Bun auto-installs 1.30.0 to satisfy it),
+and it vendors that v1 implementation into `sdk.mjs` — `createSdkMcpServer` builds a
+bundled v1 `McpServer` and `Query.connectSdkMcpServer` calls `instance.connect(transport)`
+on it. Going in-process therefore means either casting at the boundary and type-checking
+every handler's return against the wrong `CallToolResult`, or standardizing the tool
+layer back on v1 while the endpoint, the client and the tests stay on v2.
 
-**Recommendation:** defer until §1–2 land. The HTTP subsystem works, is well-tested, and
-its documented failure mode is loud. This is debt paydown, not a blocker.
+The other two blockers were not reached, but neither would have changed the answer:
+late sub-agent `tools/call` already works in-process (the spike's `subagents` probe), and
+`_meta` passes through `createSdkMcpServer` unchanged.
 
----
+**Decision: keep the HTTP endpoint.** Revisit only if the SDK's peer dependency moves to
+`@modelcontextprotocol/server` v2, which is the single fact that made this a no-go.
+
+### 3.1 What was adopted instead — the cheap wins on the current transport ✅
+
+Both were verified against CLI 2.1.238's own code before being written, because
+adopting an option the CLI ignores is worse than not adopting it.
+
+- **`instructions` per namespace.** `SERVER_INSTRUCTIONS` in `handlers/servers.ts`,
+  served on `server/discover` by `mcp/endpoint.ts`. The CLI assigns
+  `this._instructions = discover.instructions` on the modern-era connect path and
+  renders every connected server's into one `# MCP Server Instructions` block of the
+  model's context. That makes it the home for guidance that spans a namespace — call
+  ordering, gather-before-you-narrate, "prose is not a result" for the sub-agent
+  callbacks — which until now had to be repeated inside individual tool descriptions or
+  left unsaid. It is **not** per-agent: one string serves every character bound to the
+  namespace, so anything that varies by agent stays in the tool description.
+- **`ToolAnnotations.readOnlyHint`** on the seven query tools (`recall`,
+  `recall_history`, `list_inventory`, `list_world_item`, `list_locations`,
+  `list_characters`, `read_lore_guidelines`). Not cosmetic, which is what the original
+  plan assumed: the CLI's tool wrapper reads it as
+  `isConcurrencySafe(){return I.annotations?.readOnlyHint ?? false}`, so **an unannotated
+  tool is always executed alone**. Every tool this backend serves was unannotated, so a
+  turn that wanted the roster, the map and the inventory paid three serial round trips.
+  Declared as `readOnly` on `ToolDefinition` next to the description, and stamped in one
+  pass in `buildToolSets` — the same shape as `applyDisabledTools`, so the fact lives
+  with the declaration and cannot be forgotten at the twenty-first `tool()` call site.
+  Deliberately not overridable from `group_config.yaml`: whether a handler writes is a
+  property of the code, and a world author who got it wrong would be telling the CLI it
+  may run a mutation concurrently with anything else.
+
+`destructiveHint` is left unset everywhere. It defaults to true for an unannotated tool,
+which is the honest default for a surface that deletes characters and rewrites player
+state, so saying so adds nothing.
+
+**Gates:** `bun run lint`, `bun run typecheck` and the full suite are green (1583 tests).
+`mcp-endpoint.test.ts` asserts both over the wire with a real MCP v2 client —
+`server/discover` carries the instructions, and `tools/list` marks `recall` while leaving
+`memorize` and `skip` alone. `tool-definitions.test.ts` pins the read-only set as a list,
+because the failure mode is silent and one-directional. `bun run smoke` passes, and a
+live `bun run pilot` run is **PHASE 0 PASS** — three real turns against the real CLI over
+the stateless endpoint, including the `location_designer` dispatch →
+`persist_location_design` round trip, so the new `subagents` instructions and the
+annotated `tools/list` were both on the wire. A new `instructions` probe in
+`bun run spike` checks the CLI-side rendering live; **that one has not been run** — it
+needs Claude Code auth and real tokens, and nothing else in this change does.
+
+**Found while running the pilot, unrelated and not fixed here:** the run ends with
+`Bun.serve() timed out a request after 10 seconds. Pass idleTimeout to configure.` The
+endpoint's `Bun.serve` sets no `idleTimeout`, so it takes Bun's 10-second default, while
+the SDK documents MCP tool calls as "effectively unbounded by default"
+(`MCP_TOOL_TIMEOUT`). Any tool call or held-open stream that goes quiet for ten seconds
+is dropped by the transport rather than by the protocol. Pre-existing — nothing in this
+change touches request duration — and worth its own item.
 
 ## 4. Observability & control (low risk, adopt opportunistically)
 
@@ -312,6 +373,6 @@ Verified against current docs; these survive the modernization:
 | 3 | ✅ §1.2 `outputFormat` — premise did not hold; plumbing kept and spike-covered | done | — |
 | 4 | §2 spikes (`setMcpServers`/`setModel`, `streamInput`, `startup`) | 1 day | adopt only what the spike proves |
 | 5 | §4 observability items, as adjacent code is touched | incremental | — |
-| 6 | §3 in-process-MCP go/no-go, after §2 results | decision + 2–3 days if go | v2 `CallToolResult` blocker |
+| 6 | ✅ §3 in-process-MCP go/no-go — **no-go** on the v2 `CallToolResult` blocker; adopted `instructions` + `readOnlyHint` instead | done | lint/typecheck/1583 tests + `smoke` + a live `pilot` run green |
 | 7 | §5–6 fold into migration Phases 4–5 | with those phases | — |
 | 8 | §7 append/finalize narration | 1–2 days | **post-cutover** — forks the tool surface from Python (parity) |

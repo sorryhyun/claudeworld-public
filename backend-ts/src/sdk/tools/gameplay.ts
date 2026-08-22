@@ -198,6 +198,7 @@ Available history entries: {history_subtitles}
   },
   // The matched section, verbatim. A group config can narrow this.
   response: '{history_content}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 

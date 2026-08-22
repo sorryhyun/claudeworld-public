@@ -717,6 +717,27 @@ describe('buildServers', () => {
     }
   })
 
+  test('stamps readOnlyHint across a whole set, from the declarations', () => {
+    // The stamp is one pass in `buildToolSets`, so this is the assertion that
+    // it reaches a namespace nobody wrote annotations at by hand. Four of the
+    // action_manager set's five query tools live in three different handler
+    // modules; none of them mentions annotations.
+    const built = servers('action_manager')
+    const hints = Object.fromEntries(
+      (built.mcpServers[SERVER_NAMES.actionManager] ?? []).map((tool) => [
+        tool.name,
+        tool.annotations?.readOnlyHint,
+      ]),
+    )
+
+    for (const name of ['list_inventory', 'list_world_item', 'list_locations', 'list_characters']) {
+      expect(hints[name]).toBe(true)
+    }
+    for (const name of ['narration', 'change_stat', 'travel', 'roll_the_dice']) {
+      expect(hints[name]).toBeUndefined()
+    }
+  })
+
   test('the tools Python declares but never implements are not offered', () => {
     const built = servers('action_manager')
     for (const name of ['equip_item', 'unequip_item', 'use_item', 'list_equipment', 'set_flag']) {

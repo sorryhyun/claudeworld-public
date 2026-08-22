@@ -29,6 +29,21 @@ export interface ToolDefinition<Shape extends z.ZodRawShape = z.ZodRawShape> {
    */
   response?: string
   enabled?: boolean
+  /**
+   * The tool observes the world and never changes it.
+   *
+   * Surfaced to the CLI as `ToolAnnotations.readOnlyHint`, which is not
+   * decoration: `isConcurrencySafe()` and `isReadOnly()` on the CLI's tool
+   * wrapper both read it, and a tool that reports neither is executed on its
+   * own. Marking the query tools lets a turn fetch the roster, the map and the
+   * inventory in one parallel batch instead of three serial round trips.
+   *
+   * Not overridable from a group config, unlike {@link ToolDefinition.description}
+   * and {@link ToolDefinition.response}: whether a handler writes is a property
+   * of the code, and a world author who got it wrong would be telling the CLI
+   * it may run a mutation concurrently with anything else.
+   */
+  readOnly?: boolean
 }
 
 /**

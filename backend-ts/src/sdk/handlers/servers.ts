@@ -7,6 +7,7 @@ import type { WorldService } from '../../services/world-service'
 import type { WorldResetService } from '../../services/world-reset-service'
 import { getAgentToolConfig } from '../loaders/group-config'
 import { qualifiedToolName } from '../tools/definitions'
+import { isReadOnlyTool } from '../tools/registry'
 import { createActionTools, type ActionDeps } from './action-tools'
 import { createCharacterDesignTools } from './character-design-tools'
 import { createCharacterTools, createPersistCharacterTool } from './character-tools'
@@ -104,6 +105,64 @@ const ALL_SERVER_NAMES: readonly ServerName[] = Object.values(SERVER_NAMES)
 /** Whether a path segment names one of this backend's MCP namespaces. */
 export function isServerName(value: string): value is ServerName {
   return (ALL_SERVER_NAMES as readonly string[]).includes(value)
+}
+
+/**
+ * Usage guidance for a whole namespace, served on `server/discover`.
+ *
+ * Claude Code collects the `instructions` of every connected MCP server into a
+ * single "# MCP Server Instructions" block in the model's context, once per
+ * session rather than once per tool. That makes it the right home for the rules
+ * that span a namespace — call ordering, which tool to reach for first, what
+ * *not* to invent — which until now had to be repeated inside individual tool
+ * descriptions or left unsaid.
+ *
+ * Two constraints on what belongs here. It is **not** per-agent: one string
+ * serves every character bound to the namespace, so anything that varies by
+ * agent (a character's memory subtitles, a world's history index) stays in the
+ * tool description, which is built per turn. And it is not a place to restate a
+ * description — the model already has those; this is the part that only makes
+ * sense across several tools at once.
+ *
+ * `character_design` is absent deliberately: its two tools are each a complete
+ * instruction on their own and it has no ordering to describe.
+ */
+export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> = {
+  [SERVER_NAMES.action]:
+    'These tools belong to the character you are playing, not to the narrator. ' +
+    '`recall` reads this character\'s own long-term memories and its description lists ' +
+    'every subtitle that exists — ask for one of those, never a subtitle you invented; ' +
+    'a memory that is not listed has not been written yet. `memorize` is for something ' +
+    'that happened in this scene and will still matter later, not for a running log of ' +
+    'the conversation. `skip` is a real choice: call it, with nothing else, when the ' +
+    'character would stay silent.',
+
+  [SERVER_NAMES.actionManager]:
+    'You resolve one player action per turn, then narrate it. Establish the facts ' +
+    'before you describe them: `list_locations`, `list_characters`, `list_inventory`, ' +
+    '`list_world_item` and `recall_history` are free of side effects and can be called ' +
+    'together, so gather what the action depends on in one batch rather than guessing ' +
+    'and correcting mid-narration. Only then apply consequences — `change_stat`, ' +
+    '`advance_time`, `travel`, `move_character` — and only then call `narration`, once, ' +
+    'as the last step. Never describe an outcome you have not already committed through ' +
+    'a tool, and never name a location, character or item the lists did not return.',
+
+  [SERVER_NAMES.onboarding]:
+    'This is world creation, and it is a conversation with the player as much as it is ' +
+    'a build. `read_lore_guidelines` first — it carries the structure the rest of this ' +
+    'namespace expects. `draft_world` is cheap and revisable, so shape the world there ' +
+    'while the player is still reacting to it; `persist_world` writes to disk and is the ' +
+    'point after which changes are edits. `complete` ends onboarding and hands the world ' +
+    'to the Action Manager: call it only when the world, its starting location and the ' +
+    'player character all exist.',
+
+  [SERVER_NAMES.subagents]:
+    'These are the callbacks a design sub-agent reports its finished work through. ' +
+    'Prose is not a result — a design that is described but never persisted through the ' +
+    'tool for it is discarded when the sub-agent ends. Persist once, at the end, with ' +
+    'the complete design rather than in fragments as you go: `persist_item` takes every ' +
+    'item in one call, and re-persisting an id that already exists is skipped, not ' +
+    'overwritten, so a retry cannot repair a partial write.',
 }
 
 /**
@@ -285,7 +344,7 @@ export function buildToolSets(binding: TurnBinding, deps: ServerDeps): ToolSets 
   const sets: ToolSets = {}
 
   const add = (name: ServerName, tools: SdkTool[]): void => {
-    const kept = applyDisabledTools(tools, ctx)
+    const kept = applyDisabledTools(tools, ctx).map(annotate)
     if (kept.length > 0) sets[name] = kept
   }
 
@@ -407,6 +466,24 @@ export function qualifiedToolNames(sets: ToolSets): string[] {
   return Object.entries(sets).flatMap(([server, tools]) =>
     tools.map((tool) => qualifiedToolName(server, tool.name)),
   )
+}
+
+/**
+ * Stamp `readOnlyHint` on the tools whose declaration says they only read.
+ *
+ * One pass over every set rather than an argument at each of the twenty-odd
+ * `tool()` calls, for the same reason {@link applyDisabledTools} is one pass:
+ * the fact belongs to the declaration in `sdk/tools/`, and a per-call-site
+ * spelling is a fact that can be forgotten at the twenty-first site.
+ *
+ * Only the read-only case is stamped. `destructiveHint` defaults to true for an
+ * unannotated tool, which is the honest default for everything here — these
+ * tools delete characters and rewrite player state — so saying so adds nothing
+ * the client does not already assume.
+ */
+function annotate(tool: SdkTool): SdkTool {
+  if (!isReadOnlyTool(tool.name)) return tool
+  return { ...tool, annotations: { ...tool.annotations, readOnlyHint: true } }
 }
 
 /**

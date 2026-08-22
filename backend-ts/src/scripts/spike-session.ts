@@ -23,6 +23,7 @@
  * | `hooks` | `PreToolUse` firing, and the *name* of the sub-agent dispatch tool (`agent/hooks.ts`) |
  * | `subagents` | `Options.agents` → dispatch → a parent MCP tool (`agent/subagent-definitions.ts`) |
  * | `outputFormat` | `outputFormat` → `structured_output` on the `result` message |
+ * | `instructions` | a server's MCP `instructions` reaching the model's context |
  *
  * The `subagents` probe deliberately loads the **real** definitions off
  * `agents/group_subagent/`, so a rename or a broken prompt there fails here
@@ -330,10 +331,83 @@ async function probeOutputFormat(): Promise<void> {
 }
 
 // ============================================================================
+// Probe: server instructions
+// ============================================================================
+
+/**
+ * Does a server's `instructions` string actually reach the model?
+ *
+ * `SERVER_INSTRUCTIONS` in `sdk/handlers/servers.ts` puts each namespace's
+ * cross-tool guidance here rather than in every tool description, on the
+ * strength of two things read out of CLI 2.1.238: the modern-era connect path
+ * assigns `this._instructions = discover.instructions`, and the attachment
+ * builder renders an `# MCP Server Instructions` block from them. Both are
+ * internals. This probe is the behavioural check over them.
+ *
+ * The carrier differs by one hop and deliberately so. Production serves
+ * instructions on `server/discover` over the stateless HTTP endpoint, which
+ * `src/tests/mcp-endpoint.test.ts` asserts against a real MCP v2 client;
+ * `createSdkMcpServer` is used here because it is the cheap way to reach the
+ * *CLI* side, and the CLI funnels both transports into the same
+ * `getInstructions()`.
+ *
+ * The planted fact is nonsense on purpose: no tool returns it, no description
+ * mentions it, and it is not in the system prompt, so the model can only have
+ * it from the instructions block.
+ */
+const PLANTED = 'Bramblewick'
+
+async function probeInstructions(): Promise<void> {
+  console.log('\n=== instructions ===')
+
+  const server = createSdkMcpServer({
+    name: 'action_manager',
+    version: '1.0.0',
+    instructions:
+      `The tavern keeper in this world is always named ${PLANTED}. ` +
+      'Never call the tavern keeper anything else.',
+    tools: [
+      tool('roll_the_dice', 'Roll for a random outcome.', {}, async () => ({
+        content: [{ type: 'text', text: 'nothing_happened' }],
+      })),
+    ],
+  })
+
+  const session = new AgentSession('spike-instructions', 'fp-3', undefined, {
+    ...baseOptions(),
+    systemPrompt: 'You are the Action Manager of a text adventure. Answer in one short sentence.',
+    mcpServers: { action_manager: server },
+    tools: ['mcp__action_manager__roll_the_dice'],
+    allowedTools: ['mcp__action_manager__roll_the_dice'],
+  })
+
+  try {
+    const seen = await runTurn(
+      session,
+      'turn 1',
+      'What is the name of the tavern keeper in this world? Answer with the name only.',
+    )
+    const text = seen
+      .filter((m) => m.type === 'assistant')
+      .flatMap((m) => (m as { message: { content: unknown[] } }).message.content)
+      .map((block) => (block as { text?: string }).text ?? '')
+      .join(' ')
+
+    check(
+      text.includes(PLANTED),
+      `the server's instructions reached the model (looked for "${PLANTED}" in "${text.trim().slice(0, 80)}")`,
+    )
+  } finally {
+    await session.close()
+  }
+}
+
+// ============================================================================
 
 probePin()
 await probeGameplay()
 await probeOutputFormat()
+await probeInstructions()
 
 console.log(failures === 0 ? '\nSPIKE GREEN' : `\nSPIKE RED (${failures} failed)`)
 process.exit(failures === 0 ? 0 : 1)

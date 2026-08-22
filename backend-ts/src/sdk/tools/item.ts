@@ -24,6 +24,7 @@ Returns item names, descriptions, and quantities.
 Use this to check what items the player has before making decisions.`,
   inputSchema: {},
   response: '{inventory_list}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 
@@ -45,6 +46,7 @@ Returns item IDs, names, descriptions, and properties.
       ),
   },
   response: '{items_list}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 

@@ -45,6 +45,7 @@ export const recallTool = {
   },
   // The whole memory, verbatim. A group config can narrow this.
   response: '{memory_content}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 
