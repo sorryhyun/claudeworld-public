@@ -117,6 +117,7 @@ export const listLocationsTool = {
     'Use this before moving the player, to check a destination exists.',
   inputSchema: {},
   response: '{locations_list}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 
@@ -130,6 +131,7 @@ export const listCharactersTool = {
     location: z.string().default('').describe('Location name; empty means the current location'),
   },
   response: '{characters_list}',
+  readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
 

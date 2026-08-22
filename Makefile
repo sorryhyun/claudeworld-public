@@ -1,24 +1,25 @@
-.PHONY: help install setup run-backend run-backend-sqlite run-backend-ts run-backend-perf run-backend-trace run-frontend run-tunnel-backend run-tunnel-frontend dev dev-python dev-postgresql dev-perf dev-trace diagnose-traces serve prod stop clean generate-icon build-exe
+.PHONY: help install setup run-backend run-backend-sqlite run-backend-ts run-backend-perf run-backend-trace run-tunnel-backend dev dev-python dev-postgresql dev-perf dev-trace diagnose-traces serve prod stop clean generate-icon build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
 
 # Whether the backend serves frontend/dist on its own port. On by default, so
 # `make run-backend-ts` after a build is a working single-port app. `make dev`
-# overrides it to false: Vite on :5173 is authoritative there, and a dist/ left
-# over from an earlier build would otherwise have :8000 quietly answering with a
-# stale bundle to anyone who opened it out of habit.
+# overrides it to false and sets FRONTEND_DEV=true instead: there the backend
+# bundles frontend/ in-process with HMR, and a dist/ left over from an earlier
+# build must not shadow it with a stale bundle.
 SERVE_FRONTEND ?= true
+FRONTEND_DEV ?= false
 
 help:
 	@echo "ClaudeWorld - Available commands:"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev               - Run TypeScript backend (SQLite) + frontend  [DEFAULT]"
-	@echo "                           Open http://localhost:5173 only -- Vite proxies the API."
-	@echo "                           Serves /auth/*, the /worlds/* TRPG surface, and the"
-	@echo "                           /rooms/* + /agents/* chat surface with SSE."
-	@echo "  make serve             - Build the frontend and serve it FROM the backend"
+	@echo "  make dev               - Run TypeScript backend + frontend, ONE process  [DEFAULT]"
+	@echo "                           One port: http://localhost:8000 (frontend has HMR)."
+	@echo "                           Falls back to a free port if 8000 is taken -- the URL"
+	@echo "                           it prints is authoritative."
+	@echo "  make serve             - Same, but from a built frontend/dist (no HMR)"
 	@echo "                           One process, one port: http://localhost:8000"
 	@echo "  make dev-python        - Run Python backend (SQLite) + frontend (legacy, being retired)"
 	@echo "  make dev-postgresql    - Run Python backend (PostgreSQL) + frontend (requires PostgreSQL)"
@@ -29,7 +30,6 @@ help:
 	@echo "  make run-backend-sqlite- Run Python backend server only (SQLite)"
 	@echo "  make run-backend-perf  - Run backend server only (SQLite) with performance logging"
 	@echo "  make run-backend-trace - Run backend server only (SQLite) with CLI tracing"
-	@echo "  make run-frontend      - Run frontend server only"
 	@echo ""
 	@echo "CLI Tracing (requires patched CLI with observability patches):"
 	@echo "  make dev-trace         - Run dev mode with CLI tracing (outputs to traces.jsonl)"
@@ -41,7 +41,6 @@ help:
 	@echo "Deployment (Cloudflare tunnels for remote access):"
 	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
 	@echo "  make run-tunnel-backend - Run Cloudflare tunnel for backend"
-	@echo "  make run-tunnel-frontend- Run Cloudflare tunnel for frontend"
 	@echo ""
 	@echo "Build:"
 	@echo "  make generate-icon     - Regenerate application icon (assets/icon.ico + frontend favicon)"
@@ -88,7 +87,7 @@ run-backend-sqlite:
 
 run-backend-ts:
 	@echo "Starting TypeScript backend server (SQLite)..."
-	HOST=127.0.0.1 PORT=8000 SERVE_FRONTEND=$(SERVE_FRONTEND) DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev:backend
+	HOST=127.0.0.1 PORT=8000 SERVE_FRONTEND=$(SERVE_FRONTEND) FRONTEND_DEV=$(FRONTEND_DEV) DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db bun run dev:backend
 
 run-backend-perf:
 	@echo "Starting backend server (SQLite) with performance logging..."
@@ -96,61 +95,59 @@ run-backend-perf:
 	@echo "Terminal output will be written to ./run.log"
 	cd backend && DATABASE_URL=sqlite+aiosqlite:///$(PWD)/claudeworld.db PERF_LOG=true uv run uvicorn main:app --host 127.0.0.1 --port 8000 2>&1 | tee $(PWD)/run.log
 
-run-frontend:
-	@echo "Starting frontend server..."
-	bun run dev:frontend
-
 run-tunnel-backend:
 	@echo "Starting Cloudflare tunnel for backend..."
 	cloudflared tunnel --url http://localhost:8000
 
-run-tunnel-frontend:
-	@echo "Starting Cloudflare tunnel for frontend..."
-	cloudflared tunnel --url http://localhost:5173
-
 dev:
 	@mkdir -p /tmp/claude-empty
-	@echo "Starting TypeScript backend (SQLite) and frontend..."
+	@echo "Starting the TypeScript backend with the frontend bundled in-process..."
 	@echo ""
-	@echo "👉 Open http://localhost:5173 — that is the only URL you need."
-	@echo "   Vite proxies /auth, /worlds, /rooms, /agents, ... to the backend on"
-	@echo "   :8000, so the app runs same-origin exactly as it does under 'make serve'."
-	@echo "   (SQLite: ./claudeworld.db)"
+	@echo "👉 Open http://localhost:8000 — frontend and API share the origin."
+	@echo "   If 8000 is taken the server picks a free port instead and prints it;"
+	@echo "   that printed URL is the authoritative one."
+	@echo "   (SQLite: ./claudeworld.db, frontend has hot module replacement)"
 	@echo ""
-	@echo "ℹ️  The TypeScript backend serves /auth/*, the full /worlds/* game surface"
+	@echo "ℹ️  One process serves everything: /auth/*, the full /worlds/* game surface"
 	@echo "   (onboarding, turns, travel, chat mode, state, polling) and the whole"
 	@echo "   /rooms/* + /agents/* chat surface including SSE streaming."
-	@echo "   Still Python-only: /debug, /readme, the autonomous-round scheduler, the"
-	@echo "   agent-file watcher, i18n and image/WebP conversion."
-	@echo "   Run 'make dev-python' if you need those."
 	@echo ""
-	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
-	@echo "Press Ctrl+C to stop all servers"
-	@$(MAKE) -j2 SERVE_FRONTEND=false run-backend-ts run-frontend
+	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
+	@echo "Press Ctrl+C to stop."
+	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-ts
 
 dev-python:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting Python backend (SQLite) and frontend..."
 	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
-	@echo "Frontend will run on http://localhost:5173"
-	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
+	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
 	@echo "Press Ctrl+C to stop all servers"
-	@$(MAKE) -j2 run-backend-sqlite run-frontend
+	@echo ""
+	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
+	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
+	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
+	@echo "   for a browsable app, and this target to exercise the Python API."
+	@echo ""
+	@$(MAKE) run-backend-sqlite
 
 dev-postgresql:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend (PostgreSQL) and frontend..."
 	@echo "Backend will run on http://localhost:8000"
-	@echo "Frontend will run on http://localhost:5173"
-	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
+	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
 	@echo "Press Ctrl+C to stop all servers"
-	@$(MAKE) -j2 run-backend run-frontend
+	@echo ""
+	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
+	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
+	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
+	@echo "   for a browsable app, and this target to exercise the Python API."
+	@echo ""
+	@$(MAKE) run-backend
 
 dev-perf:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend (SQLite) and frontend with PERFORMANCE LOGGING..."
 	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
-	@echo "Frontend will run on http://localhost:5173"
 	@echo ""
 	@echo "📊 PERFORMANCE LOGGING ENABLED"
 	@echo "   Performance metrics: ./latency.log"
@@ -160,7 +157,13 @@ dev-perf:
 	@echo "   Or both:      tail -f latency.log run.log"
 	@echo ""
 	@echo "Press Ctrl+C to stop all servers"
-	@$(MAKE) -j2 run-backend-perf run-frontend
+	@echo ""
+	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
+	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
+	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
+	@echo "   for a browsable app, and this target to exercise the Python API."
+	@echo ""
+	@$(MAKE) run-backend-perf
 
 run-backend-trace:
 	@echo "Starting backend server (SQLite) with CLI tracing..."
@@ -172,7 +175,6 @@ dev-trace:
 	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend (SQLite) and frontend with CLI TRACING..."
 	@echo "Backend will run on http://localhost:8000 (SQLite: ./claudeworld.db)"
-	@echo "Frontend will run on http://localhost:5173"
 	@echo ""
 	@echo "🔍 CLI TRACING ENABLED (requires patched CLI with observability patches)"
 	@echo "   Trace output: ./traces.jsonl"
@@ -181,7 +183,13 @@ dev-trace:
 	@echo "   Analyze with: make diagnose-traces FILE=traces.jsonl"
 	@echo ""
 	@echo "Press Ctrl+C to stop all servers"
-	@$(MAKE) -j2 run-backend-trace run-frontend
+	@echo ""
+	@echo "⚠️  API only — there is no dev frontend for the Python backend any more."
+	@echo "   The Vite proxy that used to serve one was removed with Vite; the"
+	@echo "   TypeScript backend now bundles the frontend itself. Use 'make dev'"
+	@echo "   for a browsable app, and this target to exercise the Python API."
+	@echo ""
+	@$(MAKE) run-backend-trace
 
 diagnose-traces:
 	@if [ -z "$(FILE)" ]; then \
@@ -229,7 +237,6 @@ stop:
 	@echo "Stopping servers..."
 	@pkill -f "uvicorn main:app" || true
 	@pkill -f "bun.*src/main.ts" || true
-	@pkill -f "vite" || true
 	@pkill -f "cloudflared" || true
 	@echo "Servers stopped."
 

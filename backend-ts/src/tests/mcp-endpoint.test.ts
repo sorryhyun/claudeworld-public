@@ -236,6 +236,40 @@ describe('MCP endpoint', () => {
     expect(body.error.message).toContain('MCP_SDK_GENERATION')
   })
 
+  test('carries the namespace instructions on server/discover', async () => {
+    // Not decoration: Claude Code collects every connected server's
+    // `instructions` into one block of the model's context. On this revision
+    // there is no `initialize`, so `server/discover` is the only carrier —
+    // which is why the endpoint supplies them on the no-binding path too.
+    bind('Alice', 'The granary burned.')
+    const client = await connect()
+    try {
+      const instructions = client.getInstructions()
+      expect(instructions).toBeDefined()
+      expect(instructions).toContain('recall')
+    } finally {
+      await client.close()
+    }
+  })
+
+  test('marks the read-only tools and only those', async () => {
+    // `readOnlyHint` is what the CLI reads as `isConcurrencySafe()`, so an
+    // unannotated `recall` is a `recall` executed on its own. `memorize` and
+    // `skip` must stay unannotated — the first writes `recent_events.md`, and
+    // claiming otherwise would licence running it concurrently with anything.
+    bind('Alice', 'The granary burned.')
+    const client = await connect()
+    try {
+      const { tools } = await client.listTools()
+      const hints = Object.fromEntries(
+        tools.map((t) => [t.name, t.annotations?.readOnlyHint]),
+      )
+      expect(hints).toEqual({ recall: true, memorize: undefined, skip: undefined })
+    } finally {
+      await client.close()
+    }
+  })
+
   test('a released binding stops being served', async () => {
     // What `SessionPool.evict` fires. A session and its binding die together,
     // or the endpoint would keep answering for an agent with no subprocess.

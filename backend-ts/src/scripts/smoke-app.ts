@@ -71,6 +71,17 @@ await check('GET /worlds/abc (not an int)', 422, app.request('/worlds/abc', auth
 await check('GET /worlds (no key)', 401, app.request('/worlds'))
 await check('GET /nope', 404, app.request('/nope', auth))
 
+// The routers with no state behind them. `/readme` is checked on its rejection
+// path rather than its happy path because whether `en_readme.md` sits next to
+// this checkout is not something a smoke run should depend on; the 422 proves
+// the route is mounted and the language pattern is enforced.
+await check('GET /readme?lang=fr', 422, app.request('/readme?lang=fr', auth))
+await check('GET /debug/cache/stats', 200, app.request('/debug/cache/stats', auth))
+await check('GET /auth/health/pool', 200, app.request('/auth/health/pool', auth))
+// Deliberately without `auth`: `/mcp-tools` sits under the `/mcp` exclusion
+// prefix in both backends, so a 401 here would be the regression.
+await check('GET /mcp-tools/agents (no key)', 200, app.request('/mcp-tools/agents'))
+
 const created = await check(
   'POST /worlds',
   200,

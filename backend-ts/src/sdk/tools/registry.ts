@@ -201,6 +201,23 @@ export function isToolEnabled(toolName: string, defaultValue = false): boolean {
   return found.definition.enabled ?? true
 }
 
+/**
+ * Whether a tool's handler only reads.
+ *
+ * Deliberately silent on an unknown name, unlike {@link resolveTool}: the
+ * caller stamps annotations across a whole tool set, and `character_design`'s
+ * two tools are absent from the catalogue on purpose (see the module
+ * docstring). Warning on every turn for a known omission would train the log
+ * to be ignored.
+ *
+ * Group-blind for the reason on {@link ToolDefinition.readOnly}: a config that
+ * could flip this would be granting the CLI permission to run a mutation
+ * concurrently with anything else.
+ */
+export function isReadOnlyTool(toolName: string): boolean {
+  return findInCatalogue(toolName)?.definition.readOnly === true
+}
+
 /** Every enabled tool in a group, as `mcp__<server>__<tool>`. */
 export function getToolNamesByGroup(group: string, enabledOnly = true): string[] {
   if (!(TOOL_GROUPS as readonly string[]).includes(group)) return []

@@ -23,6 +23,11 @@ const CLAUDE_ENV_OVERRIDES: Record<string, string> = {
   // Suppresses the CLI's stock sub-agents so `Task` only sees the definitions
   // this backend supplies.
   CLAUDE_CODE_DISABLE_BUILTIN_AGENTS: 'true',
+  CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: 'true',
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: 'true',
+  CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: 'true',
+  ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+  
   // Produces the `input_json_delta` events the narration extractor consumes.
   // Without it, narration cannot stream before the tool call completes.
   CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: 'true',

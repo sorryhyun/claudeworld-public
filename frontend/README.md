@@ -6,7 +6,8 @@ React + TypeScript frontend for the ClaudeWorld TRPG application.
 
 - **React 19.1.1** - UI library
 - **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
+- **Bun** - Bundler (`build.ts`); the dev server is the backend itself, which
+  bundles this app in-process with HMR (`make dev`)
 - **Tailwind CSS 4.1** - Styling framework
 - **shadcn/ui** - Component library built on Radix UI primitives
 - **Lucide React** - Icon library
@@ -134,8 +135,8 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ```bash
 bun run dev
-# Opens on http://localhost:5173
-# From the repo root: bun run dev:frontend
+# Served by the backend on http://localhost:8000
+# From the repo root: make dev (the backend serves this app with HMR)
 ```
 
 ### Build for Production
@@ -241,7 +242,7 @@ bun run build      # Build for production
 bun run preview    # Preview production build
 bun run lint       # Run ESLint
 bun run typecheck  # tsc --noEmit
-bun run test       # Vitest, single run (bun run test:watch to watch)
+bun run test       # bun test, single run (bun run test:watch to watch)
 ```
 
 ## Dependencies
@@ -267,8 +268,7 @@ bun run test       # Vitest, single run (bun run test:watch to watch)
 - `@tailwindcss/typography`
 
 **Build Tools:**
-- `vite` ^7.1.7
-- `@vitejs/plugin-react`
+- `bun-plugin-tailwind`
 
 ## Related Documentation
 

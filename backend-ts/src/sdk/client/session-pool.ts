@@ -19,6 +19,16 @@ import { AgentSession, parseSessionKey, sessionKeyOf, type SessionKey } from './
  *   leaves the CLI in an unknown state, so the session is discarded and the next
  *   turn reopens with `resume`.
  */
+/** What `GET /auth/health/pool` reports. See {@link SessionPool.stats}. */
+export interface SessionPoolStats {
+  poolSize: number
+  poolKeys: string[]
+  pendingCleanupTasks: number
+  activeClients: number
+  connectionSemaphoreAvailable: number
+  maxConcurrentConnections: number
+}
+
 export class SessionPool {
   private readonly sessions = new Map<string, AgentSession>()
   /** Serializes concurrent opens for the same key (double-checked locking). */
@@ -115,6 +125,32 @@ export class SessionPool {
   private releaseConnectSlot(): void {
     this.inFlightConnects--
     this.connectWaiters.shift()?.()
+  }
+
+  /**
+   * A snapshot for `GET /auth/health/pool`.
+   *
+   * The shape is Python's `pool_stats`, field for field, because that endpoint
+   * exists to be read by a human comparing two running backends. Two fields do
+   * not translate cleanly and are documented rather than faked:
+   *
+   * - `pendingCleanupTasks` is always 0. Python's pool detaches disconnects
+   *   into `asyncio.Task`s it then has to track; `evict()` here awaits the
+   *   teardown, so there is never a cleanup in flight to count.
+   * - `activeClients` counts *busy* sessions. Python counts entries in
+   *   `AgentManager.active_clients`, which is populated for the duration of a
+   *   turn and deleted after it — the same set, tracked on the session itself
+   *   rather than in a parallel dict.
+   */
+  stats(): SessionPoolStats {
+    return {
+      poolSize: this.sessions.size,
+      poolKeys: this.keys,
+      pendingCleanupTasks: 0,
+      activeClients: [...this.sessions.values()].filter((s) => s.busy).length,
+      connectionSemaphoreAvailable: this.maxConcurrentConnections - this.inFlightConnects,
+      maxConcurrentConnections: this.maxConcurrentConnections,
+    }
   }
 
   /**

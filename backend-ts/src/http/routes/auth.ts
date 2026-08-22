@@ -11,6 +11,7 @@ import { Hono } from 'hono'
 
 import { generateGuestUserId, generateJwtToken } from '../../auth/jwt'
 import { validatePasswordWithRole } from '../../auth/passwords'
+import type { SessionPool } from '../../sdk/client/session-pool'
 import { rateLimit } from '../middleware/rate-limit'
 import type { AppEnv } from '../types'
 
@@ -21,8 +22,11 @@ import type { AppEnv } from '../types'
  * counters in a closure: two apps sharing one router would share one quota, and
  * a test that exhausts the limit would leak into the next one. Later phases
  * need the same shape anyway, to inject the agent manager and orchestrator.
+ *
+ * @param pool The session pool `/health/pool` reports on. Optional so the auth
+ *   surface still stands up on its own; that endpoint 503s without it.
  */
-export function createAuthRoutes(): Hono<AppEnv> {
+export function createAuthRoutes(pool?: SessionPool): Hono<AppEnv> {
   const authRoutes = new Hono<AppEnv>()
 
   /** `@limiter.limit("20/minute")` on login, per IP. */
@@ -89,6 +93,33 @@ export function createAuthRoutes(): Hono<AppEnv> {
 
   /** Unauthenticated liveness probe. */
   authRoutes.get('/health', (c) => c.json({ status: 'healthy' }))
+
+  /**
+   * Session-pool statistics, for eyeballing a running backend.
+   *
+   * Deferred out of Phase 1 because nothing in the HTTP layer owned the pool
+   * yet. Python reaches it as `app.state.agent_manager.client_pool`; here it is
+   * `AppState.pool`, so the router takes it as an argument. Absent (the
+   * auth-only app the settings tests stand up) it 503s rather than pretending
+   * to have a pool of size zero.
+   *
+   * Behind auth, as in Python — `/auth/health/pool` is on no exclusion list;
+   * only the bare `/auth/health` is.
+   */
+  authRoutes.get('/health/pool', (c) => {
+    if (!pool) {
+      return c.json({ detail: 'Session pool not available' }, 503)
+    }
+    const stats = pool.stats()
+    return c.json({
+      pool_size: stats.poolSize,
+      pool_keys: stats.poolKeys,
+      pending_cleanup_tasks: stats.pendingCleanupTasks,
+      active_clients: stats.activeClients,
+      connection_semaphore_available: stats.connectionSemaphoreAvailable,
+      max_concurrent_connections: stats.maxConcurrentConnections,
+    })
+  })
 
   return authRoutes
 }

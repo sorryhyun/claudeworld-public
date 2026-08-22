@@ -24,9 +24,11 @@ import { persistLocationDesignTool } from '../sdk/tools/subagent'
 import {
   getToolNamesByGroup,
   getToolResponse,
+  isReadOnlyTool,
   isToolEnabled,
   resolveTool,
   TOOL_GROUPS,
+  getToolsByGroup,
 } from '../sdk/tools/registry'
 
 /** Parse one field of a tool's schema in isolation. */
@@ -205,6 +207,48 @@ describe('getToolNamesByGroup', () => {
     for (const group of TOOL_GROUPS) expect(getToolNamesByGroup(group).length).toBeGreaterThan(0)
     expect(getToolNamesByGroup('character_design')).toEqual([])
     expect(getToolNamesByGroup('nonsense')).toEqual([])
+  })
+})
+
+describe('isReadOnlyTool', () => {
+  /**
+   * The whole read-only set, spelled out.
+   *
+   * A list rather than a spot check because the failure mode is silent and
+   * one-directional: `readOnlyHint` becomes `isConcurrencySafe()` in Claude
+   * Code, so a mutation wrongly marked here is licensed to run in parallel with
+   * anything else in the turn, and nothing reports it. Adding a tool that
+   * belongs on this list fails here too, which is the cheap half — the point is
+   * that the decision gets made rather than defaulted.
+   */
+  const READ_ONLY = [
+    'list_characters',
+    'list_inventory',
+    'list_locations',
+    'list_world_item',
+    'read_lore_guidelines',
+    'recall',
+    'recall_history',
+  ]
+
+  test('is exactly the query tools', () => {
+    const marked = TOOL_GROUPS.flatMap((group) => Object.keys(getToolsByGroup(group)))
+      .filter(isReadOnlyTool)
+      .sort()
+    expect([...new Set(marked)]).toEqual(READ_ONLY)
+  })
+
+  test('the writers are not marked', () => {
+    for (const name of ['memorize', 'narration', 'change_stat', 'travel', 'persist_item']) {
+      expect(isReadOnlyTool(name)).toBe(false)
+    }
+  })
+
+  test('an unknown tool is not read-only, and does not warn', () => {
+    // `character_design`'s tools are deliberately outside the catalogue, so
+    // this path runs on every turn that builds that namespace.
+    expect(isReadOnlyTool('create_comprehensive_character')).toBe(false)
+    expect(isReadOnlyTool('no_such_tool')).toBe(false)
   })
 })
 

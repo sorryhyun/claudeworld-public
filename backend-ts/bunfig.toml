@@ -5,3 +5,9 @@
 [test]
 preload = ["./src/tests/setup/env.ts"]
 pathIgnorePatterns = ["**/dist/**", "**/node_modules/**"]
+
+# Tailwind for the dev server's CSS. `make dev` runs with this directory as its
+# cwd, which is how Bun finds this file; the repo-root bunfig.toml carries the
+# same block for a run started from there. Both are needed -- see the note there.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

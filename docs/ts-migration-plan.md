@@ -1,10 +1,11 @@
 # ClaudeWorld Backend Migration Plan: Python → TypeScript + Bun
 
-**Status:** Phases 0, 1 and 2 complete (2026-08-21). The repo root is a Bun workspace over
+**Status:** Phases 0, 1, 2 and 3 complete (Phase 3 on 2026-08-22; its one open item is the live
+frontend onboarding+gameplay pass, which needs a human and a Claude session). The repo root is a Bun workspace over
 `backend-ts/` and `frontend/` (one `bun install`, one `bun.lock`), and the Python helper
 scripts have moved from `scripts/` to `backend/scripts/` so they retire with the Python
-tree; `scripts/` now holds only the release installers and the deploy shell script. Work lives in `backend-ts/`; the Python backend is untouched. `make dev` runs the TS backend and `make dev-python` runs the Python one. 1,400+ unit tests, `tsc`, `eslint` and the drift gate are clean, and `bun run smoke` boots the assembled backend against a throwaway database and exercises the real routes.
-**Next:** Phase 3 — the remaining routers (`agents`, `rooms`, `messages`, `sse`, `mcp_tools`, `debug`, `readme`), the background scheduler, the agent-file hot-reload watcher, i18n, image upload/WebP, and a frontend smoke pass.
+tree; `scripts/` now holds only the release installers and the deploy shell script. Work lives in `backend-ts/`; the Python backend is untouched. `make dev` runs the TS backend and `make dev-python` runs the Python one. 1,500+ unit tests, `tsc`, `eslint` and the drift gate are clean, and `bun run smoke` boots the assembled backend against a throwaway database and exercises the real routes.
+**Next:** Phase 4 — the parity harness that diffs integration scenarios across the two backends. That, not line-coverage parity, is the cutover gate.
 **Goal:** Replace the Python/FastAPI backend with a TypeScript backend running on Bun, using `@anthropic-ai/claude-agent-sdk`, so the whole personal ecosystem (ClaudeWorld + yaar) shares one language, one toolchain, and one packaging pipeline.
 
 ## Why
@@ -236,17 +237,63 @@ fixture is checked in under `src/tests/fixtures/worlds/`.
 - No agent pre-connect in `GET /worlds/{id}` and `POST /worlds/{id}/enter`.
   `RoomOrchestrator.preConnectLocation` needs a turn in flight, which is precisely not the case
   there. Latency only; the responses are identical.
-- `try_compress_image` is a pass-through until `sharp` arrives with the Phase 3 message routes.
-  Safe, because Python's own function returns the originals on any compressor failure.
+- ~~`try_compress_image` is a pass-through until `sharp` arrives with the Phase 3 message
+  routes.~~ **Closed in Phase 3** — `src/lib/images.ts` on `sharp`, same quality/effort settings
+  and the same return-the-originals-on-failure contract.
 - `equip_item`, `unequip_item`, `use_item`, `list_equipment` and `set_flag` are declared with no
   handler — exactly as in Python, where no factory produces them. `domain/player-rules.ts` already
   has every rule they need, so implementing them is a decision, not a port.
 
-### Phase 3 — Remaining surface
+### Phase 3 — Remaining surface ✅ *complete, bar the live frontend pass*
 
-- Routers: `agents`, `agent_management`, `rooms`, `room_agents`, `messages`, `sse`, `mcp_tools`, `debug`, `readme`.
-- Background scheduler for autonomous agent rounds; agent-file hot-reload watcher; i18n; image upload/WebP conversion.
-- Frontend smoke pass: run the untouched React app against the TS backend through full onboarding + gameplay.
+Every router Python has now exists in TypeScript, the scheduler runs autonomous rounds on the
+same two-second cadence, and images are really compressed rather than passed through.
+
+- [x] Routers: `agents`, `agent_management`, `rooms`, `room_agents`, `messages`, `sse` (done
+      earlier in the phase — see [Chat rooms](../CLAUDE.md#chat-rooms)), then `mcp_tools`
+      (`src/http/routes/mcp-tools.ts`), `debug` (`routes/debug.ts`) and `readme`
+      (`routes/readme.ts`).
+- [x] `GET /auth/health/pool`, deferred out of Phase 1 because no part of the HTTP layer owned a
+      pool yet. `SessionPool.stats()` is the reporter; `AppState.pool` is what the router reads.
+- [x] Background scheduler — `src/infrastructure/scheduler.ts` plus `runAutonomousRound` in
+      `orchestration/turn.ts` and `RoomOrchestrator.handleAutonomousRound`. Constructed in
+      `createAppState`, started in `main.ts`, stopped first in `AppState.shutdown()`.
+- [x] Image upload / WebP conversion — `sharp` behind `src/lib/images.ts`, replacing the
+      Phase 2 pass-through.
+- [x] i18n. Effectively already done: `i18n/korean.py` is `src/lib/korean.ts` and
+      `i18n/serializers.py` is folded into `src/schemas/common.ts`. See the finding below for
+      `i18n/timezone.py`.
+- [x] Agent-file hot-reload watcher. **There is nothing to port** — see the finding below.
+- [ ] Frontend smoke pass: run the untouched React app against the TS backend through full
+      onboarding + gameplay. Not yet done; it needs a live Claude session and a human at the
+      keyboard. Everything short of that is verified — `bun run smoke`, and a real `main.ts`
+      boot serving `frontend/dist` on :8000 with the API on the same origin.
+
+**Four findings worth keeping:**
+
+- **The "agent-file hot-reload watcher" does not exist in the Python backend.** `watchfiles` is a
+  declared dependency, but nothing imports it — it is there for `uvicorn --reload`. Hot reload of
+  `agents/{name}/*.md` is achieved by *not caching*: both backends re-read the files on each
+  build. The YAML loaders do cache, keyed on mtime, and that is ported
+  (`sdk/loaders/yaml-config.ts`). No watcher is needed on either side.
+- **`i18n/timezone.py` is dead code and was deliberately not ported.** Its only non-test caller is
+  `response_generator.py:267`, which formats `room.created_at` into
+  `AgentResponseContext.conversation_started` — a field nothing ever reads. Porting it would have
+  meant porting the dead field too.
+- **`API_PREFIXES` in `static.ts` matches on *segment boundaries*, where Python matches with
+  `str.startswith`.** Python needs one `/mcp` entry to cover `/mcp-tools`; this backend needs
+  both, and getting it wrong is silent — `/mcp-tools` is unauthenticated, so the request sails
+  past auth and comes back as `index.html` with a 200 instead of its JSON. Only reproducible with
+  a built frontend on disk, which is why `bun run smoke` did not catch it and booting the real
+  server did. Pinned by a test in `http-static.test.ts`.
+- **`routers/mcp_tools.py` is broken in Python: four of its five endpoints raise a 500.** Nothing
+  calls the router, so nobody noticed. `chat` and `room/message` call
+  `ChatOrchestrator.orchestrate_responses`, which does not exist; `get_conversation` passes a
+  `limit=` that `crud.get_messages` does not accept; `create_room` calls `crud.create_room` with
+  the wrong signature. Only `GET /mcp-tools/agents` works. This is the one Python bug that was
+  *not* reproduced (see Open Decision 5) — reproducing it would mean shipping a router that does
+  nothing — so the TypeScript port implements the intended behaviour and the parity harness has to
+  special-case these four paths.
 
 ### Phase 4 — Test parity
 
@@ -288,6 +335,10 @@ fixture is checked in under `src/tests/fixtures/worlds/`.
 | An `async` function passed to `spawnBackground` runs synchronously to its first `await` | With synchronous `bun:sqlite`, a "background" turn's opening writes land *inside* the request handler | `startBackground` (microtask) and `deferBackground` (macrotask) in `routes/game/shared.ts`, matching Python's `spawn_background` and `BackgroundTasks` respectively — found in Phase 2 |
 | Hono does not redirect `/worlds` to `/worlds/`; Starlette 307s | The frontend calls the unslashed form, which Python serves via redirect and Hono would 404 | Both spellings registered — found in Phase 2 |
 | A tool server bound to one world writes the right `player.yaml` but mirrors it onto the wrong row | Silent cross-world corruption of `player_states` | `PersistenceManager` and `PlayerFacade` are per-world *factories*, bound in `buildServers` — found in Phase 2 |
+| `API_PREFIXES` matches by segment here, by `str.startswith` in Python | `/mcp-tools` falls through to the SPA and answers `index.html` with a 200 instead of JSON — and only when a built frontend is on disk | List `/mcp-tools` separately from `/mcp` in `static.ts`; pinned in `http-static.test.ts` — found in Phase 3 |
+| `setInterval` with an async callback is not APScheduler's `max_instances=1` | A tick slower than the interval stacks overlapping runs onto the same rooms | `BackgroundScheduler.tick()` guards on the in-flight promise and *drops* the overlapping tick — found in Phase 3 |
+| `sharp` has no synchronous encode API, where Pillow blocks the thread | An `await` dropped between a turn's writes lets a concurrent action interleave its message row | Compression is hoisted above the write block in `routes/game/actions.ts`, restoring Python's atomic sequence — found in Phase 3 |
+| `sharp` ships native `.node` binaries | `bun build --compile` cannot bundle them | Phase 5: treat them as external assets beside the executable, like the CLI |
 
 ## Open Decisions
 
@@ -317,6 +368,13 @@ fixture is checked in under `src/tests/fixtures/worlds/`.
    - `sync_player_state_from_filesystem` reads `name`/`description`/`properties` off `player.yaml`
      inventory entries, which are in *reference* format and have none of those, so the DB inventory
      blob is written with empty names.
+7. **From Phase 3 — a sixth live Python bug, and the one that could not be reproduced.**
+   Four of `routers/mcp_tools.py`'s five endpoints raise a 500 as written (see Phase 3). Unlike
+   the five above, reproducing it is not an option: a router that 500s on everything is a router
+   with no observable behaviour to diff. The TypeScript port implements the intended behaviour, so
+   the parity harness must skip `POST /mcp-tools/chat`, `GET /mcp-tools/conversation/{name}`,
+   `POST /mcp-tools/room` and `POST /mcp-tools/room/message`, or fix them in Python first. Nothing
+   in `frontend/` calls any of them.
 6. **From Phase 2 — `chatting_agents` streaming state.** Python publishes per-room streaming text
    from `AgentManager`; the TS SDK keeps that state on the turn. Either the turn runner grows a
    per-room publisher, or the frontend stops rendering those two fields. `has_narrated`, the flag

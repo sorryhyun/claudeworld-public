@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 
 import type { Db } from '../db'
 import { getLogger } from '../infrastructure/logging/logger'
+import { BackgroundScheduler } from '../infrastructure/scheduler'
 import { EventBroadcaster } from '../infrastructure/sse'
 import { SSETicketManager } from '../infrastructure/sse-ticket'
 import { RoomOrchestrator } from '../orchestration/room-orchestrator'
@@ -70,6 +71,15 @@ export interface AppState {
   broadcaster: EventBroadcaster
   /** Single-use tickets, because `EventSource` cannot send a header. */
   tickets: SSETicketManager
+  /**
+   * Autonomous chat rounds, on Python's two-second cadence.
+   *
+   * Constructed here but *not* started: `createAppState` is what the test suite
+   * and `bun run smoke` build, and neither wants a timer firing turns at them.
+   * `main.ts` starts it; `shutdown()` stops it either way, so a caller that
+   * never started it still pays nothing.
+   */
+  scheduler: BackgroundScheduler
   projectRoot: string
   shutdown(): Promise<void>
 }
@@ -179,6 +189,12 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     useSonnet: settings.useSonnet,
   })
 
+  const scheduler = new BackgroundScheduler({
+    db: options.db,
+    orchestrator,
+    maxConcurrentRooms: settings.maxConcurrentRooms,
+  })
+
   return {
     db: options.db,
     pool,
@@ -194,9 +210,14 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     history,
     broadcaster,
     tickets: new SSETicketManager(),
+    scheduler,
     projectRoot,
     async shutdown() {
-      // First: an open stream holds a request alive, and every one of them has
+      // Before anything else: the scheduler is the only thing that *starts*
+      // work on its own, so it has to stop first or a tick can hand the
+      // orchestrator a fresh round while the next line is draining it.
+      await scheduler.stop()
+      // Then: an open stream holds a request alive, and every one of them has
       // to be told to finish before the turns that feed them stop existing.
       logger.info('Closing SSE streams...')
       broadcaster.shutdown()

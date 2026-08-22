@@ -24,8 +24,24 @@ import type { SdkTool } from '../handlers/context'
 /** Name and version reported by `initialize` / `server/discover`. */
 const SERVER_VERSION = '1.0.0'
 
-export function createToolServer(name: string, tools: SdkTool[]): McpServer {
-  const server = new McpServer({ name, version: SERVER_VERSION }, { capabilities: { tools: {} } })
+/**
+ * Build the server for one namespace.
+ *
+ * `instructions` reaches the model through `server/discover` on this
+ * revision — `initialize` never runs, because the endpoint is stateless — and
+ * Claude Code renders every connected server's into one block of context. It is
+ * passed per call rather than looked up here because the caller is what knows
+ * the namespace: see `SERVER_INSTRUCTIONS` in `handlers/servers.ts`.
+ */
+export function createToolServer(
+  name: string,
+  tools: SdkTool[],
+  instructions?: string,
+): McpServer {
+  const server = new McpServer(
+    { name, version: SERVER_VERSION },
+    { capabilities: { tools: {} }, ...(instructions ? { instructions } : {}) },
+  )
   for (const definition of tools) registerSdkTool(server, definition)
   return server
 }
@@ -36,6 +52,7 @@ export function registerSdkTool(server: McpServer, definition: SdkTool): void {
     {
       description: definition.description,
       inputSchema: z.object(definition.inputSchema),
+      ...(definition.annotations ? { annotations: definition.annotations } : {}),
       ...(definition._meta ? { _meta: definition._meta } : {}),
     },
     (args, extra) => definition.handler(args, extra),

@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/server'
+import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/server'
 import type { z } from 'zod'
 import type { Db } from '../../db'
 
@@ -21,6 +21,16 @@ export interface GameTool<Shape extends z.ZodRawShape = z.ZodRawShape> {
   description: string
   /** Zod raw shape, wrapped with `z.object()` at registration. */
   inputSchema: Shape
+  /**
+   * Behavioural hints for the client, passed through to `tools/list`.
+   *
+   * `readOnlyHint` is the one that earns its place: Claude Code reads it as
+   * `isConcurrencySafe()`, so an unannotated tool is always executed alone.
+   * Stamped centrally in `servers.ts` from {@link ToolDefinition.readOnly}
+   * rather than written at each `tool()` call, so the fact lives with the
+   * declaration and is applied in exactly one place.
+   */
+  annotations?: ToolAnnotations
   /**
    * Passed through to the tool's `tools/list` entry.
    *
@@ -49,9 +59,16 @@ export function tool<Shape extends z.ZodRawShape>(
   description: string,
   inputSchema: Shape,
   handler: GameTool<Shape>['handler'],
-  extras?: { _meta?: Record<string, unknown> },
+  extras?: { _meta?: Record<string, unknown>; annotations?: ToolAnnotations },
 ): GameTool<Shape> {
-  return { name, description, inputSchema, handler, ...(extras?._meta ? { _meta: extras._meta } : {}) }
+  return {
+    name,
+    description,
+    inputSchema,
+    handler,
+    ...(extras?._meta ? { _meta: extras._meta } : {}),
+    ...(extras?.annotations ? { annotations: extras.annotations } : {}),
+  }
 }
 
 /**

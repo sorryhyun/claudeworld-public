@@ -135,7 +135,7 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
         `content='${body.content.slice(0, 50)}...', participant_type=${String(body.participant_type)}`,
     )
 
-    const images = compressImages(body.images, roomId)
+    const images = await compressImages(body.images, roomId)
 
     const saved = createMessage(state.db, roomId, {
       content: body.content,
@@ -206,14 +206,17 @@ function toGameTime(
  * Fold every supplied image into the modern `images` array, capped and
  * compressed — port of the two image branches in Python's `send_message`.
  *
- * Compression is a no-op until `sharp` lands (see `tryCompressImage`), but the
- * cap and the legacy-format migration are real and are applied here so the
- * stored row has one shape regardless of which format the client sent.
+ * The cap and the legacy-format migration are applied here too, so the stored
+ * row has one shape regardless of which format the client sent.
+ *
+ * The images are encoded concurrently — Python compresses them in a loop, but
+ * it has no choice, and libvips runs each encode on its own thread. The order
+ * of the array is preserved, which is the only part of the loop that mattered.
  */
-function compressImages(
+async function compressImages(
   images: { data: string; media_type: string }[] | null,
   roomId: number,
-): { data: string; mediaType: string }[] | null {
+): Promise<{ data: string; mediaType: string }[] | null> {
   if (!images || images.length === 0) return null
 
   const capped = images.slice(0, MAX_IMAGES)
@@ -221,12 +224,14 @@ function compressImages(
     logger.info(`[send_message] Dropping ${images.length - capped.length} image(s) over the cap of ${MAX_IMAGES}`)
   }
 
-  return capped.map((image) => {
-    const { imageData, imageMediaType } = tryCompressImage(
-      image.data,
-      image.media_type,
-      `room ${roomId}`,
-    )
-    return { data: imageData ?? image.data, mediaType: imageMediaType ?? image.media_type }
-  })
+  return await Promise.all(
+    capped.map(async (image) => {
+      const { imageData, imageMediaType } = await tryCompressImage(
+        image.data,
+        image.media_type,
+        `room ${roomId}`,
+      )
+      return { data: imageData ?? image.data, mediaType: imageMediaType ?? image.media_type }
+    }),
+  )
 }

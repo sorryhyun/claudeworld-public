@@ -22,8 +22,10 @@ import type { ServerDeps } from '../sdk/handlers/servers'
 import { LocationStorage } from '../services/location-storage'
 import { PlayerService } from '../services/player-service'
 import { RoomMappingService } from '../services/room-mapping'
+import { PersistenceManager } from '../services/persistence-manager'
 import { MtimeCache, WorldService } from '../services/world-service'
 import type { TurnEvent } from '../sdk/agent/turn-runner'
+import type { HookTelemetry } from '../sdk/agent/hooks'
 
 interface Manifest {
   root: string
@@ -86,10 +88,20 @@ let narrationProduced = false
 // The tools are served over the stateless MCP endpoint now rather than built
 // in process, so even a driver with no HTTP application needs one. It binds
 // loopback on an ephemeral port; `mcp.stop()` at the end closes it.
+//
+// `worlds` + `persistence` are here for turn three: `buildToolSets` gates
+// `persist_location_design` on `ServerDeps.worlds`, and without it the
+// `subagents` namespace is empty — which now also means `location_designer` is
+// dropped from `Options.agents` rather than dispatched with a tool nothing
+// answers. The factory has to carry `worldsDir`, or the design lands next to
+// the developer's own worlds instead of the seeded scratch root.
 const serverDeps: ServerDeps = {
   players: services.players,
   rooms: services.rooms,
   locations: services.locations,
+  worlds: services.worlds,
+  persistence: (db, worldId, worldName) =>
+    new PersistenceManager(db, worldId, worldName, worldsDir),
   onNarrationProduced: () => {
     narrationProduced = true
   },
@@ -98,6 +110,7 @@ const serverDeps: ServerDeps = {
 const mcp = new McpTools(serverDeps)
 const pool = new SessionPool(10, (id) => mcp.release(id))
 const toolsUsed = new Set<string>()
+const subagentsDispatched = new Set<string>()
 const perAgent = new Map<string, { content: number; thinking: number }>()
 
 console.log(`\n> ${PLAYER_ACTION}\n`)
@@ -129,25 +142,31 @@ const onEvent = (agent: { name: string }, event: TurnEvent): void => {
   }
 }
 
-const result = await runGameplayTurn(
-    {
-      db,
-      pool,
-      services,
-      mcp,
-      projectRoot: manifest.root,
-      serverDeps,
-      onEvent,
-      onTelemetry: (t) => {
-        telemetry.onTelemetry(t)
-        if (t.kind === 'tool_used') toolsUsed.add(t.toolName)
-        if (t.kind === 'subagent_completed') {
-          console.log(`  [subagent] ${t.subagentType} ${t.durationMs}ms`)
-        }
-      },
-    },
-  { world, roomId: manifest.roomId, action: PLAYER_ACTION },
-)
+// One deps object for every turn: turn two used to be handed a copy without
+// `onTelemetry`, so tool and sub-agent telemetry silently stopped after turn one.
+const turnDeps = {
+  db,
+  pool,
+  services,
+  mcp,
+  projectRoot: manifest.root,
+  serverDeps,
+  onEvent,
+  onTelemetry: (t: HookTelemetry) => {
+    telemetry.onTelemetry(t)
+    if (t.kind === 'tool_used') toolsUsed.add(t.toolName)
+    if (t.kind === 'subagent_invoked') subagentsDispatched.add(t.subagentType)
+    if (t.kind === 'subagent_completed') {
+      console.log(`  [subagent] ${t.subagentType} ${t.durationMs}ms`)
+    }
+  },
+}
+
+const result = await runGameplayTurn(turnDeps, {
+  world,
+  roomId: manifest.roomId,
+  action: PLAYER_ACTION,
+})
 
 const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1)
 
@@ -232,18 +251,11 @@ createMessage(db, manifest.roomId, {
 })
 
 console.log(`\n> ${SECOND_ACTION}\n`)
-const result2 = await runGameplayTurn(
-  {
-    db,
-    pool,
-    services,
-    mcp,
-    projectRoot: manifest.root,
-    serverDeps,
-    onEvent,
-  },
-  { world, roomId: manifest.roomId, action: SECOND_ACTION },
-)
+const result2 = await runGameplayTurn(turnDeps, {
+  world,
+  roomId: manifest.roomId,
+  action: SECOND_ACTION,
+})
 
 const sessionsAfter = db
   .select()
@@ -272,6 +284,74 @@ const narration2 = db
 check(
   (narration2?.id ?? 0) > (narration?.id ?? 0),
   'second turn persisted its own narration',
+)
+
+// --- Turn three: does a Task sub-agent reach the HTTP MCP endpoint? --------
+// This is the gate for `Options.agents` (§1.1 of docs/sdk-modernization-plan.md).
+// `bun run spike` proves the dispatch itself, but it serves its `subagents`
+// namespace in process; production serves it over the stateless endpoint in
+// `sdk/mcp/`, and the sub-agent's `tools/call` arrives there while the parent
+// turn is still open. Only a real turn shows that end of it.
+//
+// The action names the sub-agent and the location slug on purpose. A pilot that
+// depends on the model *choosing* to design a location is a coin flip, and the
+// slug has to be one no earlier turn could plausibly have invented — the Action
+// Manager holds the same persist tool and does sometimes create a place the
+// conversation named. What is under test is the round-trip, not the judgement.
+const DESIGNED_LOCATION = 'sunken_ford'
+const THIRD_ACTION =
+  'I leave the mill and follow the water south, looking for a crossing. ' +
+  `[Out of character: dispatch the location_designer sub-agent to design and persist a new ` +
+  `location with the exact snake_case name "${DESIGNED_LOCATION}", adjacent to old_mill, ` +
+  'then narrate my arrival there.]'
+
+const locationNames = (): string[] =>
+  db
+    .select()
+    .from(schema.locations)
+    .where(eq(schema.locations.worldId, world.id))
+    .all()
+    .map((l) => l.name)
+
+const locationsBefore = locationNames()
+
+// Scoped to this turn: both sets have been accumulating since turn one, and the
+// checks below are about what turn three did.
+subagentsDispatched.clear()
+toolsUsed.clear()
+
+const turn3 = incrementTurn(db, world.id)
+addActionToHistory(db, world.id, { turn: turn3, action: THIRD_ACTION, result: '' })
+createMessage(db, manifest.roomId, {
+  content: THIRD_ACTION,
+  role: 'user',
+  participantType: 'user',
+  participantName: world.userName,
+})
+
+console.log(`\n> ${THIRD_ACTION}\n`)
+await runGameplayTurn(turnDeps, {
+  world,
+  roomId: manifest.roomId,
+  action: THIRD_ACTION,
+})
+
+const locationsAfter = locationNames()
+
+console.log('\n--- turn three checks (sub-agent round-trip) ---')
+check(
+  subagentsDispatched.has('location_designer'),
+  `the location_designer sub-agent was dispatched (saw: ${[...subagentsDispatched].join(', ') || 'none'})`,
+)
+check(
+  toolsUsed.has('mcp__subagents__persist_location_design'),
+  `the sub-agent called its persist tool over the MCP endpoint (saw: ${
+    [...toolsUsed].filter((n) => n.startsWith('mcp__subagents__')).join(', ') || 'none'
+  })`,
+)
+check(
+  !locationsBefore.includes(DESIGNED_LOCATION) && locationsAfter.includes(DESIGNED_LOCATION),
+  `the design landed in the database (${locationsBefore.length} → ${locationsAfter.length}: ${locationsAfter.join(', ')})`,
 )
 
 // --- Show the turn ---------------------------------------------------------

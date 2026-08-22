@@ -21,7 +21,10 @@ import { authMiddleware } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
 import { createAgentRoutes } from './routes/agents'
 import { createChatRoutes } from './routes/rooms'
+import { createDebugRoutes } from './routes/debug'
 import { createGameRoutes } from './routes/game'
+import { createMcpToolsRoutes } from './routes/mcp-tools'
+import { createReadmeRoutes } from './routes/readme'
 import { HttpError } from './errors'
 import { createFrontendMiddleware } from './static'
 import type { AppState } from './state'
@@ -79,7 +82,13 @@ export function createApp(state?: AppState, options: CreateAppOptions = {}): Hon
 
   app.use('*', authMiddleware)
 
-  app.route('/auth', createAuthRoutes())
+  app.route('/auth', createAuthRoutes(state?.pool))
+
+  // Neither of these needs app state, and Python mounts both unconditionally —
+  // `/readme` is what the help modal reads, and `/debug/cache/*` is how a
+  // running backend is poked at. Both stay behind auth, as in Python.
+  app.route('/', createReadmeRoutes(state?.projectRoot ?? getSettings().paths.projectRoot))
+  app.route('/', createDebugRoutes())
 
   if (state) {
     mountGameRoutes(app, state)
@@ -122,4 +131,8 @@ function mountGameRoutes(app: Hono<AppEnv>, state: AppState): void {
   // Same story for `/rooms` and `/agents`.
   app.route('/', createChatRoutes(state))
   app.route('/', createAgentRoutes(state))
+  // Python mounts this one with no prefix too; the `/mcp-tools/` prefix is
+  // declared on the router itself. It needs state, so it cannot sit beside the
+  // stateless `/readme` and `/debug` mounts above.
+  app.route('/', createMcpToolsRoutes(state))
 }

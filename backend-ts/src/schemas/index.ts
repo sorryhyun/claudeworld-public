@@ -28,5 +28,6 @@
 export * from './agents'
 export * from './common'
 export * from './game'
+export * from './mcp-tools'
 export * from './messages'
 export * from './rooms'

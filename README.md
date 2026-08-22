@@ -15,7 +15,7 @@ A turn-based text adventure (TRPG) powered by Claude AI agents that collaborate 
 ## Tech Stack
 
 **Backend:** FastAPI, SQLAlchemy (async), SQLite/PostgreSQL, Anthropic Claude Agent SDK
-**Frontend:** React, TypeScript, Vite, Tailwind CSS
+**Frontend:** React, TypeScript, Tailwind CSS (bundled by Bun)
 
 ## Install
 
@@ -39,7 +39,7 @@ claudeworld update   # Upgrade to the latest release
 claudeworld help     # All commands
 ```
 
-Then open http://localhost:5173 and log in with your password.
+Then open http://localhost:8000 and log in with your password.
 
 ## Build from Source
 
@@ -63,7 +63,10 @@ Re-run `make setup` any time to change the password; every other `.env` setting 
 make dev
 ```
 
-Open http://localhost:5173 and login with your password.
+Open http://localhost:8000 and login with your password. One process serves the
+frontend and the API on one port, and the frontend has hot module replacement.
+If 8000 is already taken the server picks a free port and prints it — use the
+URL it prints.
 
 ## How It Works
 
@@ -192,7 +195,8 @@ Creates `dist/ClaudeWorld.exe` with bundled frontend, backend, and first-time se
 - `FRONTEND_URL` - CORS origin for production deployments
 
 **Frontend `.env`:**
-- `VITE_API_BASE_URL` - Backend URL (default: http://localhost:8000)
+- `VITE_API_BASE_URL` - Backend URL. Leave unset for the normal single-port setup
+  (the app uses relative URLs); only the split Vercel deployment needs it.
 
 ## Documentation
 

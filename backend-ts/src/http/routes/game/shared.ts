@@ -23,6 +23,7 @@ import { getWorld } from '../../../crud/worlds'
 import type { World } from '../../../db/schema'
 import { spawnBackground } from '../../../infrastructure/background'
 import { getLogger } from '../../../infrastructure/logging/logger'
+import { tryCompressImage as compressImage } from '../../../lib/images'
 import { GameTimeSnapshot } from '../../../schemas/messages'
 import { parseJsonColumn } from '../../../schemas/common'
 import { RoomMappingService } from '../../../services/room-mapping'
@@ -296,31 +297,25 @@ export function deferBackground(
 // =============================================================================
 
 /**
- * `utils/images.py::try_compress_image` — **currently a pass-through.**
+ * `utils/images.py::try_compress_image`, in the shape the route modules use.
  *
- * Python decodes the base64, re-encodes it as WebP with Pillow and stores the
- * smaller payload. The TypeScript port has no image library yet (`sharp` is a
- * Phase 3 item in the migration plan), so the original bytes and media type are
- * returned unchanged.
+ * The work — and the logging — lives in `lib/images.ts`; this is the naming
+ * adapter the three call sites were written against (`{imageData,
+ * imageMediaType}` rather than `{data, mediaType}`).
  *
- * That is a *supported* outcome rather than a hole: Python's own function
- * catches every exception from the compressor and returns the originals, so a
- * message written by this backend is byte-for-byte something the Python backend
- * can also produce and read — an uncompressed attachment. What is lost is the
- * payload reduction, not correctness. The function exists as the single place
- * to fix that when `sharp` lands.
+ * **Async, unlike Python's.** Pillow encodes on the calling thread; sharp hands
+ * the encode to libvips' thread pool and resolves a promise. Every caller still
+ * compresses before it writes the message row — but the `await` is a suspension
+ * point Python does not have, so each call site keeps it *above* its run of
+ * database writes rather than inside it. See the comment in `actions.ts`.
  */
-export function tryCompressImage(
+export async function tryCompressImage(
   imageData: string | null | undefined,
   imageMediaType: string | null | undefined,
   context: string,
-): { imageData: string | null; imageMediaType: string | null } {
-  if (!imageData || !imageMediaType) {
-    return { imageData: imageData ?? null, imageMediaType: imageMediaType ?? null }
-  }
-
-  logger.debug(`Image compression unavailable, storing original${context ? ` for ${context}` : ''}`)
-  return { imageData, imageMediaType }
+): Promise<{ imageData: string | null; imageMediaType: string | null }> {
+  const compressed = await compressImage(imageData, imageMediaType, context)
+  return { imageData: compressed.data, imageMediaType: compressed.mediaType }
 }
 
 // =============================================================================
