@@ -12,7 +12,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { listen, stickyPortPath } from '../http/serve'
+import { KEEPALIVE_INTERVAL_MS } from '../infrastructure/sse'
+import { IDLE_TIMEOUT_SECONDS, listen, stickyPortPath } from '../http/serve'
 
 const OK = (): Response => new Response('ok')
 
@@ -107,5 +108,21 @@ describe('stickyPortPath', () => {
   test('is scoped to one run by pid, like the browser marker', () => {
     expect(stickyPortPath(4321, '/tmp')).toBe('/tmp/claudeworld-port-4321')
     expect(stickyPortPath()).toContain(String(process.pid))
+  })
+})
+
+// Bun's own default is 10 seconds, which is *below* the SSE keepalive: every
+// quiet room had its stream reaped mid-chunk and reconnected a second later,
+// and `routes/rooms/sse.ts` replays nothing on connect, so whatever was
+// broadcast in the gap only reached the client through polling.
+describe('idle timeout', () => {
+  test('leaves room for more than one keepalive', () => {
+    expect(IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThan(KEEPALIVE_INTERVAL_MS * 2)
+  })
+
+  test('stays inside the range Bun.serve accepts', () => {
+    expect(IDLE_TIMEOUT_SECONDS).toBeGreaterThan(0)
+    expect(IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255)
+    expect(Number.isInteger(IDLE_TIMEOUT_SECONDS)).toBe(true)
   })
 })

@@ -6,9 +6,22 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { getLogger } from '../infrastructure/logging/logger'
+import { KEEPALIVE_INTERVAL_MS } from '../infrastructure/sse'
 import { API_PREFIXES } from './static'
 
 const logger = getLogger('Serve')
+
+/**
+ * How long Bun may hold a connection with no traffic on it. Set explicitly
+ * because Bun's default is 10 seconds — *shorter* than the SSE keepalive, so
+ * every quiet room had its stream cut mid-chunk (`ERR_INCOMPLETE_CHUNKED_ENCODING`
+ * in the browser) and reconnected a second later. `routes/rooms/sse.ts` has no
+ * catch-up replay, so anything broadcast in that gap only ever reached the
+ * client through the polling fallback — arriving after the turn had visibly
+ * finished. Derived from the keepalive rather than written as a literal so the
+ * two cannot drift back past each other; Bun caps the value at 255 seconds.
+ */
+export const IDLE_TIMEOUT_SECONDS = Math.min(255, Math.ceil((KEEPALIVE_INTERVAL_MS / 1000) * 3))
 
 type HtmlBundle = Parameters<typeof Bun.serve>[0] extends { routes?: infer R }
   ? R extends Record<string, infer V>
@@ -59,7 +72,9 @@ function readStickyPort(path: string | null | undefined): number | null {
 export function listen(options: ListenOptions): Bun.Server<unknown> {
   const { port, stickyPortFile = stickyPortPath(), ...rest } = options
   const serve = (on: number): Bun.Server<unknown> =>
-    Bun.serve({ ...rest, port: on } as Parameters<typeof Bun.serve>[0])
+    Bun.serve({ ...rest, port: on, idleTimeout: IDLE_TIMEOUT_SECONDS } as Parameters<
+      typeof Bun.serve
+    >[0])
 
   try {
     return serve(port)

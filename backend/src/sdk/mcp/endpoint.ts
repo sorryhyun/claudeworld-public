@@ -91,6 +91,11 @@ export function startMcpEndpoint(
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: options.port ?? 0,
+    // Bun's default is 10 seconds, and a `tools/call` is held open for as long
+    // as the tool runs — a dispatched sub-agent designing a character takes far
+    // longer than that, and the reaped socket reaches the CLI as a failed tool
+    // call. Bun's maximum, since the only client is the CLI on loopback.
+    idleTimeout: 255,
     fetch: (request) => serve(request, token, registry, handlerFor),
   })
 

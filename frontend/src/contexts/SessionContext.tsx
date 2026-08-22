@@ -9,7 +9,6 @@ import {
   ReactNode,
 } from "react";
 import * as gameService from "../services/gameService";
-import { api } from "../services";
 import { useSSE } from "../hooks/useSSE";
 import { useToast } from "./ToastContext";
 import type {
@@ -390,12 +389,10 @@ export function SessionProvider({
       setMessages((prev) => [...prev, tempMessage]);
 
       try {
-        await api.sendMessage(world.onboarding_room_id, {
-          content: message,
-          role: "user",
-          participant_type: "user",
-          participant_name: world.user_name || "Player",
-        });
+        // `/worlds/:id/action`, not `/rooms/:id/messages/send`: the send route
+        // refuses to start a turn for a room that belongs to a world, so a
+        // message posted there is stored and never answered.
+        await gameService.submitAction(world.id, message);
       } catch (error) {
         setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
         throw error;
