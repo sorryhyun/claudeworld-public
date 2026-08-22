@@ -246,10 +246,16 @@ orchestration/tape/    chat-room-tape.ts (the chat-room scheduler)
   `createAppState`, started only by `main.ts` (so tests and `bun run smoke` never get a
   timer firing turns at them), stopped first in `AppState.shutdown()`.
 
-**Known gap:** `thinking_text` and `response_text` on `/rooms/{id}/chatting-agents` are
-always empty, and the SSE stream does not replay catch-up events on connect. Both need a
-per-room registry of partially-streamed responses; the turn keeps that state instead. The
-same gap is documented in `routes/game/polling.ts`.
+**Live streaming rides on SSE, not polling.** `TurnDeps.onEvent` / `onMessageSaved`
+(fired from `orchestration/turn.ts`) are wired to the `EventBroadcaster` in
+`http/state.ts`, with `http/stream-events.ts` translating turn events into the wire
+format `useSSE.ts` listens for — a hidden agent's `content_delta` is suppressed there,
+its thinking and narration stream. **Known gap:** `thinking_text` and `response_text` on
+`/rooms/{id}/chatting-agents` are always empty, and the SSE stream does not replay
+catch-up events on connect — so a client that connects (or reconnects) mid-turn shows
+nothing until the next event arrives. Both need a per-room registry of
+partially-streamed responses; the turn keeps that state instead. The same gap is
+documented in `routes/game/polling.ts`.
 
 ## Filesystem-Primary Architecture
 

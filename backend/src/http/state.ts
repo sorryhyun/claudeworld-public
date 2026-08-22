@@ -27,7 +27,9 @@ import {
 import { WorldResetService } from '../services/world-reset-service'
 import { WorldService } from '../services/world-service'
 import { getSettings } from '../config/settings'
+import { toMessage } from '../schemas/messages'
 import type { Identity } from './access-control'
+import { turnEventToSse } from './stream-events'
 import type { AppEnv } from './types'
 
 /**
@@ -159,6 +161,20 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     mcp,
     projectRoot,
     useSonnet: settings.useSonnet,
+    // Live streaming to clients: `useSSE.ts` builds its typing bubble from
+    // these events, and `new_message` hands it the persisted row so the text
+    // does not vanish between `stream_end` and the next poll.
+    onEvent: (agent, event, meta) => {
+      const sse = turnEventToSse(agent, event, meta)
+      if (sse) broadcaster.broadcast(meta.roomId, sse)
+    },
+    onMessageSaved: (roomId, message) => {
+      broadcaster.broadcast(roomId, {
+        type: 'new_message',
+        message_id: message.id,
+        message: toMessage(message),
+      })
+    },
   })
 
   const scheduler = new BackgroundScheduler({

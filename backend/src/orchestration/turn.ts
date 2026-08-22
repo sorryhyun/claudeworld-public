@@ -5,7 +5,11 @@ import { getSettings } from '../config/settings'
 import { getAgentsCached } from '../crud/cached'
 import { getAgentsInRoom, getRoom, markRoomAsFinished } from '../crud/rooms'
 import { getCharactersAtLocation, getLocation } from '../crud/locations'
-import { createMessage, getMessagesAfterAgentResponse } from '../crud/messages'
+import {
+  createMessage,
+  getMessagesAfterAgentResponse,
+  type MessageWithAgent,
+} from '../crud/messages'
 import { getPlayerState } from '../crud/player-state'
 import { getRoomAgentSession, updateRoomAgentSession } from '../crud/sessions'
 import type { Db } from '../db'
@@ -62,11 +66,21 @@ export interface TurnDeps {
   mcp: McpTools
   projectRoot: string
   useSonnet?: boolean
-  onEvent?: (agent: Agent, event: TurnEvent) => void
+  onEvent?: (agent: Agent, event: TurnEvent, meta: TurnEventMeta) => void
+  /** A visible response was persisted; SSE pushes it so clients need not wait
+   * for the next poll after the typing bubble clears on `stream_end`. */
+  onMessageSaved?: (roomId: number, message: MessageWithAgent) => void
   onTelemetry?: (event: HookTelemetry) => void
   // Has the player spoken again since this response started? A reply in flight
   // when the next player message lands is stale and gets dropped.
   isSuperseded?: (roomId: number, startedAt: number) => boolean
+}
+
+/** Where a turn event happened. `hidden` gates what may be shown to clients:
+ * a hidden agent's prose never leaves the server, its thinking and narration do. */
+export interface TurnEventMeta {
+  roomId: number
+  hidden: boolean
 }
 
 export interface RunTurnInput {
@@ -459,7 +473,7 @@ export async function runMemoryRound(
         hidden: true,
         signal: input.signal,
       })) {
-        deps.onEvent?.(npc, event)
+        deps.onEvent?.(npc, event, { roomId, hidden: true })
         if (event.type !== 'stream_end') continue
         if (event.sessionId && event.sessionId !== built.resume) {
           updateRoomAgentSession(db, roomId, npc.id, event.sessionId)
@@ -593,7 +607,7 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       hidden,
       signal,
     })) {
-      deps.onEvent?.(agent, event)
+      deps.onEvent?.(agent, event, { roomId: ctx.roomId, hidden })
       if (event.type !== 'stream_end') continue
 
       // If the new id is not written back, the next turn resumes a stale
@@ -621,7 +635,7 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       return { responded: false, responseText: '', agentName: agent.name }
     }
 
-    createMessage(db, ctx.roomId, {
+    const saved = createMessage(db, ctx.roomId, {
       content: responseText,
       role: 'assistant',
       agentId: agent.id,
@@ -636,6 +650,7 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
           ? null
           : (deps.services.players.loadPlayerState(ctx.world.name)?.gameTime ?? null),
     })
+    deps.onMessageSaved?.(ctx.roomId, { ...saved, agent })
 
     return { responded: true, responseText, agentName: agent.name }
   }

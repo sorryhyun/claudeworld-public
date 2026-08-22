@@ -6,7 +6,12 @@
 
 import { Hono } from 'hono'
 
-import { getAgentsCached, getMessagesSinceCached, getRoomCached } from '../../../crud/cached'
+import {
+  getAgentCached,
+  getAgentsCached,
+  getMessagesSinceCached,
+  getRoomCached,
+} from '../../../crud/cached'
 import { createMessage, getMessages } from '../../../crud/messages'
 import { RoomNotFoundError } from '../../../domain/errors'
 import { getLogger } from '../../../infrastructure/logging/logger'
@@ -128,7 +133,16 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
     })
     logger.info(`[send_message] Message saved with ID: ${saved.id}`)
 
-    state.broadcaster.broadcast(roomId, { type: 'new_message', message_id: saved.id })
+    // The full row rides along: `useSSE.ts` only acts on events carrying
+    // `message` — a bare `message_id` is ignored by every client.
+    state.broadcaster.broadcast(roomId, {
+      type: 'new_message',
+      message_id: saved.id,
+      message: toMessage({
+        ...saved,
+        agent: saved.agentId === null ? null : getAgentCached(state.db, saved.agentId),
+      }),
+    })
 
     // A room with a world is a TRPG room; its turns run through the `/worlds`
     // action surface instead, so only a plain chat room starts a turn here.
