@@ -10,7 +10,7 @@
  * existed at all.
  *
  *   1. Unpack the seed data beside the binary, so `agents/` and
- *      `backend/sdk/config/` are on disk where the loaders expect them.
+ *      `config/` are on disk where the loaders expect them.
  *   2. Run the `.env` wizard if this is a first launch.
  *   3. Start the server, and hold the process open on the signal handlers
  *      `main.ts` installs for itself under `bun run`.
@@ -28,6 +28,9 @@ import { unpackSeed } from './assets'
 const projectRoot = resolveProjectRoot()
 
 const seeded = unpackSeed(projectRoot, BUNDLED_VERSION)
+if (seeded.relocated.length > 0) {
+  console.log(`Moved ${seeded.relocated.length} file(s) to their new home under config/`)
+}
 if (seeded.created.length > 0) {
   console.log(`Unpacked ${seeded.created.length} file(s) into ${projectRoot}`)
 }

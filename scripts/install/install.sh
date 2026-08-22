@@ -18,8 +18,11 @@ INSTALL_BUN=1
 CREATE_ENV=1
 CREATE_LAUNCHER=1
 
-# User data that survives an upgrade. Agents are merged separately.
+# User data that survives an upgrade, replacing what the release ships.
 PRESERVE=(.env .env.bak claudeworld.db worlds)
+# Data trees merged instead of replaced: user edits to shipped files win, files
+# new in this release still land, and anything the user added is kept.
+MERGE=(agents config)
 # Expensive to rebuild, so carried over instead of re-downloaded. JS deps
 # live in one root node_modules now -- the repo is a single Bun workspace.
 CARRY_OVER=(.venv node_modules)
@@ -153,13 +156,31 @@ if [ -d "$INSTALL_DIR" ]; then
         fi
     done
 
-    # Agents: user edits to shipped agents win, user-created agents are kept,
-    # and agents new in this release still land because the stage has them.
-    if [ -d "$INSTALL_DIR/agents" ]; then
-        mkdir -p "$STAGE/agents"
-        cp -R "$INSTALL_DIR/agents/." "$STAGE/agents/"
-        log "merged agents/"
+    # config/ moved out of backend/ in this release. An install predating the
+    # move keeps the user's prompt edits in the old place, where no loader
+    # reads them and where the wholesale tree replacement below would drop
+    # them. Stage them under the new name; the merge then finds nothing to
+    # override them with.
+    if [ ! -d "$INSTALL_DIR/config" ]; then
+        if [ -d "$INSTALL_DIR/backend/sdk/config" ]; then
+            mkdir -p "$STAGE/config"
+            cp -R "$INSTALL_DIR/backend/sdk/config/." "$STAGE/config/"
+            log "moved backend/sdk/config/ -> config/"
+        fi
+        if [ -f "$INSTALL_DIR/backend/infrastructure/logging/debug.yaml" ]; then
+            mkdir -p "$STAGE/config"
+            cp "$INSTALL_DIR/backend/infrastructure/logging/debug.yaml" "$STAGE/config/debug.yaml"
+            log "moved debug.yaml -> config/"
+        fi
     fi
+
+    for item in "${MERGE[@]}"; do
+        if [ -d "$INSTALL_DIR/$item" ]; then
+            mkdir -p "$STAGE/$item"
+            cp -R "$INSTALL_DIR/$item/." "$STAGE/$item/"
+            log "merged $item/"
+        fi
+    done
 
     for item in "${CARRY_OVER[@]}"; do
         if [ -d "$INSTALL_DIR/$item" ] && [ ! -e "$STAGE/$item" ]; then

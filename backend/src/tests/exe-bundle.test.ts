@@ -10,12 +10,18 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { IS_BUNDLED_EXE, BUNDLED_VERSION } from '../config/bundled'
-import { decideSeedAction, embeddedFrontend, unpackSeed } from '../exe/assets'
+import {
+  decideSeedAction,
+  embeddedFrontend,
+  relocateSeed,
+  unpackSeed,
+  type SeedManifest,
+} from '../exe/assets'
 import { resolveClaudeExecutable } from '../sdk/client/cli-path'
 import { resetSettings, restoreExpandedDotEnv } from '../config/settings'
 
@@ -66,6 +72,129 @@ describe('decideSeedAction', () => {
 
   test('says nothing about a file that already matches', () => {
     expect(decideSeedAction(shipped, 'bbb', shipped)).toBe('identical')
+  })
+})
+
+describe('relocateSeed', () => {
+  const OLD_DIR = 'backend/sdk/config'
+  const OLD_DEBUG = 'backend/infrastructure/logging/debug.yaml'
+
+  let root: string
+
+  function write(relative: string, contents: string): void {
+    const target = join(root, relative)
+    mkdirSync(join(target, '..'), { recursive: true })
+    writeFileSync(target, contents)
+  }
+
+  function read(relative: string): string {
+    return readFileSync(join(root, relative), 'utf-8')
+  }
+
+  /** An install from before the move: prompt YAML under the backend workspace. */
+  function seedLegacyInstall(): SeedManifest {
+    write(`${OLD_DIR}/guidelines_3rd.yaml`, 'shipped guidelines')
+    write(`${OLD_DIR}/localization.yaml`, 'edited by the user')
+    write(OLD_DEBUG, 'shipped debug')
+    return {
+      version: '0.1.0',
+      files: {
+        [`${OLD_DIR}/guidelines_3rd.yaml`]: 'hash-of-shipped-guidelines',
+        [`${OLD_DIR}/localization.yaml`]: 'hash-of-shipped-localization',
+        [OLD_DEBUG]: 'hash-of-shipped-debug',
+      },
+    }
+  }
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'cw-relocate-'))
+  })
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('a fresh install has nothing to move', () => {
+    const manifest: SeedManifest = { version: null, files: {} }
+    expect(relocateSeed(root, manifest)).toEqual([])
+    expect(manifest.files).toEqual({})
+  })
+
+  test('legacy files land under config/, dragging their recorded hashes along', () => {
+    rmSync(root, { recursive: true, force: true })
+    mkdirSync(root, { recursive: true })
+    const manifest = seedLegacyInstall()
+
+    const moved = relocateSeed(root, manifest)
+
+    expect(moved.sort()).toEqual([
+      'config/debug.yaml',
+      'config/guidelines_3rd.yaml',
+      'config/localization.yaml',
+    ])
+    expect(read('config/guidelines_3rd.yaml')).toBe('shipped guidelines')
+    expect(read('config/localization.yaml')).toBe('edited by the user')
+    expect(read('config/debug.yaml')).toBe('shipped debug')
+    expect(existsSync(join(root, OLD_DIR))).toBe(false)
+
+    // The carried hash is the whole point: without it `decideSeedAction` sees
+    // `recorded === undefined` and calls an untouched file a user edit, pinning
+    // the install to whichever release first wrote it.
+    expect(manifest.files['config/guidelines_3rd.yaml']).toBe('hash-of-shipped-guidelines')
+    expect(manifest.files['config/debug.yaml']).toBe('hash-of-shipped-debug')
+    const recorded = manifest.files['config/guidelines_3rd.yaml']
+    expect(decideSeedAction('hash-of-shipped-guidelines', recorded, 'next-release')).toBe('update')
+  })
+
+  test('the empty backend/ tree the move leaves behind is pruned, drizzle/ is not', () => {
+    rmSync(root, { recursive: true, force: true })
+    mkdirSync(root, { recursive: true })
+    seedLegacyInstall()
+    write('backend/drizzle/0000_init.sql', 'create table ...')
+
+    relocateSeed(root, { version: null, files: {} })
+
+    expect(existsSync(join(root, 'backend/sdk'))).toBe(false)
+    expect(existsSync(join(root, 'backend/infrastructure'))).toBe(false)
+    // pruneEmpty climbs only through directories the removal actually emptied.
+    expect(existsSync(join(root, 'backend/drizzle/0000_init.sql'))).toBe(true)
+  })
+
+  test('a file the seed never shipped moves too', () => {
+    rmSync(root, { recursive: true, force: true })
+    mkdirSync(root, { recursive: true })
+    seedLegacyInstall()
+    // A custom GUIDELINES_FILE: the user's own, in no manifest, and orphaned by
+    // a rename that only knew about the files this release ships.
+    write(`${OLD_DIR}/my_guidelines.yaml`, 'hand-written')
+
+    const manifest: SeedManifest = { version: null, files: {} }
+    expect(relocateSeed(root, manifest)).toContain('config/my_guidelines.yaml')
+    expect(read('config/my_guidelines.yaml')).toBe('hand-written')
+    expect(manifest.files['config/my_guidelines.yaml']).toBeUndefined()
+  })
+
+  test('an install already on the new layout is left alone', () => {
+    rmSync(root, { recursive: true, force: true })
+    mkdirSync(root, { recursive: true })
+    seedLegacyInstall()
+    write('config/guidelines_3rd.yaml', 'the copy that counts')
+
+    relocateSeed(root, { version: null, files: {} })
+
+    expect(read('config/guidelines_3rd.yaml')).toBe('the copy that counts')
+    // Nothing was clobbered, so the stale original is simply left where it is.
+    expect(read(`${OLD_DIR}/guidelines_3rd.yaml`)).toBe('shipped guidelines')
+  })
+
+  test('relocation is idempotent', () => {
+    rmSync(root, { recursive: true, force: true })
+    mkdirSync(root, { recursive: true })
+    seedLegacyInstall()
+
+    relocateSeed(root, { version: null, files: {} })
+    expect(relocateSeed(root, { version: null, files: {} })).toEqual([])
+    expect(read('config/localization.yaml')).toBe('edited by the user')
   })
 })
 

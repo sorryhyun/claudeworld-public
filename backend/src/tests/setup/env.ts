@@ -2,7 +2,7 @@
  * Test preload, referenced by `bunfig.toml`.
  *
  * Pins the project root before any test module resolves paths, so the suite
- * reads the repo's real `agents/` and `backend/sdk/config/` trees regardless of
+ * reads the repo's real `agents/` and `config/` trees regardless of
  * the cwd `bun test` was invoked from.
  *
  * Also neutralises `<projectRoot>/.env`, so the suite gives the same answer on

@@ -6,16 +6,15 @@ turn orchestration that drives the game. Bun + Hono + Drizzle + `bun:sqlite`.
 Repo-wide context — dev commands, single-port serving, env vars — is in the root
 [`CLAUDE.md`](../CLAUDE.md).
 
+**`backend/` is code only.** The prompt YAML this server reads — `guidelines_3rd.yaml`,
+`localization.yaml`, `lore_guidelines.yaml`, `conversation_context.yaml`, `debug.yaml` —
+is user-editable data, hot-reloaded on mtime, and lives in [`../config/`](../config/)
+beside `agents/` and `worlds/`. `src/config/paths.ts` is what resolves it.
+
 ## Layout
 
 ```
 backend/
-├── sdk/config/            Prompt YAML. DATA, not code: hot-reloaded on mtime and
-│                          edited by users, which is why it sits beside src/
-│                          rather than inside it.
-│                          guidelines_3rd.yaml · localization.yaml
-│                          lore_guidelines.yaml · conversation_context.yaml
-├── infrastructure/logging/debug.yaml   Agent debug logging config
 ├── src/
 │   ├── main.ts            Server entrypoint (logging → config checks → DB → listen)
 │   ├── auth/              Password verification, JWT issue/verify, roles
@@ -246,7 +245,7 @@ source of truth:
 
 - Agent configs: `../agents/{name}/*.md` (the DB is a cache only) — see
   [`../agents/CLAUDE.md`](../agents/CLAUDE.md)
-- System prompt: `sdk/config/guidelines_3rd.yaml` (`system_prompt` field), read by
+- System prompt: `../config/guidelines_3rd.yaml` (`system_prompt` field), read by
   `src/sdk/loaders/guidelines.ts`
 - Tool definitions: `src/sdk/tools/` (TypeScript modules)
 
@@ -326,7 +325,7 @@ the developer's `.env` (through both doors — `loadDotEnv` and Bun's own auto-l
 `os.tmpdir()` at tmpfs, and discards log output. A run launched from the repo root gets the
 root `bunfig.toml` instead, which preloads the same file — keep the two in step.
 
-`seed-pilot.ts` builds a throwaway root under the scratch directory: `agents/` and
-`backend/` are symlinked to this repo so agent configs and guidelines resolve exactly as in
-production, while the world data and database are fresh copies. It never writes to the
-repository.
+`seed-pilot.ts` builds a throwaway root under the scratch directory: `agents/`, `config/`
+and `backend/` are symlinked to this repo so agent configs and guidelines resolve exactly
+as in production, while the world data and database are fresh copies. It never writes to
+the repository.

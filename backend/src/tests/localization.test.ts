@@ -1,7 +1,7 @@
 /**
  * Localized message generation.
  *
- * These assert against the real `backend/sdk/config/localization.yaml` rather
+ * These assert against the real `config/localization.yaml` rather
  * than a fixture, because the property worth protecting is not "the function
  * substitutes variables" — it is that the strings a player actually reads come
  * out of the file the Python backend also reads, correctly conjugated. A

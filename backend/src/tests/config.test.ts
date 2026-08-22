@@ -40,9 +40,9 @@ describe('paths', () => {
     )
   })
 
-  test('backendDir and configDir sit under backend/', () => {
+  test('configDir is a top-level data tree, beside backend/ rather than inside it', () => {
     expect(paths.backendDir).toBe(join(paths.projectRoot, 'backend'))
-    expect(paths.configDir).toBe(join(paths.projectRoot, 'backend', 'sdk', 'config'))
+    expect(paths.configDir).toBe(join(paths.projectRoot, 'config'))
   })
 
   test('every SDK config path resolves to a file that exists', () => {
@@ -59,10 +59,9 @@ describe('paths', () => {
     )
   })
 
-  test('debug.yaml lives under infrastructure/logging, not the config dir', () => {
-    expect(paths.debugConfigPath).toBe(
-      join(paths.projectRoot, 'backend', 'infrastructure', 'logging', 'debug.yaml'),
-    )
+  test('debug.yaml sits in the config dir with the rest of the editable YAML', () => {
+    expect(paths.debugConfigPath).toBe(join(paths.configDir, 'debug.yaml'))
+    expect(existsSync(paths.debugConfigPath)).toBe(true)
   })
 
   test('CLAUDEWORLD_ROOT overrides discovery', () => {

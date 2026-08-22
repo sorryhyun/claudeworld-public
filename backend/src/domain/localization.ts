@@ -1,5 +1,5 @@
 // These two messages are written into the message log by the server, not by an
-// agent; the templates live in `sdk/config/localization.yaml`, hot-reloaded.
+// agent; the templates live in `config/localization.yaml`, hot-reloaded.
 
 import type { Language } from '../db/schema'
 import { toLangKey } from './enums'

@@ -14,7 +14,7 @@ endpoints.
 ## Layout
 
 ```
-sdk/config/                Prompt YAML (hot-reloaded data, not code)
+../config/                 Prompt YAML (hot-reloaded data, not code)
 infrastructure/logging/    debug.yaml
 src/
   main.ts                  Entrypoint: logging → config checks → DB → listen

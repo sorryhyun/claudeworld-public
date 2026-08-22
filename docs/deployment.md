@@ -21,7 +21,7 @@ One file that contains:
 |---|---|
 | The backend (Hono, Drizzle, the SDK layer, orchestration) | it *is* the program |
 | `frontend/dist` | served from `Bun.embeddedFiles`, never written to disk |
-| `agents/`, `backend/sdk/config/`, `backend/drizzle/`, the readme files | unpacked beside the exe on launch — see [Seed data](#seed-data) |
+| `agents/`, `config/`, `backend/drizzle/`, the readme files | unpacked beside the exe on launch — see [Seed data](#seed-data) |
 
 and, deliberately, does **not** contain the `claude` CLI. The Agent SDK ships that as a
 platform-specific native binary of roughly 330MB — three times the size of everything
@@ -51,7 +51,7 @@ staging directory under `dist/.exe-assets/` and deletes it afterwards.
 
 ## Seed data
 
-`agents/` and `backend/sdk/config/` are read at runtime, hot-reloaded on mtime, and
+`agents/` and `config/` are read at runtime, hot-reloaded on mtime, and
 written to — agent memory is a file. They cannot be served from inside the binary, so the
 exe unpacks them next to itself on every launch, guided by a `.claudeworld-seed.json`
 manifest recording what it wrote and what was in it:
@@ -66,6 +66,13 @@ So a new release can ship a better prompt without silently reverting the prompt 
 tuned. `decideSeedAction` in `backend/src/exe/assets.ts` is that rule, and it is unit
 tested.
 
+A release that *renames* a seed path would defeat the whole scheme — the manifest keys on
+paths, so the old file becomes something the binary never wrote (left behind forever, in a
+directory nothing reads) and the new one is created fresh, quietly reverting your edits.
+`relocateSeed` runs first and moves both the file and its recorded hash, so the rule above
+then judges it exactly as if it had never moved. `SEED_MOVES` is the list; the prompt YAML
+moving out of `backend/sdk/config/` and into `config/` is its first entry.
+
 ## What lives beside the executable
 
 ```
@@ -74,7 +81,7 @@ ClaudeWorld.exe
 claudeworld.db             SQLite, created on first boot
 .claudeworld-seed.json     what the binary unpacked, and its hashes
 agents/                    yours to edit
-backend/sdk/config/        prompt YAML, yours to edit
+config/                    prompt YAML, yours to edit
 backend/drizzle/           migrations (read by the migrator, not interesting)
 worlds/                    your saved worlds
 ```

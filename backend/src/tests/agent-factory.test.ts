@@ -5,7 +5,7 @@
  * Drizzle migrations, and the `agents/` tree is a throwaway too — the factory is
  * pointed at it through `AgentConfigService`, which is why that is a constructor
  * argument. The one thing that stays real is the *base* system prompt: it is
- * loaded from `backend/sdk/config/guidelines_3rd.yaml`, which the test preload
+ * loaded from `config/guidelines_3rd.yaml`, which the test preload
  * pins the project root for.
  *
  * `resolveGroupSettings` reads the repo's real `group_config.yaml` files through

@@ -1,6 +1,6 @@
 /**
- * Filesystem layout of the ClaudeWorld project. `agents/`, `worlds/` and
- * `backend/sdk/config/` are *user-editable data*, not bundled code, and a
+ * Filesystem layout of the ClaudeWorld project. `agents/`, `config/` and
+ * `worlds/` are *user-editable data*, not bundled code, and a
  * `bun build --compile` binary embeds modules rather than those trees — so the
  * root comes from a `CLAUDEWORLD_ROOT` override, from the executable's own
  * directory, or from walking up from here.
@@ -28,7 +28,6 @@ export interface ProjectPaths {
   readonly localizationConfigPath: string
   readonly loreGuidelinesConfigPath: string
   readonly conversationContextConfigPath: string
-  /** `backend/infrastructure/logging/debug.yaml` — *not* under configDir. */
   readonly debugConfigPath: string
 }
 
@@ -85,7 +84,7 @@ export function createProjectPaths(options: CreateProjectPathsOptions = {}): Pro
   const guidelinesFile = options.guidelinesFile || DEFAULT_GUIDELINES_FILE
 
   const backendDir = join(projectRoot, 'backend')
-  const configDir = join(backendDir, 'sdk', 'config')
+  const configDir = join(projectRoot, 'config')
 
   return {
     projectRoot,
@@ -97,6 +96,6 @@ export function createProjectPaths(options: CreateProjectPathsOptions = {}): Pro
     localizationConfigPath: join(configDir, 'localization.yaml'),
     loreGuidelinesConfigPath: join(configDir, 'lore_guidelines.yaml'),
     conversationContextConfigPath: join(configDir, 'conversation_context.yaml'),
-    debugConfigPath: join(backendDir, 'infrastructure', 'logging', 'debug.yaml'),
+    debugConfigPath: join(configDir, 'debug.yaml'),
   }
 }

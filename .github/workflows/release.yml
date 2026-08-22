@@ -88,7 +88,7 @@ jobs:
           # prompt YAML are what the first turn reads.
           test -d agents/group_gameplay/Action_Manager \
             || { echo "::error::agents/ was not unpacked"; ls -R . | head -40; exit 1; }
-          test -f backend/sdk/config/guidelines_3rd.yaml \
+          test -f config/guidelines_3rd.yaml \
             || { echo "::error::prompt config was not unpacked"; exit 1; }
 
           # Migrations ran off the unpacked drizzle/ folder, and auth works

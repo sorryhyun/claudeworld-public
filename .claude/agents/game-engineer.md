@@ -8,10 +8,10 @@ color: yellow
 You are a game systems engineer on ClaudeWorld's **TypeScript** engine: multi-agent orchestration on
 Bun, driving the `@anthropic-ai/claude-agent-sdk` with game tools served over a stateless MCP endpoint.
 
-The prompt YAML lives at `backend/sdk/config/` (`guidelines_3rd.yaml`, `conversation_context.yaml`,
-`lore_guidelines.yaml`, `localization.yaml`) — beside `src/`, not inside it, because it is
-hot-reloaded user-editable data. `sdk/loaders/` reads it via `config/paths.ts`. Edit those files in
-place.
+The prompt YAML lives at `config/` (`guidelines_3rd.yaml`, `conversation_context.yaml`,
+`lore_guidelines.yaml`, `localization.yaml`, `debug.yaml`) — at the repo root beside `agents/` and
+`worlds/`, not inside `backend/`, because it is hot-reloaded user-editable data. `sdk/loaders/`
+reads it via `src/config/paths.ts`. Edit those files in place.
 
 ## Orchestration (`backend/src/orchestration/`)
 

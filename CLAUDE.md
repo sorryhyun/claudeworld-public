@@ -39,16 +39,19 @@ still fully supported.
 
 ```
 agents/        Agent definition folders (markdown, hot-reloaded)   → agents/CLAUDE.md
+config/        Prompt YAML — user-editable data, not code
 backend/       The server: HTTP, DB, SDK, orchestration            → backend/CLAUDE.md
-  sdk/config/  Prompt YAML — user-editable data, not code
 frontend/      The React app                                       → frontend/CLAUDE.md
 worlds/        User-created world data (gitignored)
 docs/          Architecture notes and historical plans
 scripts/       Release installers and the deploy shell script
 ```
 
-`agents/`, `worlds/` and `backend/sdk/config/` are **data**, not code: they are
-read at runtime, hot-reloaded on mtime, and written to while the app runs.
+`agents/`, `config/` and `worlds/` are **data**, not code: they are read at
+runtime, hot-reloaded on mtime, and written to while the app runs. They sit at
+the top level *because* of that: `backend/` and `frontend/` hold only code, and
+the installer can merge the data trees across an upgrade instead of replacing
+them with whatever the release shipped.
 
 ## Development Commands
 
@@ -246,9 +249,10 @@ was in the Python era. `scripts/build/exe-bundle.ts` stages the two embedded tre
 `backend/src/exe/` is the runtime half. Three things are load-bearing:
 
 - **The frontend rides inside the binary; the data trees do not.** `agents/` and
-  `backend/sdk/config/` are hot-reloaded, user-edited and *written to*, so the exe unpacks
-  them beside itself and never overwrites a file the user changed — see
-  `backend/src/exe/assets.ts` and the seed manifest it keeps.
+  `config/` are hot-reloaded, user-edited and *written to*, so the exe unpacks them
+  beside itself and never overwrites a file the user changed — see
+  `backend/src/exe/assets.ts` and the seed manifest it keeps. `relocateSeed` there
+  carries a user's edits across when a seed path is renamed between releases.
 - **The `claude` CLI is not in there.** The SDK ships it as a ~330MB native binary per
   platform, so the exe resolves whatever Claude Code the user has installed
   (`backend/src/sdk/client/cli-path.ts`). Both installers check for it.

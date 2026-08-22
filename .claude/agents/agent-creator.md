@@ -42,7 +42,7 @@ therefore retrieval keys — make them unique, descriptive and searchable.
 
 **Tools** are Zod modules in `backend/src/sdk/tools/` (`action.ts` holds skip/memorize/recall), with
 handlers in `backend/src/sdk/handlers/`. The system prompt template lives in
-`backend/sdk/config/guidelines_3rd.yaml`. Per-group overrides go in `agents/group_{name}/group_config.yaml`
+`config/guidelines_3rd.yaml`. Per-group overrides go in `agents/group_{name}/group_config.yaml`
 (loaded by `sdk/loaders/group-config.ts`): tool response overrides plus `interrupt_every_turn`,
 `priority`, `transparent`, `can_see_system_messages`. See `agents/group_config.yaml.example`.
 

@@ -5,7 +5,9 @@ node_modules/
 frontend/dist/
 backend/dist/
 dist/
-build/
+# Anchored: unanchored `build/` also swallowed `scripts/build/`, the release
+# build script itself, which then reached no clean checkout and no CI runner.
+/build/
 
 # Local configuration and data
 .env

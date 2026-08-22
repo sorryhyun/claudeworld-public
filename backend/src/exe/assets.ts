@@ -15,14 +15,22 @@
  *   filenames are fingerprinted, and nobody edits it — unpacking it would only
  *   leave 13MB of stale hashed bundles behind after every upgrade.
  * - **seed** is unpacked next to the executable, because `agents/` and
- *   `backend/sdk/config/` are the files the app *reads at runtime, hot-reloads
+ *   `config/` are the files the app *reads at runtime, hot-reloads
  *   on mtime, and lets the user edit*. The whole design (see
  *   `../../CLAUDE.md`, "Filesystem-Primary Architecture") is that those live on
  *   disk; embedding them read-only would break agent memory writes.
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 
 /**
@@ -75,7 +83,7 @@ export function embeddedFrontend(): Record<string, string> | null {
   return out
 }
 
-// ── Seed unpacking ───────────────────────────────────────────────────
+// ── The seed manifest ────────────────────────────────────────────────
 
 /**
  * Records which seed files the binary wrote and what they contained. Without
@@ -89,7 +97,7 @@ export function embeddedFrontend(): Record<string, string> | null {
  */
 const SEED_MANIFEST = '.claudeworld-seed.json'
 
-interface SeedManifest {
+export interface SeedManifest {
   version: string | null
   /** Relative path → sha256 of the content this binary's predecessor wrote. */
   files: Record<string, string>
@@ -124,6 +132,96 @@ function writeManifest(root: string, manifest: SeedManifest): void {
   renameSync(temp, target)
 }
 
+// ── Relocation ───────────────────────────────────────────────────────
+
+/**
+ * Seed data that changed location between releases.
+ *
+ * Everything here keys on paths relative to the install root — the files
+ * {@link unpackSeed} writes, and the manifest entries recording them. A release
+ * that renames a path therefore presents it with two unrelated things: an
+ * unknown file nothing shipped (left beside the exe forever, in a directory no
+ * loader reads) and a brand-new one (created from this release's copy). A user
+ * who had edited the old file would keep it somewhere inert and silently get
+ * the default prompts back.
+ *
+ * Moving the file *and* carrying its recorded hash to the new key closes that.
+ * {@link decideSeedAction} then sees the user's copy at the new path with the
+ * right `recorded` beside it and rules on it exactly as it would have if the
+ * file had never moved.
+ */
+const SEED_MOVES: ReadonlyArray<{ from: string; to: string; directory: boolean }> = [
+  // Earlier releases kept the prompt YAML inside the backend workspace, and
+  // debug.yaml in a tree that held nothing else at all. Both are data.
+  { from: 'backend/sdk/config', to: 'config', directory: true },
+  { from: 'backend/infrastructure/logging/debug.yaml', to: 'config/debug.yaml', directory: false },
+]
+
+/** Every file under `dir`, as paths relative to it. */
+function filesUnder(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      for (const nested of filesUnder(join(dir, entry.name))) out.push(`${entry.name}/${nested}`)
+    } else {
+      out.push(entry.name)
+    }
+  }
+  return out
+}
+
+/** Drop `dir` and every parent the removal leaves empty, stopping above `root`. */
+function pruneEmpty(dir: string, root: string): void {
+  let current = dir
+  while (current.startsWith(root) && current !== root) {
+    // rmdir refuses a non-empty directory, which is exactly the stop condition.
+    try {
+      rmdirSync(current)
+    } catch {
+      return
+    }
+    current = dirname(current)
+  }
+}
+
+/**
+ * Apply {@link SEED_MOVES} to the install at `root`, adding the carried-over
+ * hashes to `previous` in place. Returns the new paths, for the startup log.
+ *
+ * A move is skipped when the destination already exists: either the install has
+ * been through this once, or the user put something there themselves. Stale
+ * *old* manifest keys need no cleaning — {@link unpackSeed} rebuilds the
+ * manifest from what this binary actually ships, so they simply stop being
+ * written.
+ */
+export function relocateSeed(root: string, previous: SeedManifest): string[] {
+  const moved: string[] = []
+
+  for (const { from, to, directory } of SEED_MOVES) {
+    const source = join(root, from)
+    if (!existsSync(source)) continue
+
+    for (const name of directory ? filesUnder(source) : [null]) {
+      const oldPath = name === null ? from : `${from}/${name}`
+      const newPath = name === null ? to : `${to}/${name}`
+      const target = join(root, newPath)
+      if (existsSync(target)) continue
+
+      mkdirSync(dirname(target), { recursive: true })
+      renameSync(join(root, oldPath), target)
+      const recorded = previous.files[oldPath]
+      if (recorded !== undefined) previous.files[newPath] = recorded
+      moved.push(newPath)
+    }
+
+    pruneEmpty(directory ? source : dirname(source), root)
+  }
+
+  return moved
+}
+
+// ── Unpacking ────────────────────────────────────────────────────────
+
 /** What {@link unpackSeed} does with one file, decided per file. */
 export type SeedAction = 'create' | 'update' | 'preserve' | 'identical'
 
@@ -148,6 +246,8 @@ export function decideSeedAction(
 }
 
 export interface UnpackResult {
+  /** Files carried over from a path an earlier release shipped them at. */
+  readonly relocated: string[]
   /** Files created because they were not there at all. */
   readonly created: string[]
   /** Files replaced because they still matched what a previous run wrote. */
@@ -166,11 +266,14 @@ export interface UnpackResult {
  */
 export function unpackSeed(root: string, version: string | null = null): UnpackResult {
   const seeds = embeddedUnder(EMBEDDED_ASSET_DIRS.seed)
-  const result: UnpackResult = { created: [], updated: [], preserved: [] }
+  const result: UnpackResult = { relocated: [], created: [], updated: [], preserved: [] }
   const names = Object.keys(seeds)
   if (names.length === 0) return result
 
   const previous = readManifest(root)
+  // Before anything is compared: a file that moved has to be found where this
+  // release looks for it, or every rule below misreads it as missing.
+  result.relocated.push(...relocateSeed(root, previous))
   const next: SeedManifest = { version, files: {} }
 
   for (const name of names.sort()) {

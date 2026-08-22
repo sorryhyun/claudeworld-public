@@ -106,7 +106,7 @@ in either backend.** The World Seed Generator was merged into the Onboarding Man
 (`tape/gameplay-tape.ts`, `trpg_generator.py:193`), and the seed is written through the
 `draft_world` / `persist_world` / `complete` tools — already structured, already validated
 by Zod. There is no "reply in JSON" instruction anywhere in `backend/src/` or
-`backend/sdk/config/*.yaml`, and no hand parsing to replace. Forcing
+`config/*.yaml`, and no hand parsing to replace. Forcing
 `outputFormat: json_schema` onto the Onboarding Manager would be a regression, not an
 adoption: it is a *conversational* agent whose prose is shown to the player (the onboarding
 tape is the one tape that is not hidden).

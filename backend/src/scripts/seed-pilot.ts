@@ -1,8 +1,8 @@
 /**
  * Build a self-contained gameplay world for the pilot, so it never mutates the
- * developer's data: `agents/` and `backend/` are symlinked to the real repo so
- * configs and guidelines resolve as in production, while the world data and
- * database are fresh copies under a scratch directory.
+ * developer's data: `agents/`, `config/` and `backend/` are symlinked to the real
+ * repo so configs and guidelines resolve as in production, while the world data
+ * and database are fresh copies under a scratch directory.
  *
  * Usage: bun src/scripts/seed-pilot.ts <scratch-dir> <source-db>
  */
@@ -39,6 +39,7 @@ mkdirSync(root, { recursive: true })
 // the same agent definitions and guidelines the real backend uses — a stale copy
 // would make the pilot pass against files nobody ships.
 symlinkSync(join(repoRoot, 'agents'), join(root, 'agents'))
+symlinkSync(join(repoRoot, 'config'), join(root, 'config'))
 symlinkSync(join(repoRoot, 'backend'), join(root, 'backend'))
 
 copyFileSync(sourceDb, dbPath)

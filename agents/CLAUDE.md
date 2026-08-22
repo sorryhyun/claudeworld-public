@@ -132,4 +132,4 @@ actually attached to a server for that turn.
 - **Debug:** set `DEBUG_AGENTS=true` in `.env` for verbose agent logging.
 
 The system prompt itself is not here — it is the `system_prompt` field of
-`backend/sdk/config/guidelines_3rd.yaml`.
+`config/guidelines_3rd.yaml`.

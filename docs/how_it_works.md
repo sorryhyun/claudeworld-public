@@ -345,7 +345,7 @@ Agent files use **third-person** because the Claude Agent SDK inherits an immuta
 - **Correct**: "Action_Manager is the hidden orchestrator who..."
 - **Wrong**: "You are the Action_Manager, a hidden orchestrator..."
 
-The system prompt (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders to instruct Claude to embody the character.
+The system prompt (in `config/guidelines_3rd.yaml`) uses `{agent_name}` placeholders to instruct Claude to embody the character.
 
 ---
 
