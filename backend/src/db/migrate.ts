@@ -1,21 +1,11 @@
 /**
- * Schema initialisation at startup.
+ * Schema initialisation at startup. Three cases: an empty database gets every
+ * migration; a populated one not under Drizzle control is *adopted* — verified
+ * against `schema.ts`, then stamped, so the baseline never runs against tables
+ * that already exist; one under Drizzle control gets what it has not seen.
  *
- * Ported from `init_db()` in `backend/infrastructure/database/connection.py`
- * and the operations in `alembic_runner.py`. Same three cases, one of them
- * different in kind because Alembic's history is not replayed here:
- *
- * 1. **Empty** — fresh install. Apply every Drizzle migration from scratch.
- * 2. **Populated but not under Drizzle control** — an existing `claudeworld.db`
- *    that Alembic (or an earlier Python release) created. It is *adopted*, not
- *    migrated: the schema is verified against `schema.ts` and then stamped, so
- *    the baseline never runs against tables that already exist.
- * 3. **Under Drizzle control** — apply whatever migrations it has not seen.
- *
- * Case 2 is the one that upholds hard constraint 1 of the migration plan: an
- * existing database opens unmodified. Nothing here writes DDL to a populated
- * database — if the schema is short of what `schema.ts` declares, startup
- * fails rather than guessing at an ALTER.
+ * Nothing here writes DDL to a populated database. If the schema is short of
+ * what `schema.ts` declares, startup fails rather than guessing at an ALTER.
  */
 
 import { Database } from 'bun:sqlite'
@@ -31,24 +21,11 @@ const logger = getLogger('Database')
 /** Drizzle's bookkeeping table; the name is fixed by `SQLiteSyncDialect`. */
 const MIGRATIONS_TABLE = '__drizzle_migrations'
 
-/**
- * The Alembic revision the Drizzle baseline reproduces.
- *
- * A database created here stamps this into `alembic_version`, so that a
- * TypeScript-created database is indistinguishable from an Alembic-created one.
- * Without it the table exists but is empty, and Python's `init_db` reads that
- * as "under Alembic control but at no revision", runs the baseline revision,
- * and dies on `CREATE TABLE agents` because the table is already there.
- *
- * That is the rollback story from the migration plan made real rather than
- * assumed: the database works with either backend at all times, including one
- * that a fresh TypeScript install created.
- */
+// Stamped into `alembic_version` on a fresh install. Vestigial, but a present
+// and empty table reads as "under Alembic control but at no revision".
 export const ALEMBIC_HEAD_REVISION = 'e872d9c86c83'
 
-/** Committed migration folder, resolved relative to this module. */
 export function migrationsFolder(): string {
-  // src/db/ -> src/ -> backend/
   return join(dirname(dirname(import.meta.dir)), 'drizzle')
 }
 
@@ -63,10 +40,6 @@ export class SchemaDriftError extends Error {
   }
 }
 
-// ============================================================================
-// Database state
-// ============================================================================
-
 function tableExists(sqlite: Database, name: string): boolean {
   return (
     sqlite
@@ -75,14 +48,8 @@ function tableExists(sqlite: Database, name: string): boolean {
   ) > 0
 }
 
-/**
- * Whether this database has any application tables at all.
- *
- * `alembic_version` counts as an application table here, unlike in Python where
- * it is excluded — a database holding only `alembic_version` was stamped by
- * Alembic and then had its tables dropped, which is not a fresh install and
- * should not be treated as one.
- */
+// `alembic_version` counts as an application table: a database holding only
+// that was stamped and then had its tables dropped, not freshly installed.
 function hasAnyTable(sqlite: Database): boolean {
   const row = sqlite
     .query<{ n: number }, []>(
@@ -100,7 +67,6 @@ function ensureMigrationsTable(sqlite: Database): void {
   )
 }
 
-/** The `folderMillis` of the newest applied migration, or null. */
 function lastAppliedMillis(sqlite: Database): number | null {
   if (!tableExists(sqlite, MIGRATIONS_TABLE)) return null
   const row = sqlite
@@ -111,19 +77,10 @@ function lastAppliedMillis(sqlite: Database): number | null {
   return row?.created_at == null ? null : Number(row.created_at)
 }
 
-// ============================================================================
-// Operations
-// ============================================================================
-
 /**
- * Apply migrations newer than what the database has already seen.
- *
- * Deliberately a re-implementation of drizzle's `migrate()` rather than a call
- * to it: {@link stampMigrations} has to write rows into the same table with the
- * same semantics, and having both halves in one place is what keeps them
- * consistent. The applied-check is drizzle's own — `created_at < folderMillis`
- * against the newest row — so a database stamped here is indistinguishable from
- * one drizzle migrated.
+ * Apply migrations newer than what the database has seen. A deliberate
+ * re-implementation of drizzle's `migrate()` so it and {@link stampMigrations}
+ * share one applied-check: `created_at < folderMillis` on the newest row.
  */
 export function applyMigrations(sqlite: Database, migrations: MigrationMeta[]): number {
   ensureMigrationsTable(sqlite)
@@ -152,13 +109,7 @@ export function applyMigrations(sqlite: Database, migrations: MigrationMeta[]): 
   return pending.length
 }
 
-/**
- * Record migrations as applied without running them.
- *
- * The adoption path for a database whose schema already matches — the direct
- * analogue of `alembic stamp head`. Called only after {@link verifySchema}
- * confirms the tables really are there.
- */
+/** Called only after {@link verifySchema} confirms the tables are there. */
 export function stampMigrations(sqlite: Database, migrations: MigrationMeta[]): void {
   ensureMigrationsTable(sqlite)
   const lastMillis = lastAppliedMillis(sqlite)
@@ -171,12 +122,7 @@ export function stampMigrations(sqlite: Database, migrations: MigrationMeta[]): 
   }
 }
 
-/**
- * Record the Alembic head in `alembic_version`, if nothing is recorded yet.
- *
- * Only ever writes to an empty table: a database that already carries a
- * revision is left exactly as it is, whatever revision that happens to be.
- */
+/** Only ever writes to an empty table; an existing revision is left alone. */
 export function stampAlembicRevision(sqlite: Database, revision = ALEMBIC_HEAD_REVISION): void {
   if (!tableExists(sqlite, 'alembic_version')) return
 
@@ -187,14 +133,8 @@ export function stampAlembicRevision(sqlite: Database, revision = ALEMBIC_HEAD_R
 }
 
 /**
- * Fail loudly if the live schema is missing anything `schema.ts` declares.
- *
- * The gate that keeps drift from being silent, and the reason case 2 above is
- * safe: adopting a database means trusting that its schema matches, so the
- * trust is checked rather than assumed.
- *
- * Cross-dialect type spellings are accepted here — the database being checked
- * was created by SQLAlchemy, which writes `VARCHAR` and `BOOLEAN`.
+ * Fail loudly if the live schema is missing anything `schema.ts` declares —
+ * this is what makes adoption safe. Cross-dialect type spellings are accepted.
  */
 export function verifySchema(sqlite: Database): void {
   const diffs = diffSchemas(describeDeclaredSchema(), describeLiveSchema(sqlite), {
@@ -217,21 +157,11 @@ export function verifySchema(sqlite: Database): void {
   )
 }
 
-// ============================================================================
-// Startup
-// ============================================================================
-
 export interface InitDbOptions {
   migrations?: MigrationMeta[]
 }
 
-/**
- * Bring a database to the current schema, whatever state it starts in.
- *
- * Returns which of the three paths was taken, mostly so tests can assert on it
- * — a silent "adopted" where "migrated" was expected is the failure mode that
- * would quietly skip DDL on a fresh install.
- */
+/** Returns which path was taken: "adopted" where "migrated" was due skips DDL. */
 export function initDb(
   sqlite: Database,
   { migrations = loadMigrations() }: InitDbOptions = {},
@@ -264,23 +194,11 @@ export function initDb(
   return 'migrated'
 }
 
-// ============================================================================
-// Opening
-// ============================================================================
-
 /**
- * Translate `DATABASE_URL` into a SQLite file path.
- *
- * Accepts the SQLAlchemy spellings verbatim so one `.env` drives both backends:
- * `sqlite+aiosqlite:///../claudeworld.db`, `sqlite:///./x.db`, `sqlite:////abs.db`.
- * SQLAlchemy's convention is that three slashes introduce a path relative to the
- * process's working directory and four an absolute one, which falls out of
- * stripping exactly three.
- *
- * A PostgreSQL URL — which is what `connection.py` defaults to when
- * `DATABASE_URL` is unset — throws. There is no Postgres support here, and
- * quietly falling back to a SQLite file would create an empty database beside a
- * real one and look like data loss.
+ * Translate `DATABASE_URL` into a SQLite file path. Three slashes introduce a
+ * path relative to the working directory and four an absolute one, which falls
+ * out of stripping exactly three. A non-SQLite URL throws: falling back quietly
+ * would create an empty database beside a real one and look like data loss.
  */
 export function sqlitePathFromUrl(databaseUrl: string): string {
   if (!databaseUrl.startsWith('sqlite')) {
@@ -297,17 +215,13 @@ export function sqlitePathFromUrl(databaseUrl: string): string {
 }
 
 export interface OpenAndInitOptions {
-  /** Path to the SQLite file; created when absent. */
   path: string
   migrations?: MigrationMeta[]
 }
 
 /**
- * Open (creating if needed) and initialise a database, returning the raw handle.
- *
- * Kept separate from `openDb()` in `./index.ts`, which deliberately refuses to
- * create: every read path should fail loudly on a typo'd path rather than
- * conjure an empty database, and startup is the one place that should not.
+ * Kept separate from `openDb()`, which refuses to create: a read path must fail
+ * loudly on a typo'd path rather than conjure an empty database.
  */
 export function openAndInitDb({ path, migrations }: OpenAndInitOptions): Database {
   const isNew = !existsSync(path)

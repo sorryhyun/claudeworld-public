@@ -1,9 +1,7 @@
 /**
- * Agent membership in a room — port of `backend/routers/room_agents.py`.
- *
- * Three routes over the `room_agents` join table. Adding is open to the room's
- * owner; removing is admin-only, because it also has to tear down the warm
- * session that agent holds in that room.
+ * Agent membership in a room: three routes over the `room_agents` join table.
+ * Adding is open to the room's owner; removing is admin-only, because it also
+ * tears down the warm session that agent holds in that room.
  */
 
 import { Hono } from 'hono'
@@ -36,8 +34,8 @@ export function createRoomAgentRoutes(state: AppState): Hono<AppEnv> {
     ensureRoomAccessFor(c, state.db, roomId)
 
     const room = addAgentToRoom(state.db, roomId, agentId)
-    // One `detail` for both misses, as in Python: the handler cannot tell which
-    // of the two ids was wrong without a second query it does not make.
+    // One message for both misses: telling which id was wrong would cost a
+    // second query.
     if (room === null) throw new HttpError(404, 'Room or Agent not found')
 
     logger.info(`Agent ${agentId} added to room ${roomId}`)

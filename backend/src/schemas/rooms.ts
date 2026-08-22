@@ -1,6 +1,4 @@
-/**
- * Room request/response schemas — port of `backend/schemas/rooms.py`.
- */
+/** Room request/response schemas. */
 
 import { z } from 'zod'
 import type { RoomWithRelations } from '../crud/rooms'
@@ -33,16 +31,7 @@ export const RoomCreate = RoomBase.extend({
 
 export type RoomCreate = z.infer<typeof RoomCreate>
 
-/**
- * A partial update.
- *
- * Every field is `Optional[...] = None`, and Python cannot tell "omitted" from
- * "explicitly null" without `exclude_unset`, which no caller uses — so
- * `{"is_paused": null}` and `{}` are the same request, and both leave the column
- * alone. Zod's `.nullable().default(null)` reproduces that collapse exactly.
- * Note `name` is *not* updatable here even though the frontend's `RoomUpdate`
- * type lists it; Pydantic drops the unknown key silently, as does Zod.
- */
+/** `{"is_paused": null}` and `{}` are the same request. `name` is not updatable. */
 export const RoomUpdate = z.object({
   max_interactions: optionalInt(),
   is_paused: optionalBool(),
@@ -51,7 +40,7 @@ export const RoomUpdate = z.object({
 
 export type RoomUpdate = z.infer<typeof RoomUpdate>
 
-/** The fields `Room` and `RoomSummary` share, in Pydantic's declaration order. */
+/** The fields `Room` and `RoomSummary` share, in serialization order. */
 const roomResponseFields = {
   id: pydanticInt(),
   owner_id: optionalString(),
@@ -62,13 +51,7 @@ const roomResponseFields = {
   last_activity_at: isoDatetime().nullable().default(null),
 }
 
-/**
- * The full room, with its cast and its whole transcript inlined.
- *
- * `messages` is unbounded — `crud/helpers.py::get_room_with_relationships`
- * eager-loads every message in the room and the response carries all of them.
- * That is the existing contract, not an oversight to fix here.
- */
+/** Cast and whole transcript inlined; `messages` is unbounded by contract. */
 export const Room = RoomBase.extend({
   ...roomResponseFields,
   agents: Agent.array().default([]),
@@ -86,23 +69,15 @@ export const RoomSummary = RoomBase.extend(roomResponseFields)
 export type RoomSummary = z.infer<typeof RoomSummary>
 
 /**
- * A room message row that may or may not carry its joined author.
- *
- * Python eager-loads `Room.messages → Message.agent`, so `agent_name` and
- * `agent_profile_pic` are populated on every message in a room response.
- * `src/crud/rooms.ts::getRoom` does not join `agents` onto the messages yet, so
- * {@link toRoom} accepts either shape and falls back to looking the author up in
- * the room's own cast — which resolves every case except an author who has since
- * left the room.
+ * `getRoom` does not join `agents`, so {@link toRoom} falls back to the room's
+ * own cast — resolving every case except an author who has left the room.
  */
 export type RoomMessageRow = MessageRow & { agent?: AgentRow | null }
 
-/** What {@link toRoom} needs: a `RoomWithRelations` whose join is optional. */
 export interface RoomResponseSource extends Omit<RoomWithRelations, 'messages'> {
   messages: RoomMessageRow[]
 }
 
-/** Drizzle row (with agents, messages and world) → `Room` response. */
 export function toRoom(row: RoomResponseSource): Room {
   const agentsById = new Map(row.agents.map((agent) => [agent.id, agent]))
 
@@ -117,20 +92,12 @@ export function toRoom(row: RoomResponseSource): Room {
       }),
     ),
     world_id: row.worldId,
-    // `models.py::Room.world_phase` is a property reading through the world
-    // relationship, which is why this is on the room response at all.
+    // Read through the world relationship rather than stored on the room.
     world_phase: row.world?.phase ?? null,
   }
 }
 
-/**
- * The columns the two room responses actually serialize.
- *
- * A `Pick` rather than the whole `RoomRow` so that `crud/rooms.ts::getRooms`,
- * which projects the listing down to these eight fields, can be handed straight
- * to {@link toRoomSummary} without inventing values for `lastReadAt` and
- * `worldId` that the summary does not carry anyway.
- */
+/** A `Pick` so `getRooms`' projection can go straight to {@link toRoomSummary}. */
 export type RoomResponseFieldsSource = Pick<
   RoomRow,
   | 'id'
@@ -143,7 +110,6 @@ export type RoomResponseFieldsSource = Pick<
   | 'lastActivityAt'
 >
 
-/** Drizzle row → `RoomSummary` response. */
 export function toRoomSummary(row: RoomResponseFieldsSource): RoomSummary {
   return { name: row.name, ...toRoomResponseFields(row) }
 }

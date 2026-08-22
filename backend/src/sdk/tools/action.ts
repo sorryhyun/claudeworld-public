@@ -1,11 +1,9 @@
 import { requiredText, type ToolDefinition } from './definitions'
 
 /**
- * The tools every character has. Port of `sdk/tools/action.py`.
- *
- * Descriptions carry `{agent_name}` and `{memory_subtitles}` slots filled in
- * when the server is built for a specific agent, so each character is told about
- * its own memories by name.
+ * The tools every character has. Descriptions carry `{agent_name}` and
+ * `{memory_subtitles}` slots filled in when the server is built for a specific
+ * agent, so each character is told about its own memories by name.
  */
 
 export const skipTool = {

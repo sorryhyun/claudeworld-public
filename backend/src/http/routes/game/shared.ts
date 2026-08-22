@@ -1,15 +1,4 @@
-/**
- * What the six game route modules share.
- *
- * This module has no Python counterpart on purpose: most of what is here is
- * supplied by FastAPI's framework rather than by `routers/game/` — path and
- * query coercion, the 422 body, `BackgroundTasks` — and Hono supplies none of
- * it.
- *
- * Everything below is either a framework behaviour Hono does not have, or a
- * helper more than one route module needs. Nothing here decides policy: the
- * route modules keep Python's control flow, statuses and `detail` strings.
- */
+/** Request coercion, the 422 body Hono lacks, and cross-route helpers. */
 
 import { dirname } from 'node:path'
 import type { Context } from 'hono'
@@ -34,43 +23,22 @@ import type { AppEnv } from '../../types'
 
 const logger = getLogger('GameRouter')
 
-// =============================================================================
-// Request coercion — the half of FastAPI that lives in the signature
-// =============================================================================
-
-/**
- * `world_id: int` in a path, as FastAPI validates it.
- *
- * A non-numeric segment is a 422 with pydantic's `int_parsing` body, not a 404
- * and not a 500 on `NaN`. The frontend never sends one, but the parity contract
- * covers status codes for malformed requests too, and a silent `NaN` would
- * otherwise reach the database as `WHERE id = NULL` and read as "world not
- * found" — a different status for the same request.
- */
+/** A non-numeric segment is a 422; a silent `NaN` would read as "not found". */
 export function intPathParam(c: Context<AppEnv>, name: string): number {
   return parseIntOr422(c.req.param(name), ['path', name])
 }
 
-/** An optional `int` query parameter. Absent (or empty) yields `null`. */
 export function intQueryParam(c: Context<AppEnv>, name: string): number | null {
   const raw = c.req.query(name)
   if (raw === undefined || raw === '') return null
   return parseIntOr422(raw, ['query', name])
 }
 
-/** An `int` query parameter with a default, e.g. `limit: int = 50`. */
 export function intQueryParamOr(c: Context<AppEnv>, name: string, fallback: number): number {
   return intQueryParam(c, name) ?? fallback
 }
 
-/**
- * A `bool` query parameter with a default.
- *
- * The accepted spellings are pydantic's, not JavaScript's: `true/false`,
- * `1/0`, `yes/no`, `y/n`, `on/off`, `t/f`, case-insensitive. `Boolean(raw)`
- * would accept the string `"false"` as true, which is exactly the bug that
- * makes `?poll_onboarding=false` poll the onboarding room.
- */
+/** `Boolean(raw)` would read the string `"false"` as true. Hence the sets below. */
 export function boolQueryParam(c: Context<AppEnv>, name: string, fallback: boolean): boolean {
   const raw = c.req.query(name)
   if (raw === undefined || raw === '') return fallback
@@ -92,7 +60,7 @@ const TRUE_SPELLINGS = new Set(['true', '1', 'yes', 'y', 'on', 't'])
 const FALSE_SPELLINGS = new Set(['false', '0', 'no', 'n', 'off', 'f'])
 
 function parseIntOr422(raw: string | undefined, loc: (string | number)[]): number {
-  // Pydantic's lax str→int strips surrounding whitespace and accepts a sign.
+  // Surrounding whitespace is stripped and a sign is accepted.
   if (raw !== undefined && /^\s*[+-]?\d+\s*$/.test(raw)) return Number(raw.trim())
 
   throw validationError([
@@ -104,13 +72,7 @@ function parseIntOr422(raw: string | undefined, loc: (string | number)[]): numbe
   ])
 }
 
-/**
- * Parse a JSON request body against a Zod schema, 422-ing the way FastAPI does.
- *
- * A body that is not JSON at all and a body that fails validation both produce
- * 422 in FastAPI — the first as `json_invalid`, the second as one entry per
- * failed field — so both are produced here rather than collapsing to 400.
- */
+/** Unparseable JSON and failed validation both 422, never 400. */
 export async function parseBody<T>(c: Context<AppEnv>, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown
   try {
@@ -133,20 +95,7 @@ export async function parseBody<T>(c: Context<AppEnv>, schema: z.ZodType<T>): Pr
   )
 }
 
-// =============================================================================
-// World lookup + access
-// =============================================================================
-
-/**
- * The three lines every handler in `routers/game/` opens with: fetch the world,
- * 404 if it is gone, 403 if it is not yours.
- *
- * `detail` is threaded through because the delete handler says "Not authorized
- * to delete this world" where every other check says "Not your world"; see
- * {@link assertWorldAccess}. `owner_id` is nullable in the schema and Python
- * compares it with `==`, so an ownerless world is reachable by admins only —
- * `?? ''` reproduces that without `userId` ever legitimately being empty.
- */
+/** 404 if gone, 403 if not yours. An ownerless world is admin-only. */
 export function requireWorld(
   state: AppState,
   c: Context<AppEnv>,
@@ -159,19 +108,9 @@ export function requireWorld(
   return world
 }
 
-// =============================================================================
-// Message shaping
-// =============================================================================
-
 /**
- * The eleven-field message dict the poll and location-history endpoints return.
- *
- * Deliberately *not* `schemas.Message`. `routers/game/polling.py` and
- * `routers/game/locations.py` both build this by hand, and it differs from the
- * schema in two ways the frontend depends on: `agent_name` /
- * `agent_profile_pic` are flattened off the joined agent, and `timestamp` is
- * `datetime.isoformat()` — naive, **no `Z`** — where every other timestamp in
- * the API carries one. See {@link naiveIsoTimestamp}.
+ * Deliberately *not* the `Message` schema: agent fields are flattened and
+ * `timestamp` is naive — **no `Z`** — unlike every other API timestamp.
  */
 export interface PollMessage {
   id: number
@@ -199,21 +138,13 @@ export function toPollMessage(row: MessageWithAgent): PollMessage {
     timestamp: row.timestamp ? naiveIsoTimestamp(row.timestamp) : null,
     image_data: row.imageData,
     image_media_type: row.imageMediaType,
-    // Python does a bare `json.loads` here and 500s on a malformed blob; this
-    // yields null instead, on the same reasoning as `parseJsonColumn` itself —
-    // one bad row must not take down the whole poll the game runs on.
+    // Null rather than a throw: one malformed blob must not take down the
+    // whole poll the game runs on.
     game_time_snapshot: parseJsonColumn(row.gameTimeSnapshot, GameTimeSnapshot),
   }
 }
 
-/**
- * `datetime.isoformat()` on the naive UTC datetime SQLAlchemy stored.
- *
- * Three details are load-bearing: no zone designator (the column is naive), a
- * `T` separator, and the fractional part omitted entirely when the microsecond
- * field is zero. The trailing three digits are padding — `Date` resolves to
- * milliseconds — matching what `src/db/columns.ts` writes back into the column.
- */
+/** No zone, a `T`, no fraction at zero — as `src/db/columns.ts` writes it. */
 export function naiveIsoTimestamp(value: Date): string {
   const pad = (n: number, width = 2): string => String(n).padStart(width, '0')
   const date = `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`
@@ -222,53 +153,18 @@ export function naiveIsoTimestamp(value: Date): string {
   return ms === 0 ? `${date}T${time}` : `${date}T${time}.${pad(ms, 3)}000`
 }
 
-// =============================================================================
-// The `worlds/` root
-// =============================================================================
-
-/**
- * The `worlds/` directory this app was built against.
- *
- * Needed because `PersistenceManager` is constructed per world and takes the
- * root as an argument, while `AppState` exposes only services already bound to
- * it. Reading `settings.paths.worldsDir` instead would ignore the override
- * `createAppState` accepts and make every test that points at a temp tree read
- * the developer's real worlds; recovering the root from a service that already
- * holds it keeps the two in step.
- *
- * `_` survives `getWorldPath`'s sanitiser unchanged, so the join is exactly one
- * segment deep and `dirname` gives back the root.
- */
+/** Recovered from a bound service so a test never reads the real `worlds/`. */
 export function worldsDirOf(state: AppState): string {
   return dirname(state.services.worlds.getWorldPath('_'))
 }
 
-// =============================================================================
-// Background work
-// =============================================================================
-
 /**
- * Python's game routes start background work two different ways, and neither is
- * "run it now".
- *
- * `spawn_background` (`actions.py`, `chat_mode.py`) wraps `asyncio.create_task`,
- * which schedules the coroutine and returns — the body does not begin until the
- * current synchronous block yields. `background_tasks.add_task` (`worlds.py`,
- * `polling.py`) is later still: FastAPI runs those only once the response has
- * been sent.
- *
- * Passing an async function straight to {@link spawnBackground} would match
- * *neither*, because a JavaScript async function runs synchronously up to its
- * first `await`. With `bun:sqlite` being synchronous, a turn started that way
- * performs its opening block of database writes *inside* the handler, in between
- * the reads the handler has already made and the response it has yet to build —
- * so a caller can observe rows the response has not accounted for.
- *
- * These two wrappers restore the distinction. Both take the same body; they
- * differ only in how long they wait before running it.
+ * Background work must never start "now": an async function runs synchronously
+ * to its first `await` and `bun:sqlite` is synchronous, so a body handed
+ * straight to {@link spawnBackground} writes to the database *in* the handler.
  */
 
-/** `asyncio.create_task`: after the current synchronous block, same tick. */
+/** After the current synchronous block, same tick (a microtask). */
 export function startBackground(
   body: (signal: AbortSignal) => Promise<unknown>,
   options: { name: string },
@@ -280,7 +176,7 @@ export function startBackground(
   }, options)
 }
 
-/** FastAPI's `BackgroundTasks`: a macrotask later, after the response. */
+/** A macrotask later, so after the response has been sent. */
 export function deferBackground(
   body: (signal: AbortSignal) => Promise<unknown>,
   options: { name: string },
@@ -292,23 +188,7 @@ export function deferBackground(
   }, options)
 }
 
-// =============================================================================
-// Images
-// =============================================================================
-
-/**
- * `utils/images.py::try_compress_image`, in the shape the route modules use.
- *
- * The work — and the logging — lives in `lib/images.ts`; this is the naming
- * adapter the three call sites were written against (`{imageData,
- * imageMediaType}` rather than `{data, mediaType}`).
- *
- * **Async, unlike Python's.** Pillow encodes on the calling thread; sharp hands
- * the encode to libvips' thread pool and resolves a promise. Every caller still
- * compresses before it writes the message row — but the `await` is a suspension
- * point Python does not have, so each call site keeps it *above* its run of
- * database writes rather than inside it. See the comment in `actions.ts`.
- */
+/** The `await` is a suspension point: keep it above any run of database writes. */
 export async function tryCompressImage(
   imageData: string | null | undefined,
   imageMediaType: string | null | undefined,
@@ -318,27 +198,10 @@ export async function tryCompressImage(
   return { imageData: compressed.data, imageMediaType: compressed.mediaType }
 }
 
-// =============================================================================
-// Filesystem → database location adoption
-// =============================================================================
-
 /**
- * Create a database row for a location that exists only on disk.
- *
- * Port of `routers/game/worlds.py::_create_location_from_filesystem`, used by
- * the reset path. Python carries a second, near-identical copy in
- * `services/persistence_manager.py`; that one is ported as
- * `PersistenceManager`'s own private method and is what the polling sync path
- * uses, so neither backend has a single shared implementation here.
- *
- * The room mapping is re-read *before* the location is created and written back
- * after, which is the point of the whole function: a location stubbed out
- * during onboarding may already have characters listed against its room key in
- * `_state.json`, and creating the row mints a fresh room id. Dropping the agent
- * list would leave those characters standing in a room nobody can reach.
- *
- * Returns `null` on any failure, as Python does — a location that cannot be
- * adopted is not a request-level error, it is a world that has to be reset.
+ * Adopt a location that exists only on disk. The room mapping is re-read before
+ * the row is created and written back after: creating it mints a fresh room id,
+ * and dropping the agent list would strand those characters.
  */
 export function createLocationFromFilesystem(
   state: AppState,
@@ -380,8 +243,8 @@ export function createLocationFromFilesystem(
       }
     }
 
-    // `createLocation` returns the bare row; callers want `room_id`, which is
-    // on it, so the room itself is left unresolved rather than re-queried.
+    // Callers want `room_id`, which the bare row carries; the room is not
+    // re-queried.
     return { ...created, room: null }
   } catch (error) {
     logger.error(`Failed to create location '${locationName}' from filesystem: ${String(error)}`)

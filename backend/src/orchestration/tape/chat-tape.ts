@@ -1,63 +1,30 @@
 import { TurnTape, type TurnCell } from './models'
 
 /**
- * Builds the chat-mode tape. Port of
- * `orchestration/chat_mode_orchestrator.py::create_chat_mode_tape`.
- *
- * Chat mode is the free-form conversation a player can open with the NPCs at
- * their location, outside the Action Manager loop. Structurally it is the
- * opposite of the gameplay tape in every respect that matters:
- *
- *   - **No Action Manager and no Narrator.** Nothing interprets the message and
- *     nothing resolves it against the world; the NPCs simply talk.
- *   - **Nothing is hidden.** A gameplay turn's cells are all hidden and speak
- *     only through the `narration` tool. Here each NPC's prose *is* the output,
- *     so it is persisted as a message and the player reads it directly.
- *   - **One agent per cell, never concurrent.** NPCs in a conversation have to
- *     see each other's replies, and a concurrent cell would have them all answer
- *     the player in parallel, blind to one another. Python spelled this out —
- *     "each agent gets its own cell to ensure sequential execution and prevent
- *     interaction" — and it is the reason chat mode feels like a group
- *     conversation rather than a chorus.
- *
- * Ordering is the standard multi-agent rule the gameplay tape has no use for:
- * regular NPCs first in descending `priority`, then the `interrupt_every_turn`
- * ones — also in descending priority — which is what lets a character
- * configured to always have the last word actually get it.
+ * The chat-mode tape: free-form conversation with the NPCs at a location.
+ * Nothing is hidden, and there is **one agent per cell, never concurrent**,
+ * because NPCs have to see each other's replies. Regular NPCs go first in
+ * descending `priority`, then the `interrupt_every_turn` ones.
  */
 
-/**
- * The agent fields the tape orders by. A row from `agents`, narrowed.
- *
- * Both are nullable in the schema, because SQLAlchemy's `default=` fills them
- * on insert without putting a `DEFAULT` in the DDL — so a row written by
- * anything other than the ORM can carry NULL. Python read those through
- * attributes that were never None in practice; here the fallbacks are explicit
- * and match the ORM defaults (`priority=0`, `interrupt_every_turn=False`).
- */
+// Both fields are nullable — the columns carry no SQL `DEFAULT` — so the
+// fallbacks below (`0`, `false`) are load-bearing.
 export interface ChatTapeAgent {
   id: number
-  /** Higher speaks first. Ties keep the order the caller supplied. */
+  /** Higher speaks first; ties keep the caller's order. */
   priority: number | null
-  /** Set in `group_config.yaml`; these run last, after the regular NPCs. */
   interruptEveryTurn: boolean | null
 }
 
-/**
- * @param npcs NPCs at the player's location, system agents already excluded.
- * @returns A tape, or `null` when there is nobody to talk to — the caller
- *   treats that as a completed turn rather than a failure, because a location
- *   with no NPCs is a normal place for a player to try to talk.
- */
+/** `null` when there is nobody to talk to — a completed turn, not a failure. */
 export function createChatModeTape(npcs: readonly ChatTapeAgent[]): TurnTape | null {
   if (npcs.length === 0) return null
 
   const regular = npcs.filter((a) => !(a.interruptEveryTurn ?? false))
   const interrupting = npcs.filter((a) => a.interruptEveryTurn ?? false)
 
-  // `sort` is stable in every engine Bun targets, so equal priorities keep the
-  // caller's order — which is the location's roster order, not something
-  // arbitrary. Python's `list.sort` gives the same guarantee.
+  // `sort` is stable, so equal priorities keep the caller's order — which is
+  // the location's roster order, not something arbitrary.
   const byPriorityDesc = (a: ChatTapeAgent, b: ChatTapeAgent): number =>
     (b.priority ?? 0) - (a.priority ?? 0)
 

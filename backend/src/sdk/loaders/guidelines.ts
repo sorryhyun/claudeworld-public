@@ -1,13 +1,6 @@
-/**
- * Base system prompt selection.
- *
- * Ported from `backend/sdk/loaders/guidelines.py`.
- *
- * `guidelines_3rd.yaml` holds several prompt bodies plus an
- * `active_system_prompt` key naming which one is live — an indirection so a
- * prompt can be swapped by editing one line instead of moving a 40-line block.
- * Two agents opt out of that selector entirely and get a dedicated prompt.
- */
+// `guidelines_3rd.yaml` holds several prompt bodies plus an
+// `active_system_prompt` key naming which one is live, so a prompt is swapped
+// by editing one line. The Action and Onboarding Managers opt out.
 
 import { DEFAULT_FALLBACK_PROMPT } from '../../config/settings'
 import { isActionManager, isOnboardingManager } from '../../domain/agent'
@@ -16,12 +9,7 @@ import { getLogger } from '../../infrastructure/logging/logger'
 
 const logger = getLogger('Guidelines')
 
-/**
- * The two role predicates this module selects prompts by now live in
- * `domain/agent.ts` alongside the other four, matching Python where
- * `guidelines.py:33` imports them from `domain.entities.agent`. Re-exported
- * because callers already import them from here.
- */
+// Defined in `domain/agent.ts`; re-exported because callers import them here.
 export { isActionManager, isOnboardingManager }
 
 function readPrompt(config: Record<string, unknown>, key: string): string {
@@ -30,14 +18,9 @@ function readPrompt(config: Record<string, unknown>, key: string): string {
 }
 
 /**
- * Load the base system prompt for `agentName`.
- *
- * - Action Manager → `system_prompt_AM`
- * - Onboarding Manager → `system_prompt_OM`
- * - anything else (or no name) → the key named by `active_system_prompt`
- *
- * The returned template still contains `{agent_name}` placeholders; run it
- * through `formatWithParticles` before use.
+ * `system_prompt_AM` for the Action Manager, `system_prompt_OM` for the
+ * Onboarding Manager, otherwise `active_system_prompt`'s key. The result still
+ * holds `{agent_name}` placeholders.
  */
 export function getBaseSystemPrompt(agentName?: string | null): string {
   try {

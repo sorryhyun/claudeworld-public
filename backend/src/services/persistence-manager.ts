@@ -1,29 +1,6 @@
-/**
- * The bridge between a world on disk and a world in the database.
- *
- * Ported from `backend/services/persistence_manager.py`.
- *
- * Almost nothing in ClaudeWorld needs both halves at once: gameplay mutations
- * (stats, inventory, travel) go straight through `crud/` to the database, and
- * world authoring goes straight to `worlds/{name}/`. This class exists for the
- * handful of operations that genuinely cannot live on one side —
- *
- * - **creating a location**, which needs a directory, an index row, a `locations`
- *   row, the `rooms` row that carries its transcript, and the `_state.json`
- *   mapping tying the last two together;
- * - **the onboarding → active handover**, where the World Seed Generator has
- *   written a complete world to disk and the database has nothing but an empty
- *   player state;
- * - **exporting** the live database back over the files, so a world stays
- *   portable.
- *
- * It is *not* a general write path. Adding a runtime mutation here would give
- * that mutation two sources of truth to disagree about.
- *
- * Every method is synchronous. `bun:sqlite` and `node:fs` both run to
- * completion, so Python's `async` here bought ordering guarantees that are
- * unconditional in this port.
- */
+// The bridge between a world on disk and a world in the database, for the few
+// operations that cannot live on one side. Not a general write path: a runtime
+// mutation added here would gain a second source of truth.
 
 import { getSettings } from '../config/settings'
 import { getAgentByName } from '../crud/agents'
@@ -39,13 +16,7 @@ import { updateWorld } from '../crud/worlds'
 import type { Db } from '../db'
 import type { Location, WorldPhase } from '../db/schema'
 import type { InventoryEntry } from '../domain/player-rules'
-/**
- * The database-side stat definition blob: `{stats: [{name, min, max, default}]}`
- * as stored in `worlds.stat_definitions` and consumed by the clamping rules.
- * Distinct from {@link StatDefinitionsFile}, which is the whole `stats.yaml`
- * document and additionally carries `derived`. Python has one untyped dict for
- * both, which is why the two shapes are easy to confuse.
- */
+// `worlds.stat_definitions`; StatDefinitionsFile is the whole `stats.yaml`.
 import type { StatDefinitions as StatDefinitionBlob } from '../domain/player-rules'
 import { getLogger } from '../infrastructure/logging/logger'
 import { LocationStorage } from './location-storage'
@@ -60,39 +31,26 @@ import { MtimeCache, WorldService } from './world-service'
 
 const logger = getLogger('PersistenceManager')
 
-/** `[x, y]` on the world map grid. */
 export type Position = [number, number]
 
-/** Arguments of `PersistenceManager.create_location` (`persistence_manager.py:57`). */
 export interface CreateLocationInput {
   /** Directory name, and the key every other layer refers to the place by. */
   name: string
   displayName: string
   description: string
   position: Position
-  /** Neighbour *names*, written to the filesystem index only — see below. */
+  /** Neighbour *names*, written to the filesystem index only. */
   adjacentHints?: string[] | null
-  /** Make this the player's current location and the world's current room. */
   isStarting?: boolean
-  /** Agent names to record in the room mapping. */
   agents?: string[] | null
 }
 
-/**
- * Turn `{name: value}` into the `stat_definitions` shape
- * `initializePlayerStats` expects.
- *
- * The current value is passed as each stat's `default` *and* separately as the
- * initial value, which looks redundant but is not: without the definition entry
- * the stat would not be initialised at all, and without the override the
- * definition's default is what would land. Python builds the same throwaway
- * dict at both call sites (`persistence_manager.py:161`, `:326`).
- */
+// The value is passed as `default` *and* as the initial value: without the
+// definition entry the stat is never initialised at all.
 function statDefinitionsFrom(stats: Record<string, number>): StatDefinitionBlob {
   return { stats: Object.entries(stats).map(([name, value]) => ({ name, default: value })) }
 }
 
-/** A `PlayerState` for a world whose `player.yaml` could not be read. */
 function blankPlayerState(): PlayerState {
   return {
     currentLocation: null,
@@ -101,10 +59,8 @@ function blankPlayerState(): PlayerState {
     inventory: [],
     effects: [],
     recentActions: [],
-    // Python constructs `PlayerState(...)` without these three, taking the
-    // dataclass defaults (`world_models.py:40-48`) rather than leaving them
-    // unset. `game_time` in particular must not be empty: the writer dumps it
-    // straight into `player.yaml` and every reader of that file expects a clock.
+    // Must not be empty: the writer dumps it into `player.yaml`, and every
+    // reader of that file expects a clock.
     gameTime: { ...DEFAULT_GAME_TIME },
     equipment: {},
     flags: {},
@@ -117,24 +73,15 @@ export class PersistenceManager {
   private readonly locations: LocationStorage
   private readonly rooms: RoomMappingService
 
-  /**
-   * @param db Open database handle.
-   * @param worldId Primary key of the world's row.
-   * @param worldName Directory name of the world under `worlds/`. Python keeps
-   *   both for the same reason: the row id addresses the database half and the
-   *   name addresses the filesystem half, and neither derives from the other
-   *   cheaply.
-   * @param worldsDir Root of the `worlds/` tree; an argument rather than a
-   *   settings lookup so the whole class is testable against a temp directory.
-   */
+  // `worldId` addresses the database half, `worldName` the filesystem half.
   constructor(
     private readonly db: Db,
     private readonly worldId: number,
     private readonly worldName: string,
     worldsDir: string = getSettings().paths.worldsDir,
   ) {
-    // One cache across the three filesystem services, so a write through any of
-    // them is visible to the others' next read without a second stat.
+    // One cache across all three, so a write through any one is visible to the
+    // others' next read.
     const cache = new MtimeCache()
     this.worlds = new WorldService(worldsDir, cache)
     this.players = new PlayerService(worldsDir, cache)
@@ -142,23 +89,11 @@ export class PersistenceManager {
     this.rooms = new RoomMappingService(worldsDir)
   }
 
-  // ==========================================================================
-  // Filesystem → Database
-  // ==========================================================================
-
   /**
-   * Create a location on both sides and return its database id.
-   *
-   * Order is load-bearing: the filesystem is written first because it is the
-   * source of truth, and the room mapping is written last because it needs the
-   * `room_id` that `createLocation` allocated.
-   *
-   * **`adjacentHints` reaches the filesystem only.** The database column takes
-   * location *ids* and the neighbours may not exist yet at seeding time, so
-   * Python passes `adjacent_to=None` here (`persistence_manager.py:99`) and
-   * leaves the caller to call `addAdjacentLocation` once both ends exist —
-   * which `location_tools.py:456-461` does. Passing the names through would
-   * store a JSON array of strings in a column every reader parses as ids.
+   * Create a location on both sides. Order is load-bearing: filesystem first
+   * (source of truth), room mapping last (needs the allocated `room_id`).
+   * `adjacentHints` reaches the filesystem only — the column takes ids, and the
+   * caller calls `addAdjacentLocation` once both ends exist.
    */
   createLocation(input: CreateLocationInput): number {
     this.locations.createLocation(
@@ -167,11 +102,6 @@ export class PersistenceManager {
       input.displayName,
       input.description,
       input.position,
-      // Python forwards `None` through to `adjacent`, which lands in the index
-      // as `adjacent: null`; the TS writer's parameter is a list and writes
-      // `[]`. Both read back as "no neighbours" — `parseAdjacent` and Python's
-      // `loc_data.get("adjacent", [])` each yield an empty list — and every
-      // caller in the tree already passes a list.
       input.adjacentHints ?? [],
     )
     logger.info(`Created location '${input.name}' in filesystem`)
@@ -199,14 +129,8 @@ export class PersistenceManager {
     }
 
     if (input.isStarting) {
-      // Note the mapping above records `input.agents` but does *not* add them to
-      // the database room, where `_createLocationFromFilesystem` does. The
-      // asymmetry is Python's: this path is called during onboarding, before the
-      // characters have rows to add.
-      //
-      // The return value is discarded, as in Python: a world with no player
-      // state row is a world that was never created properly, and there is
-      // nothing useful to do about it here.
+      // The agents go in the mapping but not the database room: this path runs
+      // during onboarding, before the characters have rows to add.
       setCurrentLocation(this.db, this.worldId, dbLocation.id)
       this.rooms.setCurrentRoom(this.worldName, roomKey)
       logger.info(`Set '${input.name}' as current location and room`)
@@ -216,16 +140,9 @@ export class PersistenceManager {
   }
 
   /**
-   * Copy `player.yaml` into the database.
-   *
-   * This is the onboarding→active handover, and it is also the repair path the
-   * polling endpoint runs when it finds an active world whose player state has
-   * no `current_location_id` (`polling.py:106-114`) — i.e. when onboarding
-   * finished by writing files and nothing ever mirrored them.
-   *
-   * Each of the three sections is skipped when empty rather than written as
-   * empty, so running this against a world that is already in sync cannot wipe
-   * anything the database has and the file does not.
+   * Copy `player.yaml` into the database: the onboarding→active handover, and
+   * polling's repair path. Empty sections are skipped rather than written as
+   * empty, so this cannot wipe what the database has and the file does not.
    */
   syncPlayerStateFromFilesystem(): void {
     const fsState = this.players.loadPlayerState(this.worldName)
@@ -253,15 +170,8 @@ export class PersistenceManager {
     if (fsState.inventory.length > 0) {
       for (const item of fsState.inventory) {
         addInventoryItem(this.db, this.worldId, {
-          // `player.yaml` stores the *reference* format — `{item_id, quantity,
-          // instance_properties}` — so for a modern world `name` and
-          // `description` are empty here and `properties` is undefined, because
-          // the reference keeps them in the template under `items/` and this
-          // read never resolves it. The database inventory therefore ends up
-          // holding nameless stacks until something rewrites it. Python does
-          // exactly this (`persistence_manager.py:169-179`), and using
-          // `getResolvedInventory` instead would put names in the column that
-          // the Python backend never writes.
+          // `player.yaml` stores the *reference* format, so name/description
+          // are usually empty — the `items/` template holds them, unresolved here.
           id: String(item.item_id ?? item.id ?? ''),
           name: String(item.name ?? ''),
           description: item.description ?? '',
@@ -292,16 +202,9 @@ export class PersistenceManager {
   }
 
   /**
-   * Materialise a database row for a location that only exists on disk.
-   *
-   * The subtle part is the room mapping. Onboarding writes character names into
-   * `_state.json` for a location that has no database room yet; creating the row
-   * allocates one, and that new `room_id` must be written back *with the
-   * existing agent list intact* or the characters standing in the starting
-   * location vanish from it the moment the world goes active.
-   *
-   * Returns `null` on any failure — a world with one unmaterialisable location
-   * must still open.
+   * Materialise a database row for a location that only exists on disk. The new
+   * `room_id` must be written back *with the existing agent list intact*, or the
+   * characters in the starting location vanish once the world goes active.
    */
   private createLocationFromFilesystem(locationName: string): Location | null {
     try {
@@ -322,8 +225,7 @@ export class PersistenceManager {
         positionY: locConfig.position[1],
         adjacentTo: null,
         isDiscovered: locConfig.isDiscovered,
-        // Carried over so a location the Location Designer has not enriched yet
-        // is still flagged as a draft on the database side.
+        // Keeps a not-yet-enriched location flagged as a draft on both sides.
         isDraft: locConfig.isDraft,
       })
       logger.info(`Created location '${locationName}' in database (id=${dbLocation.id})`)
@@ -348,15 +250,9 @@ export class PersistenceManager {
   }
 
   /**
-   * Add agents to a room by name, returning how many resolved.
-   *
-   * **The name lookup is not scoped to this world.** Python passes no
-   * `world_name` (`persistence_manager.py:246`), so a character whose name also
-   * exists in another world — or as a system agent — can resolve to that other
-   * row and be added to this world's room. The log line even claims the world
-   * it did not search. Reproduced as written: narrowing it would change which
-   * agent ids land in `room_agents` for any existing database where two worlds
-   * share a character name.
+   * Add agents to a room by name. The lookup is deliberately *not* scoped to
+   * this world: narrowing it would change which agent ids land in `room_agents`
+   * for existing databases where two worlds share a character name.
    */
   private addAgentsToRoom(roomId: number, agentNames: string[]): number {
     let added = 0
@@ -373,13 +269,8 @@ export class PersistenceManager {
     return added
   }
 
-  /**
-   * Write the world's stat definitions to `stats.yaml` and to the row.
-   *
-   * The same document goes to both sides, so the column holds `derived` as well
-   * as `stats` — which the clamping rules ignore, but the API returns. Python
-   * passes one dict to both writers (`persistence_manager.py:265-278`).
-   */
+  // The same document goes to both sides, so the column holds `derived` too —
+  // ignored by the clamping rules, returned by the API.
   saveStatDefinitions(statDefinitions: StatDefinitionsFile): void {
     this.players.saveStatDefinitions(this.worldName, statDefinitions)
     logger.info(`Saved stat definitions to filesystem for world '${this.worldName}'`)
@@ -389,16 +280,9 @@ export class PersistenceManager {
   }
 
   /**
-   * Move the world to a new phase on both sides.
-   *
-   * This is the *immediate* change. The deferred one — `pending_phase`, set by
-   * the `complete` tool so the Onboarding Manager's tool set does not change
-   * mid-turn — is `WorldService.applyPendingPhase` and does not touch the
-   * database at all.
-   *
-   * A world whose `world.yaml` will not load still gets its row updated, with a
-   * warning: the phase is what the API reports, and refusing to advance it
-   * would strand the player in onboarding over an unreadable file.
+   * Move the world to a new phase on both sides immediately; the deferred
+   * variant is `WorldService.applyPendingPhase`. An unreadable `world.yaml`
+   * still gets its row updated, or the player is stranded in onboarding.
    */
   updateWorldPhase(phase: WorldPhase): void {
     const config = this.worlds.loadWorldConfig(this.worldName)
@@ -416,36 +300,18 @@ export class PersistenceManager {
     logger.info(`Set phase='${phase}' in database`)
   }
 
-  /**
-   * Replace the database stat block from a `{name: value}` map.
-   *
-   * Distinct from {@link syncPlayerStateFromFilesystem} only in taking the stats
-   * directly instead of reading `player.yaml`; the seed generator already holds
-   * them in memory when it calls this.
-   */
+  /** Replace the database stat block from a `{name: value}` map. */
   syncStats(stats: Record<string, number>): void {
     initializePlayerStats(this.db, this.worldId, statDefinitionsFrom(stats), stats)
     logger.info(`Synced ${Object.keys(stats).length} stats to database`)
   }
 
-  // ==========================================================================
-  // Database → Filesystem
-  // ==========================================================================
-
   /**
-   * Write the live database state back over the world's files.
-   *
-   * The direction every other method here runs in reverse, for backups and
-   * portable exports. Note what it does *not* export: `effects`,
-   * `recent_actions`, `game_time`, `equipment` and `flags` are read from the
-   * existing `player.yaml` and written back untouched, because the database has
-   * no column for them — so exporting into a world whose `player.yaml` is
-   * missing silently resets the clock to day 1, 08:00. Python has the same hole
-   * (`persistence_manager.py:346-356`).
-   *
-   * Locations are exported for discovery status only. The description, position
-   * and adjacency on disk are authored content and are never overwritten from
-   * the database copy.
+   * Write the live database state back over the world's files, for backups and
+   * portable exports. `effects`, `recent_actions`, `game_time`, `equipment` and
+   * `flags` have no column and round-trip through the existing `player.yaml` —
+   * exporting into a world missing that file silently resets the clock to day 1.
+   * Locations export discovery status only.
    */
   exportStateToFilesystem(): void {
     const playerState = getPlayerState(this.db, this.worldId)
@@ -458,14 +324,10 @@ export class PersistenceManager {
 
     const fsState = this.players.loadPlayerState(this.worldName) ?? blankPlayerState()
 
-    // `turn_count` is nullable in the DDL; `player.yaml` has no such shape, so
-    // a NULL exports as 0 rather than as `turn_count: null`.
     fsState.turnCount = playerState.turnCount ?? 0
 
-    // Parsed with a bare `JSON.parse`, as Python parses with a bare
-    // `json.loads` (`persistence_manager.py:359,363`): a corrupt blob throws
-    // and aborts the export rather than being quietly exported as empty, which
-    // would overwrite a good `player.yaml` with nothing.
+    // Bare `JSON.parse` on purpose: a corrupt blob aborts the export rather
+    // than overwriting a good `player.yaml` with nothing.
     if (playerState.stats) {
       fsState.stats = JSON.parse(playerState.stats) as Record<string, number>
     }
@@ -483,14 +345,12 @@ export class PersistenceManager {
     for (const location of locations) {
       const locConfig = this.locations.loadLocation(this.worldName, location.name)
       if (!locConfig) continue
-      // Only written when discovery actually differs, so an export does not
-      // rewrite `_index.yaml` for every location on every backup.
+      // Only when discovery differs, so a backup does not rewrite every entry.
       if (locConfig.isDiscovered === Boolean(location.isDiscovered)) continue
 
       this.locations.updateLocation(this.worldName, location.name, {
         isDiscovered: location.isDiscovered,
-        // `null` means "leave alone" to the writer, which is what most rows
-        // carry — see the note on `LocationStorage.updateLocation`.
+        // `null` means "leave alone" to the writer.
         label: location.label,
       })
     }

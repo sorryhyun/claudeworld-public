@@ -1,23 +1,10 @@
 /**
- * Drift gate: builds a database from the committed migrations and diffs it
- * against `schema.ts`. Runs in CI.
- *
- * Builds a database from nothing but the committed migrations and asserts that
- * the result is the schema `src/db/schema.ts` describes. That is the guarantee
- * a schema dump alone cannot give: `verify-schema.ts` proves the mirror can
- * read a database that already exists, this proves a *fresh install* converges
- * on the same schema an upgraded one has.
- *
- * It fails when someone edits `schema.ts` and forgets `bun run migration-new`,
- * which is the one drift that is otherwise invisible until a fresh install
- * breaks in production.
- *
- *     bun src/scripts/check-migrations.ts
- *     bun src/scripts/check-migrations.ts --against /path/to/claudeworld.db
- *
- * With `--against`, the fresh schema is additionally compared to a real
- * Python-created database — the cross-backend half of the contract. That run
- * needs a database to hand, so it is a local check rather than a CI one.
+ * Drift gate, run in CI: builds a database from nothing but the committed
+ * migrations and asserts the result matches `src/db/schema.ts`. It catches an
+ * edit to `schema.ts` without `bun run migration-new` — the one drift that is
+ * otherwise invisible until a fresh install breaks in production.
+ * `--against <db>` additionally diffs against a real database, which makes it
+ * a local check rather than a CI one.
  */
 
 import { Database } from 'bun:sqlite'
@@ -75,8 +62,7 @@ try {
 
   if (referenceDb) {
     const reference = new Database(referenceDb, { readonly: true, create: false, strict: true })
-    // Lenient: the reference was written by SQLAlchemy, which spells the same
-    // types differently and has no way to be made to spell them the same.
+    // Lenient: an existing database may spell the same types differently.
     failures += report(
       `migrations match the live schema of ${referenceDb}`,
       diffSchemas(describeLiveSchema(reference), describeLiveSchema(fresh), {

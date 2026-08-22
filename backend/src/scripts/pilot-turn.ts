@@ -1,10 +1,7 @@
 /**
- * Phase 0 exit criteria.
- *
- * Drives one complete gameplay turn — NPC reactions, then the Action Manager
- * interpreting the action and narrating — against a seeded SQLite database, with
- * no HTTP server anywhere. Passing means the SDK layer, the tool layer, the tape
- * and the persistence layer all work together.
+ * Drives three complete gameplay turns against a seeded SQLite database, with no
+ * HTTP server anywhere. Passing means the SDK, tool, tape and persistence layers
+ * all work together.
  *
  * Prerequisite: bun src/scripts/seed-pilot.ts <scratch> <source-db>
  * Usage:        bun src/scripts/pilot-turn.ts <scratch>/pilot-manifest.json
@@ -31,7 +28,6 @@ interface Manifest {
   root: string
   dbPath: string
   worldName: string
-  /** Absent in manifests written before the owner was published; see below. */
   ownerId?: string
   roomId: number
   npcs: Array<{ name: string; id: number }>
@@ -52,9 +48,8 @@ const PLAYER_ACTION =
   'I shake the rain off my coat and ask whether anyone here has seen the Fennick caravan.'
 
 const db = openDb({ path: manifest.dbPath })
-// `ownerId` is required now that `getWorldByName` no longer scans across owners.
-// The fallback keeps manifests seeded before that change usable — `seed-pilot`
-// has always stamped every row `admin` (seed-pilot.ts:112).
+// The fallback keeps older manifests usable — `seed-pilot` stamps every row
+// `admin`, and `getWorldByName` no longer scans across owners.
 const world = getWorldByName(db, manifest.worldName, manifest.ownerId ?? 'admin')
 if (!world) {
   console.error(`World "${manifest.worldName}" is missing from ${manifest.dbPath}`)
@@ -70,9 +65,8 @@ const services = {
   rooms: new RoomMappingService(worldsDir),
 }
 
-// The player's action is persisted before any agent runs. NPCs are not handed it
-// directly — they read it back out of the room, which is what makes their view
-// of the scene the same as any other observer's.
+// Persisted before any agent runs: NPCs read the action back out of the room
+// rather than being handed it, so their view matches any other observer's.
 const turn = incrementTurn(db, world.id)
 addActionToHistory(db, world.id, { turn, action: PLAYER_ACTION, result: '' })
 createMessage(db, manifest.roomId, {
@@ -85,16 +79,14 @@ createMessage(db, manifest.roomId, {
 let narrationDeltaChars = 0
 let narrationProduced = false
 
-// The tools are served over the stateless MCP endpoint now rather than built
-// in process, so even a driver with no HTTP application needs one. It binds
-// loopback on an ephemeral port; `mcp.stop()` at the end closes it.
+// Tools are served over the stateless MCP endpoint, so even a driver with no
+// HTTP app needs one; `mcp.stop()` at the end closes it.
 //
 // `worlds` + `persistence` are here for turn three: `buildToolSets` gates
 // `persist_location_design` on `ServerDeps.worlds`, and without it the
-// `subagents` namespace is empty — which now also means `location_designer` is
-// dropped from `Options.agents` rather than dispatched with a tool nothing
-// answers. The factory has to carry `worldsDir`, or the design lands next to
-// the developer's own worlds instead of the seeded scratch root.
+// `subagents` namespace is empty and `location_designer` is dropped from
+// `Options.agents`. The factory must carry `worldsDir`, or the design lands
+// next to the developer's own worlds instead of the seeded scratch root.
 const serverDeps: ServerDeps = {
   players: services.players,
   rooms: services.rooms,
@@ -116,9 +108,8 @@ const perAgent = new Map<string, { content: number; thinking: number }>()
 console.log(`\n> ${PLAYER_ACTION}\n`)
 const startedAt = Date.now()
 
-// The real logging sinks, so the pilot exercises them too. Both are no-ops
-// unless PERF_LOG / debug.yaml turn them on, which is why they can sit in the
-// hot path unconditionally.
+// The real logging sinks, so the pilot exercises them too; no-ops unless
+// PERF_LOG / debug.yaml turn them on.
 const telemetry = createTurnTelemetry({ roomId: manifest.roomId })
 
 const onEvent = (agent: { name: string }, event: TurnEvent): void => {
@@ -142,8 +133,8 @@ const onEvent = (agent: { name: string }, event: TurnEvent): void => {
   }
 }
 
-// One deps object for every turn: turn two used to be handed a copy without
-// `onTelemetry`, so tool and sub-agent telemetry silently stopped after turn one.
+// One deps object for every turn. A copy missing `onTelemetry` silently stops
+// tool and sub-agent telemetry after turn one.
 const turnDeps = {
   db,
   pool,
@@ -170,9 +161,8 @@ const result = await runGameplayTurn(turnDeps, {
 
 const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1)
 
-// --- Verify against the database, not the return value ---------------------
-// A hidden turn reports responses it never persisted, so the only honest check
-// is what actually landed in `messages`.
+// Verify against the database, not the return value: a hidden turn reports
+// responses it never persisted.
 
 const narration = db
   .select()
@@ -233,9 +223,8 @@ check(
   'a character called recall to read its long-term memory',
 )
 
-// --- Turn two: does the pool actually reuse the warm sessions? -------------
-// This is the whole reason the pool exists, and the one property a single turn
-// cannot demonstrate. Session ids must be unchanged and no session reopened.
+// Turn two: does the pool reuse the warm sessions? The one property a single
+// turn cannot demonstrate. Session ids must be unchanged and no session reopened.
 
 const sessionsBefore = new Map(sessions.map((s) => [s.agentId, s.sessionId]))
 const poolKeysBefore = pool.keys.slice().sort()
@@ -286,18 +275,14 @@ check(
   'second turn persisted its own narration',
 )
 
-// --- Turn three: does a Task sub-agent reach the HTTP MCP endpoint? --------
-// This is the gate for `Options.agents` (§1.1 of docs/sdk-modernization-plan.md).
-// `bun run spike` proves the dispatch itself, but it serves its `subagents`
-// namespace in process; production serves it over the stateless endpoint in
-// `sdk/mcp/`, and the sub-agent's `tools/call` arrives there while the parent
-// turn is still open. Only a real turn shows that end of it.
+// Turn three: does a sub-agent reach the HTTP MCP endpoint? `bun run spike`
+// proves the dispatch, but serves its `subagents` namespace in process;
+// production serves it over the stateless endpoint, and the sub-agent's
+// `tools/call` arrives there while the parent turn is still open.
 //
-// The action names the sub-agent and the location slug on purpose. A pilot that
-// depends on the model *choosing* to design a location is a coin flip, and the
-// slug has to be one no earlier turn could plausibly have invented — the Action
-// Manager holds the same persist tool and does sometimes create a place the
-// conversation named. What is under test is the round-trip, not the judgement.
+// The action names the sub-agent and the slug on purpose: depending on the model
+// *choosing* to design a location is a coin flip, and the slug must be one no
+// earlier turn could have invented. The round-trip is under test, not judgement.
 const DESIGNED_LOCATION = 'sunken_ford'
 const THIRD_ACTION =
   'I leave the mill and follow the water south, looking for a crossing. ' +
@@ -315,8 +300,8 @@ const locationNames = (): string[] =>
 
 const locationsBefore = locationNames()
 
-// Scoped to this turn: both sets have been accumulating since turn one, and the
-// checks below are about what turn three did.
+// Both sets have been accumulating since turn one; the checks below are about
+// turn three only.
 subagentsDispatched.clear()
 toolsUsed.clear()
 
@@ -353,8 +338,6 @@ check(
   !locationsBefore.includes(DESIGNED_LOCATION) && locationsAfter.includes(DESIGNED_LOCATION),
   `the design landed in the database (${locationsBefore.length} → ${locationsAfter.length}: ${locationsAfter.join(', ')})`,
 )
-
-// --- Show the turn ---------------------------------------------------------
 
 console.log('\n--- NPC reactions (hidden from the player) ---')
 for (const reaction of result.reactions) {

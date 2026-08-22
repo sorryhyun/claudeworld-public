@@ -1,16 +1,7 @@
 /**
- * Adapter from a turn's telemetry callbacks to the logging sinks.
- *
- * Phase 0 deliberately gave `runGameplayTurn` two callbacks — `onEvent` for the
- * turn's own stream and `onTelemetry` for hook events — instead of having it
- * log directly. This is the piece that fills them in: the SDK layer still knows
- * nothing about `latency.log` or `debug.txt`, and a caller that wants neither
- * (the pilot script, a test) simply does not build one.
- *
- * That split is what the Python code lacks. `@track_perf` decorators and
- * `write_debug_log` calls are scattered through `sdk/` and `orchestration/`
- * there, so the SDK layer cannot be exercised without the logging config being
- * right, and turning instrumentation off means the decorators still run.
+ * Adapter from a turn's telemetry callbacks to the logging sinks. They exist so
+ * the SDK layer knows nothing about `latency.log` or `debug.txt`; a caller that
+ * wants neither (the pilot, a test) simply does not build one.
  */
 
 import type { HookTelemetry } from '../../sdk/agent/hooks'
@@ -34,12 +25,7 @@ export interface TurnTelemetry {
   interaction: (action: string) => (agentCount: number) => void
 }
 
-/**
- * Wire a turn's callbacks to the perf log and the agent debug log.
- *
- * Timing is measured from `stream_start` to `stream_end` per agent, which is
- * the same span Python's `@track_perf("sdk_response")` covers.
- */
+// Timing is measured per agent, from `stream_start` to `stream_end`.
 export function createTurnTelemetry({
   roomId,
   perf = getPerfLogger(),

@@ -32,61 +32,14 @@ import type {
 import type { SdkTool, ToolContext } from './context'
 
 /**
- * Decides which tools one agent gets for one turn.
+ * Decides which tools one agent gets for one turn. Both `orchestration/turn.ts`
+ * (the allow-list) and `sdk/mcp/endpoint.ts` (`tools/list`, per request) derive
+ * from this one function, so the two cannot disagree about what exists.
  *
- * Port of `sdk/handlers/servers.py` + `sdk/client/mcp_registry.py`. What this
- * file no longer does is *construct* MCP servers. The tools are served over the
- * stateless 2026-07-28 HTTP endpoint in `sdk/mcp/`, where the server for a
- * namespace is built per request from whatever binding is current — so the unit
- * this file produces is a **tool set**, and both consumers derive from the same
- * one:
- *
- * - `orchestration/turn.ts` maps it to qualified names for the SDK's `tools` /
- *   `allowedTools`, and to one `{ type: 'http' }` entry per non-empty server.
- * - `sdk/mcp/endpoint.ts` calls it again, per request, and registers the set
- *   belonging to the one namespace named in the URL.
- *
- * Calling the same function on both sides is the point. The allow-list and the
- * server's own `tools/list` cannot disagree about what exists, which is a class
- * of bug Python had — it registered short names with the SDK and stored
- * qualified ones in the definitions, and left the two to be kept in sync by
- * hand.
- *
- * ## Why this stopped being per-turn state
- *
- * The old shape built one in-process `createSdkMcpServer` per turn and handed
- * it to `query()`. `Options` are baked in at `query()` time and `SessionPool`
- * reuses a warm session whenever the fingerprint matches — and the fingerprint
- * hashed only the *names* of the servers. So every turn after the first on a
- * warm session had its freshly built servers silently discarded, and the CLI
- * went on calling turn 1's closures: `narration` filed turn 1's NPC reactions
- * against turn 40's message. Resolving the context per request is what makes a
- * warm session and a current context compatible.
- *
- * ## Roles and servers
- *
- * | role | servers built |
- * |---|---|
- * | `character` | `guidelines`, `action` |
- * | `action_manager` | `guidelines`, `action_manager`, `subagents` |
- * | `onboarding` | `guidelines`, `onboarding`, `subagents` |
- * | `subagent` | `guidelines`, `subagents` |
- * | `character_design` | `guidelines`, `character_design` |
- *
- * `guidelines` is unconditional — Python's `mcp_registry.py` builds it outside
- * the enabled-groups computation for every agent, including system ones.
- * `action` is denied to the Action Manager and the Onboarding Manager for the
- * reason Python discards the group for system agents: an agent that narrates
- * the scene has no `recent_events.md` of its own to write to.
- *
- * ## Optional dependencies are a gate, not a convenience
- *
- * Several tools need services that have no TypeScript port yet (see
- * `ports.ts`). Where a dependency is missing the tools that need it are simply
- * **not offered** — the same rule `narrative-tools.ts` follows for missing
- * context, and the same one `mcp_registry.py` follows when `db`/`world_id`/
- * `world_name` are absent. A tool the model can call and get nothing from is
- * worse than a tool it never sees.
+ * Tool sets must not become per-turn state: `Options` are baked in at `query()`
+ * time and a warm session's fingerprint hashes only server *names*, so servers
+ * built per turn are discarded and the CLI keeps calling turn 1's closures.
+ * Where a dependency is missing, the tools needing it are **not offered**.
  */
 
 export const SERVER_NAMES = {
@@ -102,31 +55,11 @@ export type ServerName = (typeof SERVER_NAMES)[keyof typeof SERVER_NAMES]
 
 const ALL_SERVER_NAMES: readonly ServerName[] = Object.values(SERVER_NAMES)
 
-/** Whether a path segment names one of this backend's MCP namespaces. */
 export function isServerName(value: string): value is ServerName {
   return (ALL_SERVER_NAMES as readonly string[]).includes(value)
 }
 
-/**
- * Usage guidance for a whole namespace, served on `server/discover`.
- *
- * Claude Code collects the `instructions` of every connected MCP server into a
- * single "# MCP Server Instructions" block in the model's context, once per
- * session rather than once per tool. That makes it the right home for the rules
- * that span a namespace — call ordering, which tool to reach for first, what
- * *not* to invent — which until now had to be repeated inside individual tool
- * descriptions or left unsaid.
- *
- * Two constraints on what belongs here. It is **not** per-agent: one string
- * serves every character bound to the namespace, so anything that varies by
- * agent (a character's memory subtitles, a world's history index) stays in the
- * tool description, which is built per turn. And it is not a place to restate a
- * description — the model already has those; this is the part that only makes
- * sense across several tools at once.
- *
- * `character_design` is absent deliberately: its two tools are each a complete
- * instruction on their own and it has no ordering to describe.
- */
+/** Served once per session. **Not** per-agent — that goes in a description. */
 export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> = {
   [SERVER_NAMES.action]:
     'These tools belong to the character you are playing, not to the narrator. ' +
@@ -165,12 +98,6 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
     'overwritten, so a retry cannot repair a partial write.',
 }
 
-/**
- * Which agent this turn is for.
- *
- * `'action_manager' | 'character'` were Phase 0's two; the other three widen
- * the enum rather than replacing it, so `turn.ts` keeps compiling unchanged.
- */
 export type ServerRole =
   | 'action_manager'
   | 'character'
@@ -178,7 +105,6 @@ export type ServerRole =
   | 'subagent'
   | 'character_design'
 
-/** Tool sets keyed by the namespace that prefixes their names. */
 export type ToolSets = Partial<Record<ServerName, SdkTool[]>>
 
 export interface ServerDeps {
@@ -189,7 +115,7 @@ export interface ServerDeps {
   worlds?: WorldService
   /** Item templates. Gates `list_world_item`, `change_stat` and `persist_item`. */
   items?: ItemService
-  /** `recent_events.md` writes. Defaults to a service on the settings project root. */
+  /** `recent_events.md` writes. */
   agentConfigs?: AgentConfigService
   /** `_initial.json`. Gates nothing on its own; `complete` needs it. */
   reset?: WorldResetService
@@ -197,17 +123,9 @@ export interface ServerDeps {
   agentFiles?: AgentFilesystemService
   /** Mirrors an agent folder into an `agents` row. */
   agentFactory?: AgentFactory
-  /**
-   * Binds a {@link PlayerFacade} to one world — the filesystem-first stat,
-   * inventory and clock mutations behind `change_stat` and `advance_time`.
-   * Defaults to the real facade; tests pass their own.
-   */
+  /** Binds a {@link PlayerFacade} to one world. Tests pass their own. */
   mutations?: PlayerMutationsFactory
-  /**
-   * Binds a {@link PersistenceManager} to one world. Defaults to constructing
-   * one on the settings `worlds/` root, which is what production wants; tests
-   * pass their own so nothing touches the repository's `worlds/`.
-   */
+  /** Binds a {@link PersistenceManager} to one world. Tests pass their own. */
   persistence?: LocationPersistenceFactory
   /** Room status indicators and the two orchestrator side effects `travel` fires. */
   status?: TurnStatusPort
@@ -218,29 +136,14 @@ export interface ServerDeps {
 
 export interface BuildServersOptions {
   role: ServerRole
-  /**
-   * Absolute path to the agent's config directory.
-   *
-   * Kept as the "does this character have a folder on disk" gate it was in
-   * Phase 0. The `memorize` write itself now goes through
-   * `AgentConfigService`, which resolves `ctx.configFile` — the *relative*
-   * path stored in the `agents.config_file` column — against the project root.
-   */
+  /** The "does this character have a folder on disk" gate. */
   configDir?: string
 }
 
 /**
- * One turn's worth of tool inputs, resolved once and reused by every request
- * that turn produces.
- *
- * The three service handles are on the binding rather than resolved inside
- * {@link buildToolSets} for one reason, and it is a correctness one:
- * `mutations` must be **one** `PlayerFacade` for the whole turn. A
- * `change_stat` and a `persist_item` in the same turn each holding their own
- * would each hold their own cached read of `player.yaml`, and the second write
- * would be made against a stale one. Building it per HTTP request would do
- * exactly that, so it is built here — once, when the turn registers — and
- * carried across every call the turn makes.
+ * One turn's tool inputs, resolved once and reused by every request that turn
+ * produces. `mutations` must be **one** `PlayerFacade` per turn: two would each
+ * cache `player.yaml` and the second write would be stale.
  */
 export interface TurnBinding {
   ctx: ToolContext
@@ -252,10 +155,6 @@ export interface TurnBinding {
   mutations?: PlayerMutationsPort
 }
 
-/**
- * Resolve a turn's shared handles. Call once per turn, then hand the result to
- * {@link buildToolSets} as many times as there are tool calls.
- */
 export function createTurnBinding(
   ctx: ToolContext,
   deps: ServerDeps,
@@ -285,11 +184,8 @@ export function createTurnBinding(
   }
 }
 
-/**
- * The `subagents` server: the callbacks a Task-tool sub-agent reaches back
- * into. Built for the Action Manager, the Onboarding Manager and sub-agents
- * alike — Python's `"subagent" in enabled_groups` covers all three.
- */
+// Callbacks a dispatched sub-agent reaches back into. Built for the Action
+// Manager, the Onboarding Manager and sub-agents alike.
 function subagentTools(binding: TurnBinding, deps: ServerDeps): SdkTool[] {
   const { ctx, persistence, mutations } = binding
   const tools: SdkTool[] = []
@@ -332,13 +228,7 @@ function subagentTools(binding: TurnBinding, deps: ServerDeps): SdkTool[] {
   return tools
 }
 
-/**
- * Every tool this binding's agent may call, grouped by namespace.
- *
- * Deterministic: called twice with the same binding it returns the same names,
- * which is what lets the allow-list `turn.ts` computes and the `tools/list` the
- * endpoint answers stay identical without either one being cached.
- */
+/** Must stay deterministic: the allow-list and `tools/list` both derive from it. */
 export function buildToolSets(binding: TurnBinding, deps: ServerDeps): ToolSets {
   const { ctx } = binding
   const sets: ToolSets = {}
@@ -468,40 +358,16 @@ export function qualifiedToolNames(sets: ToolSets): string[] {
   )
 }
 
-/**
- * Stamp `readOnlyHint` on the tools whose declaration says they only read.
- *
- * One pass over every set rather than an argument at each of the twenty-odd
- * `tool()` calls, for the same reason {@link applyDisabledTools} is one pass:
- * the fact belongs to the declaration in `sdk/tools/`, and a per-call-site
- * spelling is a fact that can be forgotten at the twenty-first site.
- *
- * Only the read-only case is stamped. `destructiveHint` defaults to true for an
- * unannotated tool, which is the honest default for everything here — these
- * tools delete characters and rewrite player state — so saying so adds nothing
- * the client does not already assume.
- */
+// Stamp `readOnlyHint` from the declaration in `sdk/tools/`, in one pass rather
+// than at each `tool()` call site. `destructiveHint` already defaults to true.
 function annotate(tool: SdkTool): SdkTool {
   if (!isReadOnlyTool(tool.name)) return tool
   return { ...tool, annotations: { ...tool.annotations, readOnlyHint: true } }
 }
 
-/**
- * Drop the tools a group config has switched off for this agent.
- *
- * Port of the `disabled_tools` filter at the tail of
- * `mcp_registry.py::_build_allowed_tools`. It is a *separate* mechanism from
- * the per-tool `enabled` flag {@link resolveTool} honours: that one is a
- * property of the declaration, this one is a property of the agent, which is
- * how `group_gameplay` takes `memorize`, `recall` and `skip` away from every
- * gameplay agent without disabling them for characters.
- *
- * Python filters only the allow-list, so its servers still *offer* the tool and
- * the CLI merely refuses to let the model call it. Filtering the tool set
- * itself removes it from `tools/list` outright — a stricter outcome, and the
- * one the setting is actually asking for. Recorded because the two backends
- * will report different tool counts.
- */
+// Drop the tools a group config has switched off for this agent — a property
+// of the agent, unlike the per-tool `enabled` flag. Filtering the set removes
+// them from `tools/list`, not just from the allow-list.
 function applyDisabledTools(tools: SdkTool[], ctx: ToolContext): SdkTool[] {
   if (!ctx.groupName) return tools
   const lookupName = ctx.groupName.startsWith('group_') ? ctx.groupName.slice(6) : ctx.groupName

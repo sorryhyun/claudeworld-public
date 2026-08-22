@@ -1,15 +1,10 @@
 /**
- * Chat room CRUD — port of `backend/routers/rooms.py`.
- *
- * Mounted at the root; every path here is written out in full. The collection
- * routes are registered on both `/rooms` and `/rooms/` for the reason spelled
- * out in `routes/game/index.ts`: Python's canonical path carries the trailing
- * slash and Starlette redirects onto it, while Hono is strict and does not.
- *
- * The 404 strings differ from handler to handler and are Python's verbatim —
- * `ensure_room_access` raises `RoomNotFoundError` ("Room with id N not found")
- * while the handlers' own guards say "Room not found". The frontend renders
- * `detail`, so the inconsistency is observable and is reproduced, not tidied.
+ * Chat room CRUD. Mounted at the root, so every path is written out in full and
+ * the collection routes are registered on both `/rooms` and `/rooms/` — Hono is
+ * strict about the trailing slash where the API contract is not. The 404 strings
+ * differ per handler on purpose: `ensureRoomAccessFor` says "Room with id N not
+ * found" where the handlers' guards say "Room not found", and the frontend
+ * renders `detail`.
  */
 
 import { Hono, type Context } from 'hono'
@@ -31,17 +26,13 @@ import { ensureRoomAccessFor } from './shared'
 
 const logger = getLogger('RoomRouter')
 
-/** Python's guard string, shared by update, pause and resume. */
+/** The guard string shared by update, pause and resume. */
 function roomNotFound(): HttpError {
   return new HttpError(404, 'Room not found')
 }
 
 export function createRoomRoutes(state: AppState): Hono<AppEnv> {
   const routes = new Hono<AppEnv>()
-
-  // ---------------------------------------------------------------------------
-  // Collection
-  // ---------------------------------------------------------------------------
 
   function listRooms(c: Context<AppEnv>): Response {
     return c.json(getRooms(state.db, identityOf(c)).map(toRoomSummary))
@@ -52,11 +43,8 @@ export function createRoomRoutes(state: AppState): Hono<AppEnv> {
     const identity = identityOf(c)
     const ownerId = identity.role === 'admin' ? 'admin' : identity.userId
 
-    // Checked before the insert rather than caught after it, and this is
-    // deliberate: a chat room has `world_id = NULL`, and the unique index that
-    // would catch a duplicate is over (owner_id, name, world_id) — where SQL's
-    // NULL != NULL means two chat rooms with the same name never collide.
-    // Python does the same pre-check for exactly this reason (`rooms.py:44`).
+    // Pre-checked, not caught: a chat room has `world_id = NULL`, and the unique
+    // index over (owner_id, name, world_id) never fires for two NULLs.
     for (const existing of getRooms(state.db, identity)) {
       if (existing.name === body.name) throw new RoomAlreadyExistsError(body.name)
     }
@@ -69,8 +57,8 @@ export function createRoomRoutes(state: AppState): Hono<AppEnv> {
       )
       return c.json(toRoom(created))
     } catch (error) {
-      // The pre-check races: two requests can both pass it. The index still
-      // holds, so a constraint error becomes the same 409 rather than a 500.
+      // The pre-check races, but the index still holds — so a constraint error
+      // becomes the same 409 rather than a 500.
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes('UNIQUE constraint failed') && message.includes('rooms.')) {
         throw new RoomAlreadyExistsError(body.name)
@@ -83,10 +71,6 @@ export function createRoomRoutes(state: AppState): Hono<AppEnv> {
   routes.get('/rooms/', listRooms)
   routes.post('/rooms', createRoom)
   routes.post('/rooms/', createRoom)
-
-  // ---------------------------------------------------------------------------
-  // Single room
-  // ---------------------------------------------------------------------------
 
   routes.get('/rooms/:room_id', (c) =>
     c.json(toRoom(ensureRoomAccessFor(c, state.db, intPathParam(c, 'room_id')))),
@@ -107,17 +91,9 @@ export function createRoomRoutes(state: AppState): Hono<AppEnv> {
     return c.json(toRoom(updated))
   })
 
-  // ---------------------------------------------------------------------------
-  // Pause / resume
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Pausing stops the room *and* the turn already running in it.
-   *
-   * The flag alone would only prevent the next round; agents mid-response would
-   * keep generating, and their replies would land in a room the user believes
-   * is stopped. `interruptRoom` is what makes the button mean what it says.
-   */
+  // Pausing stops the room *and* the turn running in it: the flag alone only
+  // prevents the next round, leaving mid-response agents to reply into a room
+  // the user believes is stopped.
   routes.post('/rooms/:room_id/pause', async (c) => {
     const roomId = intPathParam(c, 'room_id')
     ensureRoomAccessFor(c, state.db, roomId)
@@ -141,13 +117,8 @@ export function createRoomRoutes(state: AppState): Hono<AppEnv> {
     return c.json(toRoom(room))
   })
 
-  // ---------------------------------------------------------------------------
-  // Destructive, admin only
-  // ---------------------------------------------------------------------------
-
-  // No `ensureRoomAccess` on either: `requireAdmin` has already run, and
-  // Python's handlers take no identity at all — they go straight to the
-  // service, which is what also tears down the room's warm agent sessions.
+  // No `ensureRoomAccessFor` on either: `requireAdmin` has already run, and the
+  // service call is what tears down the room's warm agent sessions.
   routes.delete('/rooms/:room_id', requireAdmin, async (c) => {
     const roomId = intPathParam(c, 'room_id')
     const deleted = await state.agents.deleteRoomWithCleanup(state.db, roomId)
@@ -158,8 +129,7 @@ export function createRoomRoutes(state: AppState): Hono<AppEnv> {
   routes.delete('/rooms/:room_id/messages', requireAdmin, async (c) => {
     const roomId = intPathParam(c, 'room_id')
     const cleared = await state.agents.clearRoomMessagesWithCleanup(state.db, roomId)
-    // Python conflates the two cases here, and says so in its `detail`: an
-    // empty room and a missing one answer identically.
+    // An empty room and a missing one answer identically, as the `detail` says.
     if (!cleared) throw new HttpError(404, 'Room not found or no messages to delete')
     return c.json({ message: 'All messages cleared successfully' })
   })

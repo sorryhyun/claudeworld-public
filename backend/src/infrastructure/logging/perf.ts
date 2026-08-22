@@ -1,16 +1,7 @@
 /**
- * Latency instrumentation for gameplay bottleneck analysis.
- *
- * Ported from `backend/infrastructure/logging/perf_logger.py`. Enabled with
+ * Latency instrumentation for gameplay bottleneck analysis. Enabled with
  * `PERF_LOG=true` (or `make dev-perf`); output is appended to `latency.log` in
- * the project root, in a format identical to the Python one so existing eyeball
- * habits and any `grep`/`awk` over that file keep working.
- *
- * What is deliberately *not* ported: `@track_perf` / `@track_interaction`. Those
- * decorators exist to recover `room_id` and `agent_name` out of a wrapped
- * function's bound arguments via `inspect.signature`, which has no TypeScript
- * equivalent and no need for one — every call site here already holds the
- * context and can pass it to {@link PerfLogger.track} directly.
+ * the project root, in a stable line format that `grep`/`awk` can rely on.
  */
 
 import { appendFileSync } from 'node:fs'
@@ -35,7 +26,7 @@ export interface TimingEntry extends TimingContext {
   endTime: Date
 }
 
-/** `%Y-%m-%d %H:%M:%S.%f`[:-3] — millisecond precision, local time. */
+// Millisecond precision, local time.
 function formatTimestamp(when: Date): string {
   const pad = (n: number, width = 2) => String(n).padStart(width, '0')
   return (
@@ -45,14 +36,7 @@ function formatTimestamp(when: Date): string {
   )
 }
 
-/**
- * Render one entry exactly as `TimingEntry.to_log_line()` does.
- *
- * The falsy-`room_id` check is copied rather than corrected: Python writes
- * `if self.room_id`, so room 0 is omitted from the line. Room ids are
- * autoincrement primary keys starting at 1, so this never fires in practice,
- * and matching the format matters more than fixing a branch that cannot run.
- */
+/** Render one entry as a `latency.log` line. */
 export function formatLogLine(entry: TimingEntry): string {
   const timestamp = formatTimestamp(entry.startTime)
   const agent = entry.agentName ? ` [${entry.agentName}]` : ''
@@ -95,15 +79,7 @@ export class PerfLogger {
     if (this.enabled) this.writeSessionHeader()
   }
 
-  /**
-   * Append raw text to `latency.log`.
-   *
-   * Python guards every write with an `asyncio.Lock` because its writes are
-   * `await`ed and two coroutines could interleave between open and write. A
-   * synchronous append cannot be interleaved by anything on this runtime, so
-   * the lock has no work to do and is not reproduced — the same reasoning that
-   * removed `serialized_write` from the database layer.
-   */
+  // A synchronous append cannot be interleaved on this runtime, so no lock.
   private append(text: string): void {
     try {
       appendFileSync(this.logPath, text, 'utf-8')
@@ -125,12 +101,7 @@ export class PerfLogger {
     logger.info(`⏱️  ${line}`)
   }
 
-  /**
-   * Time `fn` and record it.
-   *
-   * Python exposes this as an `async with` block; a callback is the closest
-   * thing that still guarantees the timer stops on the throwing path.
-   */
+  /** Time `fn` and record it; the timer stops on the throwing path too. */
   async track<T>(phase: string, context: TimingContext, fn: () => Promise<T>): Promise<T> {
     if (!this.enabled) return fn()
 
@@ -240,11 +211,9 @@ export class PerfLogger {
 }
 
 /**
- * Whether `PERF_LOG` asks for instrumentation.
- *
- * Read from the process env, not from `settings.ts`, because Python reads it
- * the same way — `core/settings.py` never declares it — and the accepted values
- * (`true`/`1`/`yes`) differ from the `== "true"` that pydantic fields use.
+ * Whether `PERF_LOG` asks for instrumentation. Read straight from the process
+ * env rather than `settings.ts`, which does not declare it; the accepted values
+ * (`true`/`1`/`yes`) are wider than the settings layer's `== "true"`.
  */
 export function isPerfLoggingEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return ['true', '1', 'yes'].includes((env.PERF_LOG ?? '').trim().toLowerCase())

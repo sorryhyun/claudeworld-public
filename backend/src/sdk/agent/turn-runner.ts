@@ -5,17 +5,9 @@ import { IdleTimeoutError, SessionDeadError, type AgentSession } from '../client
 import type { SessionPool } from '../client/session-pool'
 import { buildAgentOptions, optionsFingerprint, type AgentOptionsInput } from './options-builder'
 
-/**
- * Runs one agent turn and reports it as a stream of events.
- *
- * Port of `AgentManager.generate_sdk_response`. The shape is the same — a
- * generator emitting `stream_start`, deltas, then exactly one `stream_end` — but
- * the state that Python kept on the manager (`active_clients`, the accumulators,
- * the `anthropic_calls` list closed over by a hook) lives on the turn here.
- * Python's registry leaked entries whenever a caller omitted `task_id`, and its
- * accumulators were reachable from the next turn; scoping them to the turn makes
- * both classes of bug unrepresentable.
- */
+/** Runs one agent turn as a stream of events: `stream_start`, deltas, then
+ * exactly one `stream_end`. Every accumulator is scoped to the turn rather than to
+ * a long-lived manager, which keeps one turn's text out of the next. */
 
 export type TurnEvent =
   | { type: 'stream_start'; tempId: string }
@@ -47,13 +39,9 @@ export interface TurnRequest {
   /** Message content: a string, or Anthropic content blocks for image turns. */
   content: unknown
   options: AgentOptionsInput
-  /**
-   * Suppresses `content_delta` broadcast to clients.
-   *
-   * Hidden agents are the NPC reaction cell and the Action Manager: their prose
-   * is never shown to the player, only what their tools write. The events are
-   * still yielded to the orchestrator, which needs the text.
-   */
+  /** Suppresses `content_delta` broadcast to clients — the NPC reaction cell and
+   * the Action Manager, whose prose the player never sees. The events are still
+   * yielded to the orchestrator, which needs the text. */
   hidden?: boolean
   signal?: AbortSignal
   /** Sink for the anthropic-guideline hook's captures. */
@@ -82,9 +70,8 @@ export class TurnRunner {
     const memoryEntries: string[] = []
     const anthropicCalls = request.anthropicCalls ?? []
 
-    // Narration is extracted from the *partial* JSON of the narration tool call
-    // so the player sees prose while the model is still writing it. Non-null
-    // only between the tool's content_block_start and its content_block_stop.
+    // Extracted from the *partial* JSON of the narration tool call, so the player
+    // sees prose while the model is still writing it.
     let narrationExtractor: NarrationStreamExtractor | null = null
 
     let session: AgentSession | undefined
@@ -130,8 +117,7 @@ export class TurnRunner {
       yield {
         type: 'stream_end',
         tempId,
-        // A turn that called `skip` has decided not to speak; its accumulated
-        // text is scratch work, not a response.
+        // A turn that called `skip` chose not to speak; its text is scratch work.
         responseText: skipUsed ? null : responseText || null,
         thinkingText,
         narrationText,
@@ -145,9 +131,8 @@ export class TurnRunner {
       }
     } catch (error) {
       if (isInterrupt(error, request.signal)) {
-        // Interrupting is a normal thing for a player to do, so the session
-        // stays warm and whatever was written so far is kept — the caller
-        // persists it as a partial response.
+        // Interrupting is normal, so the session stays warm and whatever was
+        // written is kept — the caller persists it as a partial response.
         yield {
           type: 'stream_end',
           tempId,
@@ -165,8 +150,8 @@ export class TurnRunner {
         return
       }
 
-      // Any other failure leaves the CLI in an unknown state, so the session is
-      // discarded rather than reused; the next turn reopens with `resume`.
+      // Any other failure leaves the CLI in an unknown state: discard the session,
+      // and the next turn reopens with `resume`.
       await this.pool.evictKey({ roomId: request.roomId, agentId: request.agentId })
       yield {
         type: 'stream_end',
@@ -187,14 +172,9 @@ export class TurnRunner {
   }
 }
 
-/**
- * Did this turn end because someone stopped it?
- *
- * Python decided this by searching the error message for "interrupt" or
- * "cancelled", which is locale-dependent and breaks silently when the SDK
- * rewords an error. Here it is a typed question: an abort we requested, a
- * DOMException from `AbortSignal`, or the SDK's own AbortError.
- */
+// A typed question — an abort we requested, a `DOMException` from `AbortSignal`,
+// or the SDK's own AbortError — rather than a substring search of the error
+// message, which breaks silently when the SDK rewords one.
 function isInterrupt(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true
   if (error instanceof Error && error.name === 'AbortError') return true

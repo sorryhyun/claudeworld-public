@@ -1,14 +1,9 @@
 /**
- * A push-based async iterable used as the SDK's `prompt`.
- *
- * `query()` takes the prompt as an async iterable and drains it for the life of
- * the subprocess. A turn needs to push one message into that iterable and have
- * the parked generator wake up, which a generator over a fixed list cannot do —
- * hence a channel. Closing it ends the CLI's stdin and with it the session, so
- * `close()` is teardown, not end-of-turn.
- *
- * Adapted from yaar's `providers/claude/input-channel.ts`, which solves the
- * identical problem against the same SDK.
+ * A push-based async iterable used as the SDK's `prompt`. `query()` drains it for
+ * the life of the subprocess, and a turn pushes one message in and wakes the
+ * parked generator — which a generator over a fixed list cannot do. Closing it
+ * ends the CLI's stdin and with it the session, so `close()` is teardown, not
+ * end-of-turn.
  */
 export interface InputChannel {
   push(message: unknown): void

@@ -1,18 +1,9 @@
 /**
- * Password validation against the bcrypt hashes in `.env`.
- *
- * Ported from the password half of `backend/infrastructure/auth.py`.
- *
- * `Bun.password.verify` reads the `$2b$` prefix and dispatches to bcrypt, so
- * hashes produced by `make setup` (Python's `bcrypt.hashpw`) verify unchanged —
- * hard constraint 4 of the migration plan, pinned by a test against a known
- * hash rather than left to inspection.
- *
- * One deliberate divergence: Python's `get_api_key_hash_from_env()` calls
- * `sys.exit(1)` when `API_KEY_HASH` is unset, from inside a request handler.
- * Killing the server on a login attempt is the wrong place for that check, so
- * it moved to {@link assertAuthConfigured}, which startup calls once. The
- * request path refuses the login and logs the same remediation.
+ * Password validation against the bcrypt hashes in `.env`. `Bun.password.verify`
+ * reads the `$2b$` prefix and dispatches to bcrypt, so any implementation's
+ * hashes — including those already in a user's `.env` — verify unchanged; a test
+ * pins that. A missing `API_KEY_HASH` is fatal at startup
+ * ({@link assertAuthConfigured}), not on the request path, which only refuses.
  */
 
 import { getLogger } from '../infrastructure/logging/logger'
@@ -21,12 +12,8 @@ import type { UserRole } from './roles'
 
 const logger = getLogger('Auth')
 
-/**
- * Compare a plaintext password against a bcrypt hash.
- *
- * Never throws: a malformed hash in `.env` is a configuration error that should
- * deny the login and say so, not surface as a 500.
- */
+// Never throws: a malformed hash in `.env` should deny the login and say so,
+// not surface as a 500.
 async function verify(password: string, hash: string): Promise<boolean> {
   try {
     return await Bun.password.verify(password, hash)
@@ -49,10 +36,8 @@ export async function validateApiKey(
 }
 
 /**
- * Resolve a password to a role, or null when it matches neither.
- *
- * Admin is checked first and unconditionally; guest only when guest login is
- * enabled *and* a guest hash is configured.
+ * Resolve a password to a role, or null. Admin is checked first and
+ * unconditionally; guest only when guest login is enabled *and* a hash is set.
  */
 export async function validatePasswordWithRole(
   password: string,
@@ -79,10 +64,8 @@ function logApiKeyHashMissing(): void {
 }
 
 /**
- * Fail startup when authentication cannot possibly work.
- *
- * Both checks are fatal in Python too; doing them here means the process dies
- * at boot with an actionable message instead of at the first login attempt.
+ * Fail startup when authentication cannot possibly work, so the process dies at
+ * boot with an actionable message instead of at the first login attempt.
  */
 export function assertAuthConfigured(config: AuthConfig = resolveAuthConfig()): void {
   const problems: string[] = []

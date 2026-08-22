@@ -2,24 +2,14 @@ import { z } from 'zod'
 import { requiredText, type ToolDefinition } from './definitions'
 
 /**
- * Persist tools for the Task-tool sub-agents. Port of `sdk/tools/subagent.py`.
+ * Persist tools for the sub-agents dispatched by the `Agent` tool. A sub-agent
+ * has no database session and no filesystem service of its own, so the *parent*
+ * exposes an MCP server the child calls back into — the one capability with no
+ * `resume`-based workaround.
  *
- * These three are what makes the SDK's native `Task` sub-agent pattern work at
- * all: a sub-agent has no database session and no filesystem service of its
- * own, so the *parent* exposes an MCP server the child calls back into. That is
- * the one capability with no `resume`-based workaround, which is why Phase 0's
- * session spike tested it specifically.
- */
-
-// ============================================================================
-// Item component models
-// ============================================================================
-
-/**
- * The component schemas mirror `sdk/tools/subagent.py`'s nested Pydantic models
- * one for one. They exist so the *model* is told the shape of an affordance —
- * the runtime validation is secondary, since `item-validation.ts` re-checks
- * every reference against the world's catalogs before a template is written.
+ * The component schemas below exist mainly so the *model* is told the shape of
+ * an affordance; runtime validation is secondary, since `item-validation.ts`
+ * re-checks every reference against the world's catalogs before a write.
  */
 
 const statRequirement = z.object({
@@ -151,10 +141,6 @@ export const itemDefinitionSchema = z.object({
 
 export type ItemDefinitionInput = z.infer<typeof itemDefinitionSchema>
 
-// ============================================================================
-// Tool definitions
-// ============================================================================
-
 export const persistCharacterDesignTool = {
   name: 'persist_character_design',
   description: `Persist a character design to the game world.
@@ -190,9 +176,9 @@ Creates the location in filesystem and database.`,
     description: requiredText('Description').describe('Rich description'),
     position_x: z.number().int().default(0).describe('X coordinate on map'),
     position_y: z.number().int().default(0).describe('Y coordinate on map'),
-    // Python's validator wraps a bare string into a one-element list; the model
-    // writes `adjacent_to: "town_square"` often enough that rejecting it would
-    // cost a whole location design.
+    // A bare string is wrapped into a one-element list: the model writes
+    // `adjacent_to: "town_square"` often enough that rejecting it would cost a
+    // whole location design.
     adjacent_to: z
       .preprocess(
         (value) => (typeof value === 'string' ? [value] : value),
@@ -240,10 +226,7 @@ export const SUBAGENT_TOOLS = {
   persist_item: persistItemTool,
 } satisfies Record<string, ToolDefinition>
 
-/**
- * Which qualified tool each sub-agent type is expected to call back into.
- * Port of `handlers/onboarding_tools.py::SUBAGENT_TOOL_NAMES`.
- */
+/** Which qualified tool each sub-agent type calls back into. */
 export const SUBAGENT_TOOL_NAMES = {
   item_designer: 'mcp__subagents__persist_item',
   character_designer: 'mcp__subagents__persist_character_design',

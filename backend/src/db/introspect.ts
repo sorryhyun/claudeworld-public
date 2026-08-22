@@ -1,29 +1,19 @@
 /**
- * Schema introspection and diffing.
+ * Schema introspection and diffing — the machinery behind the drift gate. Two
+ * comparisons matter and they are not the same:
  *
- * This is the machinery behind the drift gate. Python gets it for free —
- * `alembic check` autogenerates a diff between `models.py` and a live database
- * — and Drizzle has no equivalent, so the comparison is written out here.
- *
- * Two comparisons matter and they are not the same:
- *
- * 1. **Migrations vs `src/db/schema.ts`.** Both are TypeScript-side artifacts,
- *    so the comparison can be exact. This is what fails when someone edits
- *    `schema.ts` and forgets to run `drizzle-kit generate`.
- * 2. **Migrations vs a real Python-created database.** SQLAlchemy writes
- *    `VARCHAR` and `BOOLEAN` where Drizzle writes `text` and `integer`, and
- *    Drizzle cannot be made to emit the former. Here the comparison has to be
- *    on SQLite's *affinity* rules plus a short, named list of equivalences.
+ * 1. **Migrations vs `src/db/schema.ts`**, both TypeScript-side, so the
+ *    comparison is exact. This fails when someone edits `schema.ts` and forgets
+ *    to run `drizzle-kit generate`.
+ * 2. **Migrations vs a database created by another ORM**, which spells columns
+ *    `VARCHAR`/`BOOLEAN` where Drizzle emits `text`/`integer`. That comparison
+ *    runs on SQLite *affinity* rules plus a short list of equivalences.
  */
 
 import type { Database } from 'bun:sqlite'
 import { getTableConfig, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 
 import * as schema from './schema'
-
-// ============================================================================
-// Descriptions
-// ============================================================================
 
 export interface ColumnDescription {
   name: string
@@ -39,11 +29,8 @@ export interface IndexDescription {
   name: string
   unique: boolean
   columns: string[]
-  /**
-   * True for a `sqlite_autoindex_*`: an index SQLite created implicitly for an
-   * inline `UNIQUE` constraint, whose name is an artefact of declaration order
-   * rather than anything anyone chose.
-   */
+  /** True for a `sqlite_autoindex_*`, whose name is an artefact of declaration
+   * order rather than anything anyone chose. */
   implicit: boolean
 }
 
@@ -55,17 +42,10 @@ export interface TableDescription {
 
 export type SchemaDescription = Map<string, TableDescription>
 
-// ============================================================================
-// SQLite type affinity
-// ============================================================================
-
 export type Affinity = 'INTEGER' | 'TEXT' | 'BLOB' | 'REAL' | 'NUMERIC'
 
-/**
- * SQLite's five affinity rules, applied in order, from §3.1 of the datatype
- * documentation. This is what makes `VARCHAR`, `text(9)` and `TEXT` compare
- * equal — SQLite itself does not distinguish them.
- */
+/** SQLite's five affinity rules in order (datatype docs §3.1) — what makes
+ * `VARCHAR`, `text(9)` and `TEXT` compare equal. */
 export function typeAffinity(declaredType: string): Affinity {
   const type = declaredType.toUpperCase()
   if (type.includes('INT')) return 'INTEGER'
@@ -76,16 +56,10 @@ export function typeAffinity(declaredType: string): Affinity {
 }
 
 /**
- * Type pairs that mean the same thing across the two ORMs but land in different
- * affinity classes.
- *
- * `BOOLEAN` is NUMERIC affinity and `INTEGER` is INTEGER affinity, so the rules
- * above call them different. They are not, for this data: both store the
- * integers 0 and 1 and read back as the integers 0 and 1. Drizzle has no way to
- * emit `BOOLEAN`, so this pair cannot be designed away — only written down.
- *
- * Nothing else belongs here. A new entry means a real difference is being
- * declared invisible, which is exactly what this gate exists to prevent.
+ * Type pairs that mean the same thing but land in different affinity classes:
+ * `BOOLEAN` (NUMERIC) and `INTEGER` both store and read back 0/1, and Drizzle
+ * cannot emit `BOOLEAN`. Nothing else belongs here — a new entry declares a real
+ * difference invisible, which is what this gate exists to prevent.
  */
 const CROSS_DIALECT_EQUIVALENTS: ReadonlyArray<readonly [Affinity, Affinity]> = [
   ['NUMERIC', 'INTEGER'],
@@ -113,10 +87,6 @@ function defaultsMatch(left: string | null, right: string | null): boolean {
   return normalize(left) === normalize(right)
 }
 
-// ============================================================================
-// Reading a live database
-// ============================================================================
-
 interface TableInfoRow {
   name: string
   type: string
@@ -135,20 +105,12 @@ interface IndexInfoRow {
 }
 
 /**
- * Describe every application table in a live database.
- *
- * `sqlite_autoindex_*` entries are kept but flagged implicit, with one
- * exception: the one backing the table's own primary key, which is not a
- * separate constraint and would otherwise read as an extra index on every table
- * with a composite or text primary key.
- *
- * They are kept rather than skipped because they carry real information —
- * SQLAlchemy declares `player_states.world_id` unique *inline* and gets an
- * autoindex where Drizzle emits a named `CREATE UNIQUE INDEX` for the same
- * constraint. Dropping them would leave that constraint unverified in one
- * direction; keeping them and matching implicit indexes on their columns
- * instead of their names (see {@link diffSchemas}) verifies it without
- * demanding a name SQLite chose.
+ * Describe every application table in a live database. `sqlite_autoindex_*`
+ * entries are kept but flagged implicit, except the one backing the table's own
+ * primary key — that would read as an extra index on every table with a
+ * composite or text key. The rest carry real information: an inline `UNIQUE`
+ * gets an autoindex where Drizzle emits a named `CREATE UNIQUE INDEX`, so
+ * {@link diffSchemas} matches implicit indexes on columns rather than names.
  */
 export function describeLiveSchema(sqlite: Database, skipTables: readonly string[] = []): SchemaDescription {
   const skip = new Set(['sqlite_sequence', '__drizzle_migrations', ...skipTables])
@@ -206,10 +168,6 @@ export function describeLiveSchema(sqlite: Database, skipTables: readonly string
   return description
 }
 
-// ============================================================================
-// Reading src/db/schema.ts
-// ============================================================================
-
 function isSqliteTable(value: unknown): value is SQLiteTable {
   // Drizzle brands its tables with a symbol; probing the config accessor is the
   // supported way to tell a table export from an enum or a relations object.
@@ -220,7 +178,6 @@ function isSqliteTable(value: unknown): value is SQLiteTable {
   }
 }
 
-/** Describe the schema as `src/db/schema.ts` declares it. */
 export function describeDeclaredSchema(): SchemaDescription {
   const description: SchemaDescription = new Map()
 
@@ -306,10 +263,6 @@ function renderDefault(value: unknown): string | null {
   return String(value)
 }
 
-// ============================================================================
-// Diffing
-// ============================================================================
-
 export type DiffSeverity = 'fatal' | 'cosmetic'
 
 export interface SchemaDiff {
@@ -318,25 +271,17 @@ export interface SchemaDiff {
 }
 
 export interface DiffOptions {
-  /**
-   * Accept the SQLAlchemy/Drizzle type spellings in
-   * {@link CROSS_DIALECT_EQUIVALENTS}. On when comparing against a
-   * Python-created database, off when comparing two Drizzle-created ones.
-   */
+  /** {@link CROSS_DIALECT_EQUIVALENTS}: on against a foreign database, off
+   * between two Drizzle-created ones. */
   allowCrossDialect?: boolean
-  /** Label for the `expected` side in messages. */
   expectedLabel?: string
-  /** Label for the `actual` side in messages. */
   actualLabel?: string
 }
 
 /**
- * Compare two schema descriptions.
- *
- * The fatal/cosmetic split mirrors `alembic_runner._FATAL_DIFF_KINDS`: a
- * missing table or column means the code will reference something that is not
- * there, and nothing else does. Everything else is reported so it cannot be
- * silently accumulated, but does not by itself fail a boot.
+ * Compare two schema descriptions. Only a missing table or column is `fatal` —
+ * that is code referencing something that is not there. Everything else is
+ * reported so it cannot silently accumulate, but does not fail a boot.
  */
 export function diffSchemas(
   expected: SchemaDescription,
@@ -402,9 +347,8 @@ export function diffSchemas(
       }
     }
 
-    // An inline `UNIQUE` on one side and a named unique index on the other are
-    // the same constraint. Pair those up on their columns first, so what is
-    // left can be matched strictly by name.
+    // An inline `UNIQUE` and a named unique index are the same constraint: pair
+    // those up on columns first, so what is left matches strictly by name.
     const unmatchedExpected = new Map(expectedTable.indexes)
     const unmatchedActual = new Map(actualTable.indexes)
     // Symmetric: either side may be the one that declared the constraint inline.

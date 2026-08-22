@@ -2,19 +2,12 @@ import { z } from 'zod'
 import { requiredText, requiredTextOfLength, type ToolDefinition } from './definitions'
 
 /**
- * World initialisation. Port of `sdk/tools/onboarding.py`.
- *
- * The order these are called in is the whole design, and the descriptions are
- * what enforce it: `draft_world` writes just enough lore for the Task-tool
- * sub-agents to start producing thematically consistent content, they run while
- * the Onboarding Manager is still writing, `persist_world` overwrites the draft
- * with the full version, and `complete` flips the phase. Reordering them
+ * World initialisation. The call order is the whole design and the descriptions
+ * are what enforce it: `draft_world` writes just enough lore for the sub-agents
+ * to produce thematically consistent content, `persist_world` overwrites the
+ * draft with the full version, and `complete` flips the phase. Reordering them
  * produces a world whose locations were designed against nothing.
  */
-
-// ============================================================================
-// Shared models
-// ============================================================================
 
 /** One entry in the world's stat system, as written to `stats.yaml`. */
 export const statDefinitionSchema = z.object({
@@ -40,10 +33,6 @@ export const statSystemSchema = z.object({
 })
 
 export type StatSystemInput = z.infer<typeof statSystemSchema>
-
-// ============================================================================
-// Tool definitions
-// ============================================================================
 
 export const readLoreGuidelinesTool = {
   name: 'read_lore_guidelines',

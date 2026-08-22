@@ -1,16 +1,10 @@
 /**
- * Locations under `worlds/{name}/locations/`.
- *
- * Ported from `backend/services/location_storage.py`, minus
- * `add_location_event`, which has no call site in the Python tree.
- *
- * A location is split across two places: its row in `locations/_index.yaml`
- * (map position, adjacency, discovery flag) and its own directory
+ * Locations under `worlds/{name}/locations/`: a row in `locations/_index.yaml`
+ * (position, adjacency, discovery) plus the location's own directory
  * (`description.md`, `events.md`). The index is authoritative for *which*
- * locations exist, but an entry whose directory is gone is treated as stale
- * and skipped — the world generator can leave the index ahead of the
- * filesystem, and the Action Manager must not be told about a place with no
- * description.
+ * locations exist, but a row whose directory is gone is stale and skipped — the
+ * world generator can leave the index ahead of the filesystem, and the Action
+ * Manager must not be told about a place with no description.
  */
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -22,48 +16,23 @@ import { getLogger } from '../infrastructure/logging/logger'
 
 const logger = getLogger('LocationStorage')
 
-// ============================================================================
-// Types
-// ============================================================================
-
 /**
- * One location. The index row is written as:
- *
- * ```yaml
- * locations:
- *   old_mill:
- *     adjacent: []
- *     is_discovered: true
- *     is_draft: false
- *     label: null
- *     name: The Old Mill
- *     position: [3, 4]
- * ```
- *
- * (`worlds/asdf/locations/_index.yaml` is still `locations: {}` — the world is
- * mid-onboarding — so this shape comes from the writer in
- * `location_storage.py::create_location`.)
+ * One location, assembled from its index row (`adjacent`, `is_discovered`,
+ * `is_draft`, `label`, `name`, `position`) and its `description.md`.
  */
 export interface LocationConfig {
   /** Directory name — the key used everywhere else in the codebase. */
   name: string
-  /** Human-facing name from the index's `name` field. */
   displayName: string
   label: string | null
-  /** `[x, y]` on the map grid. */
   position: [number, number]
   isDiscovered: boolean
   /** Directory names of neighbours reachable in one move. */
   adjacent: string[]
-  /** Full text of `description.md`, or `''` when the file is missing. */
   description: string
   /** True while the location awaits enrichment by the Location Designer. */
   isDraft: boolean
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function asMapping(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -83,10 +52,6 @@ function parseAdjacent(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string')
 }
 
-// ============================================================================
-// Service
-// ============================================================================
-
 export class LocationStorage {
   private readonly worlds: WorldService
   private readonly cache: MtimeCache
@@ -104,20 +69,12 @@ export class LocationStorage {
     return join(this.locationsDir(worldName), '_index.yaml')
   }
 
-  /** Drop this service's cached reads. */
   clearCache(): void {
     this.cache.clear()
   }
 
-  /**
-   * Raw `locations` mapping from `_index.yaml`, keyed by directory name.
-   * `{}` when the index is missing or malformed.
-   *
-   * Python re-reads and re-parses this on every call. Caching it here is safe
-   * because invalidation is by mtime: an externally edited index still takes
-   * effect on the next read, and the per-turn context build stops paying for
-   * a parse it already did.
-   */
+  // Cached by mtime, so an externally edited index still takes effect on the
+  // next read.
   private loadIndex(worldName: string): Record<string, unknown> {
     const indexFile = this.indexFile(worldName)
 
@@ -144,8 +101,7 @@ export class LocationStorage {
       displayName: typeof row.name === 'string' ? row.name : name,
       label: typeof row.label === 'string' ? row.label : null,
       position: parsePosition(row.position),
-      // Undiscovered locations exist on the map but are hidden from the
-      // player, so an index row missing the flag defaults to visible.
+      // A row missing the flag defaults to visible.
       isDiscovered: row.is_discovered !== false,
       adjacent: parseAdjacent(row.adjacent),
       description,
@@ -153,24 +109,18 @@ export class LocationStorage {
     }
   }
 
-  /**
-   * One location, or `null` when it has no index row or no directory on disk.
-   */
+  /** One location, or `null` when it has no index row or no directory on disk. */
   loadLocation(worldName: string, locationName: string): LocationConfig | null {
     const row = this.loadIndex(worldName)[locationName]
     if (row === undefined) return null
 
-    // The directory is what carries the prose; an index row without one is a
-    // stale entry left by a deleted location.
+    // A row without a directory is a stale entry left by a deleted location.
     if (!this.hasDirectory(worldName, locationName)) return null
 
     return this.buildConfig(locationName, asMapping(row), worldName)
   }
 
-  /**
-   * Every location that exists both in the index and on disk, keyed by
-   * directory name. Insertion order follows the index file.
-   */
+  /** Locations present in both the index and on disk, in index-file order. */
   loadAllLocations(worldName: string): Record<string, LocationConfig> {
     const locations: Record<string, LocationConfig> = {}
 
@@ -199,26 +149,10 @@ export class LocationStorage {
     }
   }
 
-  // --------------------------------------------------------------------
-  // Writes
-  // --------------------------------------------------------------------
-
-  /**
-   * The *whole* `_index.yaml` document, read fresh for a read-modify-write.
-   *
-   * `null` means the file is absent, which is Python's falsy `{}` from
-   * `_load_index` (`location_storage.py:19-27`) and the reason
-   * {@link updateLocation} and {@link cleanupStaleEntries} decline to do
-   * anything for a world that has no index yet.
-   *
-   * Two divergences from {@link loadIndex}, both deliberate. It returns the
-   * top-level document rather than just `locations`, because anything else up
-   * there has to survive the rewrite. And it does not swallow a YAML error:
-   * degrading to `{}` here would make the next save replace a corrupt index
-   * with an empty one, destroying every location in the world. Python has no
-   * guard at that line for the same reason — the read path is forgiving
-   * precisely because it never writes back.
-   */
+  // The *whole* document, read fresh for a read-modify-write; `null` when
+  // absent. Unlike {@link loadIndex} it keeps the top level (anything up there
+  // must survive the rewrite) and does not swallow a YAML error — degrading to
+  // `{}` would make the next save replace a corrupt index with an empty one.
   private readIndexDocument(worldName: string): Record<string, unknown> | null {
     let raw: string
     try {
@@ -227,20 +161,13 @@ export class LocationStorage {
       return null
     }
 
-    // `yaml.safe_load(f) or {"locations": {}}` — an existing but empty index
-    // is still an index, and gets rows added to it rather than being skipped.
+    // An existing but empty index is still an index: rows get added to it.
     const parsed = parseYaml(raw) as unknown
     return parsed === null || parsed === undefined ? { locations: {} } : asMapping(parsed)
   }
 
-  /**
-   * Write `_index.yaml` whole and drop its cached parse.
-   *
-   * The invalidation is not housekeeping. {@link loadIndex} keys its cache on
-   * mtime, and mtime has millisecond resolution here — a location created and
-   * then immediately read, which is exactly what the world generator does,
-   * can land inside the same millisecond and serve the pre-write index.
-   */
+  // The invalidation is not housekeeping: mtime has millisecond resolution, so a
+  // location created and immediately read would serve the pre-write index.
   private saveIndex(worldName: string, document: Record<string, unknown>): void {
     const indexFile = this.indexFile(worldName)
     writeFileSync(indexFile, dumpYaml(document), 'utf-8')
@@ -248,16 +175,10 @@ export class LocationStorage {
   }
 
   /**
-   * Create a location: its directory, its two markdown files, and its row in
-   * the index. Mirrors `location_storage.py:62-99`.
-   *
-   * Both halves matter — the row is what makes the location *exist*, and the
-   * directory is what stops it being pruned as stale by the read paths and by
-   * {@link cleanupStaleEntries}.
-   *
-   * `isDraft` marks a location the World Seed Generator sketched but the
-   * Location Designer has not enriched yet; a draft is a real, enterable
-   * place, so it is written `is_discovered: true` like any other.
+   * Create a location: directory, two markdown files, index row. Both halves
+   * matter — the row makes it *exist*, the directory stops it being pruned as
+   * stale. A draft (not yet enriched by the Location Designer) is still a real,
+   * enterable place, so it is written `is_discovered: true` like any other.
    */
   createLocation(
     worldName: string,
@@ -269,16 +190,12 @@ export class LocationStorage {
     isDraft = false,
   ): void {
     const locationPath = join(this.locationsDir(worldName), locationName)
-    // Python uses `mkdir(exist_ok=True)`, which fails when `locations/` is
-    // missing. Every world built by `WorldService.createWorld` has it, so
-    // `recursive` costs nothing and is forgiving of hand-made worlds.
+    // `recursive` is forgiving of hand-made worlds missing `locations/`.
     mkdirSync(locationPath, { recursive: true })
 
     const descriptionFile = join(locationPath, 'description.md')
     writeFileSync(descriptionFile, `# ${displayName}\n\n${description}\n`, 'utf-8')
-    // Re-creating a location over an existing one has the same
-    // same-millisecond problem as the index: a read that already missed this
-    // file cached nothing, but one that read the old text did.
+    // Same same-millisecond problem as the index, for the old description text.
     this.cache.invalidate(descriptionFile)
 
     writeFileSync(join(locationPath, 'events.md'), `# Events at ${displayName}\n\n`, 'utf-8')
@@ -300,12 +217,8 @@ export class LocationStorage {
   }
 
   /**
-   * Patch an existing index row. `false` when the world has no index or the
-   * location is not in it.
-   *
-   * Only the two mutable index fields are patchable: discovery (set when the
-   * player first arrives) and the map label. Everything else about a location
-   * is rewritten by {@link createLocation} or edited by hand.
+   * Patch an existing index row; `false` when the world has no index or the
+   * location is not in it. Only discovery and the map label are mutable.
    */
   updateLocation(
     worldName: string,
@@ -322,11 +235,8 @@ export class LocationStorage {
       return false
     }
 
-    // `null` means "leave alone", not "clear". Python's parameters default to
-    // None and are applied only when set (`location_storage.py:161-164`), and
-    // `persistence_manager.py:388-394` depends on it: it forwards
-    // `label=location.label` on every discovery change, and that label is None
-    // for most rows.
+    // `null` means "leave alone", not "clear": `PersistenceManager` forwards the
+    // existing label on every discovery change, and it is null for most rows.
     const updated = asMapping(row)
     if (changes.isDiscovered !== undefined && changes.isDiscovered !== null) {
       updated.is_discovered = changes.isDiscovered
@@ -342,12 +252,8 @@ export class LocationStorage {
   }
 
   /**
-   * Drop index rows whose directory is gone, returning the names removed.
-   *
-   * This is the counterpart to the stale rule the read paths enforce: they
-   * *skip* a directory-less row on every read, this is what finally deletes
-   * it. The world-reset route calls it (`worlds.py:525`) so a rebuilt world
-   * does not carry the previous run's phantom locations in its map data.
+   * Drop index rows whose directory is gone. The read paths only *skip* such a
+   * row; this deletes it, so a world reset leaves no phantom map entries.
    */
   cleanupStaleEntries(worldName: string): string[] {
     const document = this.readIndexDocument(worldName)
@@ -365,8 +271,8 @@ export class LocationStorage {
       }
     }
 
-    // Only rewritten when something changed, so a clean world's index keeps
-    // its mtime — and with it the cached parse the per-turn context uses.
+    // Only rewritten when something changed, so a clean world's index keeps its
+    // mtime, and with it the cached parse the per-turn context uses.
     if (removed.length > 0) {
       document.locations = kept
       this.saveIndex(worldName, document)

@@ -1,23 +1,8 @@
 /**
- * Opening a browser at the URL the server actually won.
- *
- * This exists *because* the port is negotiable. `listen()` falls back to an
- * OS-assigned port when the preferred one is taken, so the only place that
- * knows where to point a browser is the process that just bound the socket —
- * a `make dev` recipe cannot hardcode the URL it prints any more than the Vite
- * proxy could hardcode the backend's. Launching from here closes that gap: the
- * tab always lands on the port in use, relocated or not.
- *
- * Two properties are deliberate:
- *
- * - **Never fatal.** No browser, no display, a container with neither — none of
- *   those are reasons for a dev server to fail. Every failure path logs at
- *   most a warning and returns.
- * - **Once per `make dev`, not once per reload.** `bun --watch` re-runs the
- *   whole module graph on every save while keeping the same pid, so an
- *   in-process flag resets and a naive implementation opens a tab on every
- *   keystroke-triggered restart. The marker file below is keyed on that stable
- *   pid, which is exactly the "one `make dev` invocation" scope wanted.
+ * Opening a browser at the URL the server actually won — only the process that
+ * bound the socket knows it. Never fatal, and once per `make dev` rather than
+ * once per reload: `bun --watch` re-runs the module graph on every save under
+ * one pid, hence the pid-keyed marker file.
  */
 
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -28,23 +13,11 @@ import { getLogger } from '../infrastructure/logging/logger'
 
 const logger = getLogger('Serve')
 
-/**
- * How long a marker file is believed.
- *
- * Beyond this the pid it names is assumed to have been recycled by an
- * unrelated process, so a fresh `make dev` that happens to land on it still
- * gets its tab. The cost of guessing wrong in either direction is one tab.
- */
+// Past this the pid a marker names is assumed recycled. Guessing wrong in
+// either direction costs one tab.
 const MARKER_TTL_MS = 12 * 60 * 60 * 1000
 
-/**
- * Whether to open a browser at startup.
- *
- * `OPEN_BROWSER` decides it outright when set; otherwise it follows dev mode,
- * because that is the run mode whose whole point is a person sitting in front
- * of the page. `make serve`, `make run-backend`, the packaged build and the
- * test suite all leave `FRONTEND_DEV` unset and are left alone.
- */
+// `OPEN_BROWSER` decides outright when set; otherwise this follows dev mode.
 export function resolveOpenBrowser(env: Record<string, string | undefined> = process.env): boolean {
   const explicit = env.OPEN_BROWSER?.trim().toLowerCase()
   if (explicit === 'true' || explicit === '1') return true
@@ -52,18 +25,8 @@ export function resolveOpenBrowser(env: Record<string, string | undefined> = pro
   return env.FRONTEND_DEV?.trim().toLowerCase() === 'true'
 }
 
-/**
- * Candidate launch commands, most specific first.
- *
- * Chrome by name comes before the desktop's default-browser opener on every
- * platform: the request is for Chrome, and `xdg-open`/`open`/`start` honour
- * whatever the user set as default instead. The generic opener stays on the
- * list as the last resort so a machine without Chrome still gets a page rather
- * than nothing.
- *
- * WSL is the reason `wslview` appears among the Linux candidates — there the
- * browser lives on the Windows side and no Linux binary will be found.
- */
+// Chrome by name precedes the default-browser opener, which stays last so a
+// machine without Chrome still gets a page. `wslview` is for WSL.
 export function browserCommands(platform: NodeJS.Platform, url: string): string[][] {
   switch (platform) {
     case 'darwin':
@@ -90,25 +53,14 @@ export function browserCommands(platform: NodeJS.Platform, url: string): string[
   }
 }
 
-/**
- * The marker whose existence means "this run already opened a tab".
- *
- * Keyed on the pid rather than the port: the port can change across a restart
- * (the previous listener has not always released it yet), while the pid is
- * stable for the lifetime of one `bun --watch` supervisor.
- */
+// Keyed on the pid, not the port: the port can change across a restart, the
+// pid is stable for the lifetime of one `bun --watch` supervisor.
 export function markerPath(pid: number = process.pid, dir: string = tmpdir()): string {
   return join(dir, `claudeworld-browser-${pid}`)
 }
 
-/**
- * True when this run already opened a tab on exactly this URL.
- *
- * The URL is compared, not merely the marker's existence, because a relocated
- * port is not guaranteed to survive a restart — `listen()` tries hard to keep
- * it, and when it cannot the old tab is pointing at a dead port and a new one
- * is the only useful thing to do.
- */
+// The URL is compared, not just the marker: a restart can land on a different
+// port, leaving the old tab pointing at a dead one.
 function alreadyOpened(path: string, url: string): boolean {
   try {
     if (Date.now() - statSync(path).mtimeMs >= MARKER_TTL_MS) return false
@@ -128,15 +80,9 @@ export interface OpenBrowserOptions {
   marker?: string | null
 }
 
-/**
- * Launch a browser at `url`. Returns the argv used, or null if nothing ran.
- *
- * Nothing is awaited. A `google-chrome <url>` that starts a *fresh* browser
- * stays alive for the whole browsing session, so waiting on its exit would
- * hang the server's startup path for as long as the user keeps the window
- * open; the launched process is unref'd so it also cannot hold the server's
- * event loop open at shutdown.
- */
+// Nothing is awaited — a launch that starts a fresh browser lives as long as
+// the browsing session — and the child is unref'd so it cannot hold the event
+// loop open at shutdown.
 export function openBrowser(url: string, options: OpenBrowserOptions = {}): string[] | null {
   const {
     platform = process.platform,
@@ -153,8 +99,6 @@ export function openBrowser(url: string, options: OpenBrowserOptions = {}): stri
 
   if (marker && alreadyOpened(marker, url)) return null
 
-  // `cmd` on Windows and `open` on macOS are always present; on Linux the
-  // whole point of the candidate list is that most of it is not.
   const argv = browserCommands(platform, url).find(([command]) => command !== undefined && which(command) !== null)
   if (!argv) {
     logger.warning(`No browser found to open ${url} — open it manually, or set OPEN_BROWSER=false`)

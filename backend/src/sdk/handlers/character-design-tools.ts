@@ -16,21 +16,13 @@ import type { WorldService } from '../../services/world-service'
 import { tool, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * Deep character creation for onboarding.
- * Port of `sdk/handlers/character_design_tools.py`.
+ * Deep character creation for onboarding. These two are a pair, called in order:
+ * the first writes the character's files and places them, the second fills
+ * `consolidated_memory.md`, which is what `recall` reads. Skipping the second
+ * leaves an NPC who cannot remember their own history.
  *
- * These two are a pair and are meant to be called in order: the first writes
- * the character's files and places them, the second fills
- * `consolidated_memory.md`, which is what the `recall` tool later reads. A
- * character created without the second call has a backstory in its
- * `characteristics.md` and no memories to draw on, which reads at the table as
- * an NPC who cannot remember anything about their own history.
- *
- * **These tools cannot be overridden or disabled from a group config.** They go
- * through no registry lookup because Python's `TOOL_GROUPS` omits
- * `character_design` entirely, so `get_tool_description` cannot see them and
- * `character_design_tools.py` passes literal strings. See
- * `tools/registry.ts::CHARACTER_DESIGN_GROUP`.
+ * **These tools cannot be overridden or disabled from a group config** — they go
+ * through no registry lookup. See `tools/registry.ts::CHARACTER_DESIGN_GROUP`.
  */
 
 const logger = getLogger('CharacterDesignTools')
@@ -79,9 +71,8 @@ export function createCharacterDesignTools(
             deps.rooms.ensureRoomMappingExists(worldName, roomKey, targetLocation.roomId, [])
           }
           deps.rooms.addAgentToRoom(worldName, roomKey, agentName)
-          // The *folder* name, not `display_name` — this is the one place the
-          // two character-creation tools disagree, and `persist_character_design`
-          // is the one that shows the display name.
+          // The *folder* name, not `display_name`: the one place the two
+          // character-creation tools disagree.
           locationDisplay = targetLocation.name
         } else {
           targetLocation = null
@@ -162,9 +153,9 @@ export function createCharacterDesignTools(
           if (existing) parts.push(existing)
         }
         for (const memory of args.memories) {
-          // `## [subtitle]` exactly — `memory.ts`'s parser keys the long-term
-          // memory index off the bracketed form, and a heading written without
-          // the brackets is invisible to `recall`.
+          // `## [subtitle]` exactly: `memory.ts` keys the long-term memory index
+          // off the bracketed form, so an unbracketed heading is invisible to
+          // `recall`.
           parts.push(`## [${memory.subtitle}]\n${memory.content}`)
         }
 
@@ -172,9 +163,8 @@ export function createCharacterDesignTools(
         writeFileSync(memoryFile, finalContent, 'utf-8')
 
         const operationText = args.mode === 'append' ? 'added' : 'set'
-        // Python re-tests `memory_file.exists()` *after* writing, so this branch
-        // is taken on an overwrite of a fresh file too; the count is the total in
-        // the file either way, which is what the label claims.
+        // Either branch yields the total in the file, which is what the label
+        // claims.
         const totalMemories =
           args.mode === 'append' && fileExisted
             ? (finalContent.match(/## \[/g)?.length ?? 0)

@@ -20,18 +20,12 @@ import type { AgentFilesystemService } from '../../services/agent-filesystem-ser
 import { tool, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * Who is in the world, where they stand, and how they leave it.
- * Port of `sdk/handlers/character_tools.py`.
- *
- * Every tool here is filesystem-first: the agent folders under
- * `worlds/<name>/agents/` are the roster, `_state.json` is the seating chart,
- * and the database is a cache that is *best-effort* synced afterwards. Python
- * wraps each DB sync in its own try/except logged at warning — a failed sync
- * must not fail the tool, because the filesystem write has already happened and
- * reporting failure would tell the model to try again and double-apply it.
- *
- * `list_characters` is not here. It lives in `world-tools.ts`, where Phase 0
- * put it, reading the database rather than the filesystem — see the note there.
+ * Who is in the world, where they stand, and how they leave it. Filesystem
+ * first: the agent folders under `worlds/<name>/agents/` are the roster,
+ * `_state.json` is the seating chart, and the database is a best-effort cache.
+ * Each DB sync is caught and warned — a failed sync must not fail the tool,
+ * since the filesystem write already happened and reporting failure would tell
+ * the model to retry and double-apply it.
  */
 
 const logger = getLogger('GameplayTools.Character')
@@ -45,14 +39,9 @@ export interface CharacterDeps {
   agentFactory?: AgentFactory
 }
 
-/**
- * Resolve a name the model typed onto an agent folder that exists.
- *
- * The three variants are Python's, and each earns its place: the model writes
- * the display name (`Old Marn`) where the folder is `Old_Marn`, writes the
- * folder name where the display name is expected, and varies the case of both.
- * Anything stricter turns a working `remove_character` call into a "not found".
- */
+// Each of the three variants earns its place: the model writes `Old Marn`
+// where the folder is `Old_Marn`, writes the folder name where a display name
+// is expected, and varies the case of both.
 function matchAgentFolder(folders: string[], characterName: string): string | null {
   const variants = [
     characterName,
@@ -63,7 +52,7 @@ function matchAgentFolder(folders: string[], characterName: string): string | nu
   return folders.find((folder) => variants.includes(folder.toLowerCase())) ?? null
 }
 
-/** Python's `build_action_context(...).current_location`, including the fallback. */
+/** The player's current location, with the same fallback the context uses. */
 function currentLocationName(players: PlayerService, worldName: string): string {
   return players.loadPlayerState(worldName)?.currentLocation || 'unknown'
 }
@@ -78,9 +67,7 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
 
   const tools: SdkTool[] = []
 
-  // --------------------------------------------------------------------
   // remove_character — leaves the world, keeps the character
-  // --------------------------------------------------------------------
   const removeDef = resolveTool(removeCharacterTool.name, ctx.groupName)
   if (removeDef) {
     tools.push(
@@ -137,9 +124,7 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
     )
   }
 
-  // --------------------------------------------------------------------
   // delete_character — archives the folder
-  // --------------------------------------------------------------------
   const deleteDef = resolveTool(deleteCharacterTool.name, ctx.groupName)
   if (deleteDef) {
     tools.push(
@@ -150,11 +135,8 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
         async (args) => {
           const characterName = args.character_name
           const narrative = args.narrative.trim()
-          // Python maps three keys and falls back to DEATH for everything else,
-          // *including* the `실종` its own tool description advertises — the map
-          // is keyed on `disappearance`. Reproduced: a Korean reason renders as
-          // "death" on both backends, and changing that here would make the
-          // parity harness disagree on a string the player never sees.
+          // The map is keyed on `disappearance`, so the `실종` the tool
+          // description advertises falls through to DEATH. Player never sees it.
           const reason =
             { death: 'death', disappearance: 'disappearance', magic: 'magic' }[
               args.reason.trim().toLowerCase()
@@ -181,9 +163,7 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
     )
   }
 
-  // --------------------------------------------------------------------
   // move_character — relocate an NPC
-  // --------------------------------------------------------------------
   const moveDef = resolveTool(moveCharacterTool.name, ctx.groupName)
   if (moveDef) {
     tools.push(
@@ -215,9 +195,8 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
             }
             const destLocationName = RoomMappingService.roomKeyToLocation(destRoomKey) ?? destRoomKey
 
-            // Pulled out of *every* other location first. A character listed in
-            // two rooms reacts twice in cell 1, which reads to the player as the
-            // same NPC speaking from two places at once.
+            // Pulled out of every other location first: a character listed in
+            // two rooms reacts twice in cell 1.
             const state = deps.rooms.loadState(worldName)
             for (const [roomKey, mapping] of Object.entries(state.rooms)) {
               if (!roomKey.startsWith('location:') || roomKey === destRoomKey) continue
@@ -231,10 +210,8 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
               const db = ctx.getDb()
               let agent = getAgentByName(db, folder, worldName)
 
-              // A character can exist on disk with no row at all — created by an
-              // author, or by a sub-agent whose DB write failed. Backfilling here
-              // is what keeps `move_character` from being permanently unable to
-              // place them.
+              // A character can exist on disk with no row (hand-authored, or a
+              // sub-agent whose DB write failed); backfill rather than fail.
               if (!agent && deps.agentFactory) {
                 agent = deps.agentFactory.createFromConfig(db, {
                   name: folder,
@@ -271,13 +248,7 @@ export function createCharacterTools(ctx: ToolContext, deps: CharacterDeps): Sdk
   return tools
 }
 
-/**
- * `persist_character_design` — the Character Designer sub-agent's callback.
- *
- * Separate factory because the tool belongs to a different MCP server
- * (`subagents`, not `action_manager`) even though Python builds it inside
- * `create_character_tools` and then filters it out by name.
- */
+// A separate factory because the tool belongs to the `subagents` MCP server.
 export function createPersistCharacterTool(
   ctx: ToolContext,
   deps: CharacterDeps,
@@ -299,9 +270,8 @@ export function createPersistCharacterTool(
           const db = ctx.getDb()
           const agentName = args.name.replaceAll(' ', '_')
 
-          // Appearance deliberately stays out of `in_a_nutshell.md`: that file is
-          // injected into every other character's context, so a paragraph of
-          // description there costs tokens on every NPC's every turn.
+          // Appearance stays out of `in_a_nutshell.md`: that file is injected
+          // into every other character's context on every turn.
           const inANutshell = `${args.name} is a ${args.role}.`
           let characteristics = `## Role\n${args.role}\n\n## Appearance\n${args.appearance}\n\n## Personality\n${args.personality}\n\n## Initial Disposition\n${args.initial_disposition}`
           if (args.secret) characteristics += `\n\n## Hidden Detail\n${args.secret}`
@@ -338,8 +308,7 @@ export function createPersistCharacterTool(
           })
 
           if (isCurrent) {
-            // During onboarding "current" is the *onboarding* room, which is not
-            // a place. Adding the NPC to it would put them in the interview;
+            // During onboarding "current" is the interview room, not a place;
             // `complete` places them at the starting location instead.
             const world = ctx.worldId === undefined ? null : getWorld(db, ctx.worldId)
             const isOnboardingRoom =

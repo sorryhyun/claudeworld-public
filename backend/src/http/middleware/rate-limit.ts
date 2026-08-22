@@ -1,30 +1,17 @@
-/**
- * Fixed-window rate limiting.
- *
- * Replaces `slowapi`, which the Python backend uses for exactly one thing:
- * `@limiter.limit("20/minute")` on the login endpoint, keyed by client IP. A
- * dependency for that would be more moving parts than the thing it limits, so
- * this is the same algorithm slowapi's default strategy uses — a counter per
- * key per window — written out.
- *
- * Fixed-window means a burst spanning a window boundary can briefly exceed the
- * nominal rate. That is slowapi's default behaviour too, and it does not matter
- * for the property being defended: 40 password guesses across two minutes is
- * still nowhere near enough to brute-force a bcrypt hash.
- */
+// Fixed-window rate limiting, one counter per key per window, used only by the
+// login endpoint. A burst spanning a window boundary can briefly exceed the
+// nominal rate; 40 password guesses in two minutes is still nothing to bcrypt.
 
 import { getConnInfo } from 'hono/bun'
 import { createMiddleware } from 'hono/factory'
 import type { Context } from 'hono'
 
 export interface RateLimitOptions {
-  /** Requests allowed per window. */
   limit: number
-  /** Window length in milliseconds. */
   windowMs: number
   /** Human-readable rate, echoed in the 429 body — e.g. `20 per 1 minute`. */
   description: string
-  /** Defaults to the peer address, matching slowapi's `get_remote_address`. */
+  /** Defaults to the peer address. */
   keyFor?: (c: Context) => string
 }
 
@@ -33,14 +20,9 @@ interface Window {
   resetAt: number
 }
 
-/**
- * Peer address of the connection.
- *
- * Deliberately *not* `X-Forwarded-For`: that header is attacker-controlled
- * unless a trusted proxy is known to overwrite it, and trusting it here would
- * let one client mint a fresh quota per request. `get_remote_address` takes the
- * socket peer for the same reason.
- */
+// Deliberately *not* `X-Forwarded-For`: that header is attacker-controlled
+// unless a trusted proxy is known to overwrite it, and trusting it would let one
+// client mint a fresh quota per request.
 function remoteAddress(c: Context): string {
   try {
     return getConnInfo(c).remote.address ?? 'unknown'
@@ -73,7 +55,6 @@ export function rateLimit({ limit, windowMs, description, keyFor = remoteAddress
     window.count += 1
     if (window.count > limit) {
       const retryAfter = Math.max(1, Math.ceil((window.resetAt - now) / 1000))
-      // slowapi's `_rate_limit_exceeded_handler` shape, verbatim.
       return c.json({ error: `Rate limit exceeded: ${description}` }, 429, {
         'Retry-After': String(retryAfter),
       })

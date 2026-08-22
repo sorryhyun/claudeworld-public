@@ -1,12 +1,6 @@
-/**
- * Server entrypoint.
- *
- * The counterpart of `backend/main.py` plus the `lifespan` half of
- * `create_app()`. Startup order matters and follows Python's: logging, then the
- * configuration checks that can refuse to start, then the database, then the
- * listener — so a misconfigured install fails with an actionable message rather
- * than accepting requests it cannot serve.
- */
+// Server entrypoint. Startup order matters — logging, config checks that can
+// refuse to start, database, listener — so a misconfigured install fails
+// loudly instead of accepting requests it cannot serve.
 
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -23,14 +17,7 @@ import { buildDevRoutes, listen, loadDevFrontend } from './http/serve'
 
 const logger = getLogger('Main')
 
-/**
- * Where the SQLite file lives.
- *
- * `connection.py` defaults `DATABASE_URL` to PostgreSQL and relies on the
- * Makefile to pass a SQLite URL. There is no Postgres support here, so an unset
- * variable resolves to `<projectRoot>/claudeworld.db` — the file the Makefile
- * would have pointed at — instead of failing on a default nobody chose.
- */
+/** An unset `DATABASE_URL` resolves to `<projectRoot>/claudeworld.db`. */
 export function resolveDatabasePath(): string {
   const settings = getSettings()
   if (settings.databaseUrl === DEFAULT_DATABASE_URL) {
@@ -39,21 +26,9 @@ export function resolveDatabasePath(): string {
   return sqlitePathFromUrl(settings.databaseUrl)
 }
 
-/**
- * The built frontend to serve on the API's own port, or null for API-only.
- *
- * Resolution order: `SERVE_FRONTEND=false` disables it outright, then
- * `FRONTEND_DIST` if set, then `<projectRoot>/frontend/dist`. Auto-detecting
- * the default is what makes `make serve` a two-step recipe (build, run) rather
- * than something that also has to thread a path through the environment; the
- * explicit override is for a relocated install where the bundle does not sit
- * next to the source tree.
- *
- * A missing directory is not an error — `make dev` bundles `frontend/` in-process
- * ({@link resolveFrontendDev}) and never builds `dist/` — but an override that
- * points nowhere is worth a warning, because the person who set it expected
- * pages, not JSON 404s.
- */
+// The built frontend to serve on the API's own port, or null for API-only. A
+// missing directory is fine — `make dev` never builds `dist/` — but an
+// explicit `FRONTEND_DIST` pointing nowhere warns.
 export function resolveFrontendDir(env: Record<string, string | undefined> = process.env): string | null {
   if (env.SERVE_FRONTEND?.trim().toLowerCase() === 'false') return null
 
@@ -70,15 +45,8 @@ export function resolveFrontendDir(env: Record<string, string | undefined> = pro
   return null
 }
 
-/**
- * Whether to bundle and serve `frontend/` in-process with HMR.
- *
- * Opt-in (`make dev` sets it) rather than inferred from `NODE_ENV`, because the
- * cost of guessing wrong is asymmetric: a production process that decides it is
- * in dev mode would bundle the React app on the fly and ship unminified code,
- * while `make serve` and the packaged build both want the prebuilt `dist/` that
- * {@link resolveFrontendDir} finds.
- */
+// Opt-in, not inferred from `NODE_ENV`: a production process guessing dev mode
+// would bundle React on the fly and ship unminified code.
 export function resolveFrontendDev(env: Record<string, string | undefined> = process.env): boolean {
   return env.FRONTEND_DEV?.trim().toLowerCase() === 'true'
 }
@@ -95,40 +63,32 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
   logger.info(`💾 Database: ${databasePath}`)
   const sqlite = openAndInitDb({ path: databasePath })
 
-  // `openAndInitDb` hands back the raw `bun:sqlite` handle it migrated; the
-  // routers work through Drizzle, so it is wrapped once here rather than in
-  // every module that needs it.
+  // The raw `bun:sqlite` handle, wrapped once here so no other module has to.
   const state = createAppState({ db: wrapDb(sqlite) })
 
-  // Python does this in the `lifespan` startup, right before it accepts
-  // requests (`app_factory.py:99-100`). Without it the `agents` table stays
-  // empty on a database that has only ever seen this backend, and the first
-  // symptom is a *turn* failing — `createWorld` finds no `Onboarding_Manager`
-  // row, so it adds nobody to the onboarding room, and `runGameplayTurn` then
-  // throws "is in the onboarding phase but has no Onboarding Manager".
+  // Before requests are accepted, or the `agents` table stays empty and the
+  // first symptom is a turn failing mid-onboarding.
   const seeded = Object.keys(state.agentFactory.seedFromConfigs(state.db))
   if (seeded.length) {
     logger.info(`🌱 Seeded ${seeded.length} agent(s) from config files: ${seeded.join(', ')}`)
   }
 
-  // Also from Python's `lifespan`, and after the seeding for the same reason it
-  // is there: the first tick can fire two seconds later, and a round wants the
-  // `agents` table already populated.
+  // After the seeding: the first tick can fire two seconds later and a round
+  // wants the `agents` table already populated.
   state.scheduler.start()
 
   const frontendDir = resolveFrontendDir()
   const app = createApp(state, { frontendDir })
 
-  // The second argument is what `getConnInfo` reads the peer address from;
-  // without threading it through, rate limiting would bucket every client
-  // together.
+  // `getConnInfo` reads the peer address off the second argument; without it
+  // rate limiting buckets every client together.
   const fetchApi = (request: Request, bunServer: Bun.Server<unknown>): Response | Promise<Response> =>
     app.fetch(request, { server: bunServer })
 
-  // Dev mode bundles the frontend in this process, with HMR, instead of serving
-  // a prebuilt `dist/`. That is what collapses `make dev` to one command on one
-  // port — and, because the page is then same-origin by construction, what lets
-  // the port itself be negotiable below.
+  // Bundling the frontend in-process collapses `make dev` to one port and —
+  // the page being same-origin — lets that port be negotiable.
+  // `loadDevFrontend` imports `frontend/index.html` dynamically: a static
+  // import would make backend-only entry points bundle React.
   const devHtml = resolveFrontendDev() ? await loadDevFrontend() : null
 
   const server = listen({
@@ -137,9 +97,8 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
     ...(devHtml ? { routes: buildDevRoutes(devHtml, fetchApi), development: { hmr: true } } : {}),
     fetch: fetchApi,
   })
-  // `Bun.Server.port` is optional only because a server can be bound to a unix
-  // socket instead; this one always binds TCP. Read it back rather than reusing
-  // the requested value — they differ whenever the fallback in `listen` fired.
+  // Read back rather than reusing the requested value: they differ whenever the
+  // port fallback in `listen` fired.
   const port = server.port ?? 0
 
   logger.info(`✅ Application startup complete — listening on http://${server.hostname}:${port}`)
@@ -150,11 +109,7 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
     logger.info(`🌐 Frontend and API are on the same origin — open ${url}`)
   }
 
-  // After the listener, never before: the port in `url` is the one that was
-  // actually won, which on a fallback is not the one anybody asked for. This
-  // is the only place that knows it, so it is the only place that can point a
-  // browser at it. Serving a page is a precondition — an API-only process has
-  // nothing to show.
+  // After the listener, never before: `url` carries the port actually won.
   if ((devHtml || frontendDir) && resolveOpenBrowser()) {
     openBrowser(url)
   }
@@ -164,9 +119,7 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
     stop: async () => {
       logger.info('🛑 Application shutdown...')
       server.stop()
-      // Before the database closes: stopping a turn writes to it (session ids,
-      // partial responses), and a turn still unwinding against a closed handle
-      // throws where Python's lifespan simply awaited the task.
+      // Before the database closes: stopping a turn writes to it.
       await state.shutdown()
       sqlite.close()
       logger.info('✅ Application shutdown complete')

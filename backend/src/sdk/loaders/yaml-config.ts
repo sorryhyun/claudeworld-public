@@ -1,12 +1,7 @@
 /**
- * YAML configuration loading with mtime-keyed hot reload.
- *
- * Ported from `backend/sdk/loaders/cache.py` and `yaml_loaders.py`.
- *
- * The cache *is* the hot-reload mechanism: every read stats the file and
- * reloads when the mtime moved, so editing `guidelines_3rd.yaml` takes effect
- * on the next agent response with no restart. Keep the stat — dropping it in
- * favour of a plain memo would silently break that contract.
+ * YAML configuration loading. The cache *is* the hot-reload mechanism: every
+ * read stats the file and reloads when the mtime moved, so a config edit takes
+ * effect on the next agent response. A plain memo silently breaks that.
  */
 
 import { readFileSync, statSync } from 'node:fs'
@@ -26,7 +21,7 @@ interface CacheEntry {
 
 const configCache = new Map<string, CacheEntry>()
 
-/** Mtime in ms, or 0 when the file is missing (matching Python's 0.0). */
+/** Mtime in ms, or 0 when the file is missing. */
 function getFileMtime(filePath: string): number {
   try {
     return statSync(filePath).mtimeMs
@@ -36,13 +31,9 @@ function getFileMtime(filePath: string): number {
 }
 
 /**
- * Read and parse a YAML file. Never throws: a missing or malformed file warns
- * and yields `{}`, because config loading sits on the request path and a bad
- * edit should degrade one prompt, not take down the server.
- *
- * Python wraps the read in `file_lock` to avoid observing a half-written file.
- * There is no writer for these files inside this process, and a concurrent
- * external write is caught by the parse failure below, so the lock is dropped.
+ * Never throws: a missing or malformed file warns and yields `{}`, because this
+ * sits on the request path and a bad edit should degrade one prompt, not the
+ * server. No file lock — nothing in this process writes these files.
  */
 export function loadYamlFile(filePath: string): YamlConfig {
   let raw: string
@@ -86,10 +77,6 @@ export function clearConfigCache(): void {
   configCache.clear()
 }
 
-// ============================================================================
-// Named config files
-// ============================================================================
-
 export function getGuidelinesConfig(): YamlConfig {
   return getCachedConfig(getSettings().paths.guidelinesConfigPath)
 }
@@ -106,12 +93,7 @@ export function getConversationContextConfig(): YamlConfig {
   return getCachedConfig(getSettings().paths.conversationContextConfigPath)
 }
 
-/**
- * Debug config, with `DEBUG_AGENTS` overriding `debug.enabled`.
- *
- * Python mutates the cached dict in place, so the override leaks into every
- * later reader even after the env changes. We copy the affected level instead.
- */
+/** `DEBUG_AGENTS` overrides `debug.enabled` on a copy, never in the cache. */
 export function getDebugConfig(env: Record<string, string | undefined> = process.env): YamlConfig {
   const config = getCachedConfig(getSettings().paths.debugConfigPath)
   const debugSection = config.debug

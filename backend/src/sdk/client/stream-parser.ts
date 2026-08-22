@@ -1,23 +1,12 @@
 /**
  * Parses Claude Agent SDK streaming messages into a flat, accumulated snapshot.
- *
- * Port of `backend/sdk/client/stream_parser.py`.
- *
- * `parseMessage` is stateless: the caller owns the accumulators and passes them
- * back in on every message. The returned `responseText` / `thinkingText` are the
- * FULL accumulated strings (previous + this message's delta), so a caller that
- * wants a delta slices it off the previous value.
+ * `parseMessage` is stateless: the caller owns the accumulators, and the
+ * returned `responseText` / `thinkingText` are FULL strings, not deltas.
  */
 
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
-/**
- * Token accounting lifted off the `result` message.
- *
- * Normalized to the four wire field names the perf logger reads, with 0 for
- * anything the CLI omitted (Python read these off the raw usage dict with
- * `.get(..., 0)` at the call site).
- */
+/** Off the `result` message, with 0 for anything the CLI omitted. */
 export interface ParsedUsage {
   input_tokens: number;
   output_tokens: number;
@@ -25,42 +14,33 @@ export interface ParsedUsage {
   cache_read_input_tokens: number;
 }
 
-/** Structured result of parsing a single SDK stream message. */
 export interface ParsedStreamMessage {
-  /** Accumulated response text (previous + this message's delta). */
+  /** Accumulated, not a delta — see the module header. */
   responseText: string;
-  /** Accumulated thinking text (previous + this message's delta). */
   thinkingText: string;
-  /** Session id if this message carried one, else undefined. */
   sessionId: string | undefined;
-  /** True if a `*__skip` tool was called in this message. */
+  /** A `*__skip` tool was called in this message. */
   skipUsed: boolean;
-  /** New memory entries from `*__memorize` calls in this message. */
+  /** From `*__memorize` calls in this message. */
   memoryEntries: string[];
-  /** New situations from `*__anthropic` calls in this message. */
+  /** From `*__anthropic` calls in this message. */
   anthropicCalls: string[];
-  /** Structured output payload from a `result` message, if any. */
+  /** From a `result` message, if any. */
   structuredOutput: unknown;
-  /** Token usage from a `result` message, if any. */
   usage: ParsedUsage | undefined;
   /** Tool name from a `content_block_start` of type `tool_use`. */
   toolStartName: string | undefined;
-  /** Partial JSON from an `input_json_delta`; `''` is meaningful, undefined means "no delta". */
+  /** From an `input_json_delta`; `''` is meaningful, undefined means "no delta". */
   toolInputDelta: string | undefined;
-  /** True if this message was a `content_block_stop` event. */
   contentBlockStopped: boolean;
   /** Convenience: skip, memorize or anthropic was used in this message. */
   hasToolUsage: boolean;
 }
 
 /**
- * What `parseMessage` accepts.
- *
- * The union with `Record<string, unknown>` is deliberate: this code runs against
- * whatever CLI/SDK version happens to be installed, so every field is narrowed
- * structurally rather than by matching the `SDKMessage` union exhaustively. An
- * unseen message subtype falls through to "nothing extracted" instead of
- * crashing, and hand-built fixtures need no casts.
+ * The `Record` half of the union is deliberate: fields are narrowed structurally
+ * rather than by matching `SDKMessage`, so an unseen subtype from a newer CLI
+ * falls through to "nothing extracted" instead of crashing.
  */
 export type ParsableMessage = SDKMessage | Record<string, unknown>;
 
@@ -116,12 +96,8 @@ function finalize(fields: ParsedFields): ParsedStreamMessage {
   };
 }
 
-/**
- * Parse one `stream_event` message (an `SDKPartialAssistantMessage`, emitted only
- * when the query was started with `includePartialMessages: true`).
- *
- * `event` is a raw Anthropic Messages API streaming event.
- */
+// A `stream_event` message, emitted only when the query was started with
+// `includePartialMessages: true`; `event` is a raw Messages API stream event.
 function parseStreamEvent(
   message: Record<string, unknown>,
   currentResponse: string,
@@ -146,8 +122,7 @@ function parseStreamEvent(
       thinkingDelta = asString(delta.thinking) ?? '';
     } else if (deltaType === 'input_json_delta') {
       // '' rather than undefined: callers distinguish "no tool input this
-      // message" (undefined) from "an empty fragment" (''), and the SDK does
-      // emit empty `partial_json` fragments.
+      // message" from "an empty fragment", and the SDK emits empty ones.
       toolInputDelta = asString(delta.partial_json) ?? '';
     }
   } else if (eventType === 'content_block_start') {
@@ -164,9 +139,8 @@ function parseStreamEvent(
   return finalize({
     responseText: currentResponse + contentDelta,
     thinkingText: currentThinking + thinkingDelta,
-    // Only report the session id before any response text exists. Every
-    // stream_event carries it, so reporting it unconditionally would make the
-    // caller re-assign the session on every token.
+    // Every stream_event carries the session id, so reporting it after text
+    // exists would make the caller re-assign the session on every token.
     sessionId: sessionId && !currentResponse ? sessionId : undefined,
     toolStartName,
     toolInputDelta,
@@ -174,13 +148,7 @@ function parseStreamEvent(
   });
 }
 
-/**
- * Parse a streaming message from the Claude Agent SDK.
- *
- * @param message - Any SDK message; unrecognized shapes yield an inert result.
- * @param currentResponse - Response text accumulated so far.
- * @param currentThinking - Thinking text accumulated so far.
- */
+/** Parse one SDK message; an unrecognized shape yields an inert result. */
 export function parseMessage(
   message: ParsableMessage,
   currentResponse: string,
@@ -208,7 +176,7 @@ export function parseMessage(
 
   if (messageType === 'result') {
     const rawUsage = asRecord(record.usage);
-    // An empty usage object counts as "no usage", matching the Python truthiness check.
+    // An empty usage object counts as "no usage".
     if (rawUsage && Object.keys(rawUsage).length > 0) {
       usage = {
         input_tokens: asCount(rawUsage.input_tokens),
@@ -223,14 +191,13 @@ export function parseMessage(
   }
 
   if (messageType === 'system') {
-    // The TS SDK puts session_id at the top level; the Python SDK nested it
-    // under `data`. Check both so either CLI shape is handled.
+    // Top level in the TS SDK, nested under `data` in older CLI shapes.
     sessionId = asString(record.session_id) ?? asString(asRecord(record.data)?.session_id);
   }
 
   if (messageType === 'assistant') {
-    // TS SDK: blocks live on `message.message.content` (an Anthropic Message).
-    // Python SDK: they live on `message.content`.
+    // Blocks live on `message.message.content` (an Anthropic Message) in the TS
+    // SDK, and on `message.content` in older CLI shapes.
     const content =
       asArray(asRecord(record.message)?.content) ?? asArray(record.content) ?? [];
 
@@ -254,13 +221,11 @@ export function parseMessage(
           if (situation) anthropicCalls.push(situation);
         }
       } else if (blockType === 'thinking') {
-        // Load-bearing: an assistant message's thinking block holds the WHOLE
-        // turn's thinking, not an increment. If stream_event deltas already
-        // accumulated it, appending here would emit it twice.
+        // The block holds the WHOLE turn's thinking, not an increment, so
+        // appending after stream_event deltas would emit it twice.
         if (!currentThinking) thinkingDelta += asString(block.thinking) ?? '';
       } else if (blockType === 'text') {
-        // Same rule as thinking: assistant/result text blocks carry the complete
-        // turn text, so they are only used when nothing was streamed.
+        // Same rule as thinking: the block carries the complete turn text.
         if (!currentResponse) contentDelta += asString(block.text) ?? '';
       }
     }

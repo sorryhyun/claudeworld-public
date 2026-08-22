@@ -12,12 +12,9 @@ import { resolveTool } from '../tools/registry'
 import { tool, requireWorldId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * Read-only world queries plus the dice.
- *
- * Ports the pilot's slice of `sdk/handlers/location_tools.py`,
- * `character_tools.py` and `mechanics_tools.py`. These exist so the Action
- * Manager's system prompt does not have to carry the whole world: rosters and
- * maps are pulled on demand rather than injected into every turn's context.
+ * Read-only world queries plus the dice. These exist so the Action Manager's
+ * system prompt does not have to carry the whole world: rosters and maps are
+ * pulled on demand rather than injected into every turn's context.
  */
 
 export interface WorldToolDeps {
@@ -26,7 +23,7 @@ export interface WorldToolDeps {
   random?: () => number
 }
 
-/** Descriptions in `description.md` open with a markdown heading; the list view drops it. */
+// Descriptions open with a markdown heading; the list view drops it.
 function summarize(description: string, maxChars = 100): string {
   const body = description.replace(/^#[^\n]*\n+/, '').trim()
   return body.length > maxChars ? `${body.slice(0, maxChars)}…` : body
@@ -55,7 +52,7 @@ export function createWorldTools(
     listLocationsTool.inputSchema,
     async () => {
       // The filesystem is authoritative for locations; the DB rows are a cache
-      // that exists so rooms and messages have something to key on.
+      // so rooms and messages have something to key on.
       const entries = Object.entries(deps.locations.loadAllLocations(worldName))
       if (entries.length === 0) return toolSuccess('No locations exist in this world yet.')
 
@@ -79,9 +76,8 @@ export function createWorldTools(
 
       let locationId: number | null
       if (requested) {
-        // Presence is room membership, and rooms hang off location *rows*, so a
-        // name from the model has to be resolved back to a row before it can be
-        // asked who is standing there.
+        // Presence is room membership and rooms hang off location *rows*, so a
+        // name from the model must be resolved to a row first.
         const match = getLocations(ctx.getDb(), worldId).find(
           (l) =>
             l.name.toLowerCase() === requested.toLowerCase() ||
@@ -108,10 +104,9 @@ export function createWorldTools(
     rollTheDiceTool.name,
     rollTheDiceDef?.description ?? rollTheDiceTool.description,
     rollTheDiceTool.inputSchema,
-    // The bucket name alone is what Phase 0 returned, and it reads to the model
-    // as a tool that failed to decide — `nothing_happened` with no sentence
-    // after it gets re-rolled or narrated around. Python has always returned the
-    // full `**Dice Roll Result:** …` block.
+    // The full result block, not just the bucket name: a bare
+    // `nothing_happened` reads as a tool that failed to decide, and gets
+    // re-rolled or narrated around.
     async () => toolSuccess(formatDiceRoll(rollDice(deps.random ?? Math.random))),
   )
 

@@ -11,21 +11,15 @@ import type { PlayerMutationsPort } from './ports'
 import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * Stats, the clock, inventory queries, and implanted memories.
- * Port of `sdk/handlers/mechanics_tools.py`.
- *
- * `roll_the_dice` is not here — Phase 0 put it in `world-tools.ts`.
- *
- * All four mutating paths go through {@link PlayerMutationsPort} rather than
- * `PlayerService`, because every one of them has to reach the `player_states`
- * row as well as `player.yaml`: the polling endpoint reads the row, so a stat
- * change that only lands on disk is invisible to the player until something
- * else forces a full state reload.
+ * Stats, the clock, inventory queries, and implanted memories. The mutating
+ * paths go through {@link PlayerMutationsPort} rather than `PlayerService`
+ * because each must reach the `player_states` row as well as `player.yaml`: the
+ * polling endpoint reads the row, so a change that only lands on disk is
+ * invisible to the player until a full state reload.
  */
 
 const logger = getLogger('GameplayTools.Mechanics')
 
-/** Truncate with Python's ellipsis, which is three dots and not `…`. */
 function preview(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}...` : text
 }
@@ -38,7 +32,7 @@ function asNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
-/** Python's `str.title()` on the inventory action, e.g. `add` -> `Add`. */
+// `add` -> `Add`.
 function titleCase(value: string): string {
   return value.replace(/\w+/g, (word) => word[0]!.toUpperCase() + word.slice(1).toLowerCase())
 }
@@ -59,9 +53,6 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
   const worldName = requireWorldName(ctx)
   const tools: SdkTool[] = []
 
-  // --------------------------------------------------------------------
-  // inject_memory
-  // --------------------------------------------------------------------
   const injectDef = resolveTool(injectMemoryTool.name, ctx.groupName)
   if (injectDef) {
     tools.push(
@@ -73,9 +64,8 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
           const { character_name: characterName, memory_entry: memoryEntry } = args
           try {
             const db = ctx.getDb()
-            // Exact name, world-scoped, and no fuzzy fallback: this writes into
-            // another character's head, so matching the wrong one is worse than
-            // failing. The error text points the model at `list_characters`.
+            // Exact name, world-scoped, no fuzzy fallback: this writes into
+            // another character's head, so the wrong match is worse than a miss.
             const agent = getAgentByName(db, characterName, worldName)
             if (!agent) {
               return toolError(
@@ -97,9 +87,8 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
 
             if (!written) return toolSuccess(`Failed to inject memory into ${agent.name}.`)
 
-            // The DB row caches `recent_events.md`; without this the injected
-            // memory is not in the character's context until the cache expires,
-            // which is long after the scene that implanted it.
+            // The DB row caches `recent_events.md`; without this the memory is
+            // absent from the character's context until the cache expires.
             invalidateAgentCache(agent.id)
 
             return toolSuccess(
@@ -115,9 +104,6 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
     )
   }
 
-  // --------------------------------------------------------------------
-  // list_inventory
-  // --------------------------------------------------------------------
   const inventoryDef = resolveTool(listInventoryTool.name, ctx.groupName)
   if (inventoryDef) {
     tools.push(
@@ -151,9 +137,6 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
     )
   }
 
-  // --------------------------------------------------------------------
-  // list_world_item
-  // --------------------------------------------------------------------
   const worldItemDef = resolveTool(listWorldItemTool.name, ctx.groupName)
   if (worldItemDef) {
     tools.push(
@@ -162,9 +145,7 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
         worldItemDef.description,
         listWorldItemTool.inputSchema,
         async (args) => {
-          // Lowercased here rather than in the schema: Python's validator does
-          // `.strip().lower()`, and the three fields it is compared against are
-          // lowercased too, so a keyword typed in caps still matches.
+          // Lowercased here and on the compared fields, so caps still match.
           const keyword = args.keyword.trim().toLowerCase()
           try {
             const allItems = deps.items.getAllItemsInWorld(worldName)
@@ -219,9 +200,6 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
   const mutations = deps.mutations
   if (!mutations) return tools
 
-  // --------------------------------------------------------------------
-  // change_stat
-  // --------------------------------------------------------------------
   const changeStatDef = resolveTool(changeStatTool.name, ctx.groupName)
   if (changeStatDef) {
     tools.push(
@@ -243,11 +221,10 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
               if (Object.keys(changes).length > 0) mutations.updateStats(worldName, changes)
             }
 
-            // An item may only enter the inventory if a template for it already
-            // exists under `items/`. Without that rule the model invents items
-            // with no description, no properties and no equip slot, and the UI
-            // renders an id. Removal is unguarded — you can drop something the
-            // world no longer defines.
+            // An item may only enter the inventory if a template exists under
+            // `items/`; without that the model invents items with no
+            // description, properties or equip slot and the UI renders an id.
+            // Removal is unguarded on purpose.
             const skipped = new Set<string>()
             for (const change of inventoryChanges) {
               const action = asString(change.action) || 'add'
@@ -313,9 +290,6 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
     )
   }
 
-  // --------------------------------------------------------------------
-  // advance_time
-  // --------------------------------------------------------------------
   const advanceDef = resolveTool(advanceTimeTool.name, ctx.groupName)
   if (advanceDef) {
     tools.push(
@@ -328,9 +302,8 @@ export function createMechanicsTools(ctx: ToolContext, deps: MechanicsDeps): Sdk
           try {
             const result = mutations.advanceTime(worldName, minutes)
             if (!result) {
-              // No player state, or a non-positive delta the schema let through.
-              // Reported as success: the narration this precedes is still valid,
-              // and an error here would make the model retry the whole beat.
+              // No player state, or a non-positive delta. Reported as success:
+              // an error would make the model retry the whole narration beat.
               return toolSuccess(`**Time Advanced:** +${minutes} minutes\n- Reason: ${reason}`)
             }
             const { newTime } = result

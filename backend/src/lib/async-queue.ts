@@ -1,15 +1,13 @@
 /**
- * A bounded async queue with an explicit end-of-stream sentinel.
- *
- * Bun has no `asyncio.Queue`, and the pump/consumer split needs one: the pump
- * must keep reading the SDK stream even while the consumer is slow, so that the
- * CLI's control channel stays serviceable (see session.ts).
+ * A bounded async queue with an explicit end-of-stream sentinel. The
+ * pump/consumer split needs one: the pump must keep reading the SDK stream even
+ * while the consumer is slow, so the CLI's control channel stays serviceable
+ * (see session.ts).
  *
  * `push` never blocks. On overflow it drops the *oldest* item rather than
- * refusing the newest, because the newest is the one carrying the turn's
- * terminal `result` — dropping it would hang the consumer until its idle
- * timeout. Drops are counted so a truncated turn is distinguishable from a
- * clean one.
+ * refusing the newest, because the newest carries the turn's terminal `result` —
+ * dropping it would hang the consumer until its idle timeout. Drops are counted
+ * so a truncated turn is distinguishable from a clean one.
  */
 export class AsyncQueue<T> {
   private readonly buffer: T[] = []

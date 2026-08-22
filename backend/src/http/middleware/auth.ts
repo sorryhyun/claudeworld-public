@@ -1,15 +1,8 @@
 /**
- * JWT authentication middleware.
- *
- * Ported from `AuthMiddleware` in `backend/infrastructure/auth.py`. The
- * exclusion rules are copied one for one, including the ones that have no
- * counterpart on this stack yet: the parity contract freezes the API surface,
- * and an endpoint that is unauthenticated in Python must not become
- * authenticated here just because it does not exist yet.
- *
- * Python needed a pure-ASGI middleware rather than `BaseHTTPMiddleware` so SSE
- * and the MCP endpoint could stream. Hono middleware is already a plain
- * `(context, next)` wrapper with no buffering, so that concern does not arise.
+ * JWT authentication middleware. Every exclusion below is a deliberate hole,
+ * paired with the check that replaces it; removing either half breaks the pair.
+ * The static middleware runs *before* this one, because a deep link carries no
+ * `X-API-Key`.
  */
 
 import { createMiddleware } from 'hono/factory'
@@ -20,8 +13,7 @@ import type { AppEnv } from '../types'
 /** Paths that never require a token. */
 const EXCLUDED_PATHS: ReadonlySet<string> = new Set([
   '/',
-  // FastAPI's docs routes. There is no equivalent here yet; they stay listed so
-  // that adding an OpenAPI page later does not silently put it behind auth.
+  // Listed so adding an OpenAPI page later does not silently authenticate it.
   '/docs',
   '/openapi.json',
   '/redoc',
@@ -47,7 +39,6 @@ const STATIC_EXTENSIONS: readonly string[] = [
   '.map',
 ]
 
-/** Whether a request may proceed without a token. */
 export function isExcluded(path: string, method: string): boolean {
   if (EXCLUDED_PATHS.has(path)) return true
   if (EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix))) return true
@@ -56,8 +47,8 @@ export function isExcluded(path: string, method: string): boolean {
   // Profile pictures are rendered by <img> tags, which cannot send a header.
   if (path.startsWith('/agents/') && path.endsWith('/profile-pic')) return true
 
-  // The SSE stream authenticates with a single-use ticket in the query string
-  // instead, because EventSource cannot send custom headers either.
+  // The SSE stream authenticates with a single-use ticket instead; EventSource
+  // cannot send custom headers either.
   if (path.startsWith('/rooms/') && path.includes('/stream') && method === 'GET') return true
 
   // Preflight carries no credentials by definition.
@@ -67,14 +58,8 @@ export function isExcluded(path: string, method: string): boolean {
 }
 
 /**
- * Reject unauthenticated requests, and attach role and user id to the rest.
- *
- * The 401 body is `{"detail": ...}` — FastAPI's `HTTPException` shape, which
- * the frontend reads directly (`errorData.detail`) — and it carries CORS
- * headers of its own. Hono's CORS middleware runs before this one and would
- * normally cover that, but the header set is reproduced here for the same
- * reason Python does it: a 401 that the browser hides behind a CORS error tells
- * the user "network problem" when the truth is "your session expired".
+ * The 401 repeats the CORS headers deliberately: one the browser hides behind a
+ * CORS error reads as "network problem" when the truth is "session expired".
  */
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const path = new URL(c.req.url).pathname
@@ -104,12 +89,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   return next()
 })
 
-/**
- * Require the admin role.
- *
- * Port of the `require_admin` dependency. Guests may chat; everything that
- * mutates rooms, agents or messages goes through this.
- */
+/** Guests may chat; everything that mutates goes through this. */
 export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   if (c.get('userRole') !== 'admin') {
     return c.json(

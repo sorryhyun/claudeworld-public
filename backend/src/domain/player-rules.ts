@@ -1,34 +1,9 @@
 /**
- * Domain rules for player state mutations — port of
- * `backend/domain/services/player_rules.py`.
- *
- * Pure functions for stat clamping, inventory management, equipment and item
- * affordances. No database, no filesystem, no async: CRUD (DB) and
- * PlayerService (filesystem) both call in here so the two persistence paths
- * cannot drift apart.
- *
- * Two conventions run through the whole file:
- *
- * - **The record shapes keep snake_case keys.** They are not TS domain objects,
- *   they are the JSON blobs in `player_states.{stats,inventory}` and the YAML in
- *   `worlds/<world>/{player,items}/*.yaml`, and the Python backend reads the
- *   same bytes. Only the function *returns* invented by this port (the objects
- *   replacing Python's tuples) use camelCase.
- * - **Python's empty-collection falsiness is explicit.** `if not properties:` is
- *   true for `{}` in Python and false for `{}` in JS, and several branches here
- *   turn on exactly that. `isNonEmpty()` marks every such site.
- *
- * Python returns tuples from nine of these functions; TypeScript gets named
- * objects instead. Positional tuple destructuring at a call site is the kind of
- * thing that silently swaps two values of the same type, and `success`/`ready`
- * booleans sitting next to id strings is precisely that hazard.
+ * Pure domain rules for player state. CRUD (DB) and PlayerService (filesystem)
+ * both call in here so the two persistence paths cannot drift. Record shapes
+ * keep snake_case keys because they are the stored JSON and YAML.
  */
 
-// =============================================================================
-// Shapes
-// =============================================================================
-
-/** A stat as declared in the world's stat definitions. */
 export interface StatDefinition {
   name: string
   min?: number | null
@@ -37,22 +12,17 @@ export interface StatDefinition {
   [key: string]: unknown
 }
 
-/** The world's `stat_definitions` blob: a `stats` list plus display metadata. */
 export interface StatDefinitions {
   stats?: StatDefinition[]
   [key: string]: unknown
 }
 
-/** `stat name -> definition`, as built by {@link buildStatMap}. */
 export type StatMap = Record<string, StatDefinition>
 
 /**
- * One entry of the inventory list.
- *
- * Both historical formats live in this type: the reference format
- * (`item_id` + `instance_properties`) that `player.yaml` writes today, and the
- * legacy embedded format (`id`/`item_id` plus the full item data) still present
- * in older worlds. Every reader here checks both spellings of the id.
+ * One inventory entry, in either the reference format (`item_id` +
+ * `instance_properties`) or the legacy embedded one — so every reader here
+ * checks both spellings of the id.
  */
 export interface InventoryEntry {
   id?: string
@@ -65,7 +35,6 @@ export interface InventoryEntry {
   [key: string]: unknown
 }
 
-/** The `equippable` block of an item template. */
 export interface Equippable {
   slot?: string
   accepts_as?: string[]
@@ -84,7 +53,6 @@ export interface ItemTemplate {
   [key: string]: unknown
 }
 
-/** One slot in the world's slot catalog. */
 export interface SlotDefinition {
   accepts_as?: string[]
   [key: string]: unknown
@@ -96,14 +64,12 @@ export type SlotCatalog = Record<string, SlotDefinition>
 /** `slot name -> equipped item id`, `null` when the slot is empty. */
 export type Equipment = Record<string, string | null>
 
-/** A `{min, max}` bound in an affordance requirement. */
 export interface StatBounds {
   min?: number | null
   max?: number | null
   [key: string]: unknown
 }
 
-/** The `requirements` block of an affordance. */
 export interface AffordanceRequirements {
   stats?: Record<string, StatBounds>
   flags_all?: string[]
@@ -113,7 +79,6 @@ export interface AffordanceRequirements {
   [key: string]: unknown
 }
 
-/** One `stat_changes` entry: a delta applied to a named stat. */
 export interface StatChangeSpec {
   stat?: string
   delta?: number
@@ -127,7 +92,6 @@ export interface FlagChangeSpec {
   [key: string]: unknown
 }
 
-/** An item affordance — a thing the item lets the player do. */
 export interface Affordance {
   id?: string
   requirements?: AffordanceRequirements | null
@@ -142,38 +106,23 @@ export interface Affordance {
   [key: string]: unknown
 }
 
-/** A property value carrying the metadata the UI needs to compare two items. */
 export interface NormalizedProperty {
   value: unknown
   higher_is_better: boolean
 }
 
-// =============================================================================
-// Local helpers
-// =============================================================================
-
-/**
- * Python truthiness for a collection: `{}` and `[]` are falsy there, truthy
- * here. Every `if not <collection>` branch in the source goes through this.
- */
+/** An empty object or array counts as empty; several branches turn on this. */
 function isNonEmpty(value: Record<string, unknown> | unknown[] | null | undefined): boolean {
   if (value === null || value === undefined) return false
   return Array.isArray(value) ? value.length > 0 : Object.keys(value).length > 0
 }
 
-/** Whether a value is a plain JSON object, i.e. what Python calls a `dict`. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/**
- * Render a value the way Python's f-string interpolation would.
- *
- * The messages these functions return are shown to agents and players verbatim,
- * and the Python backend can still produce them for the same world, so `None`,
- * `True` and `False` have to survive the port rather than turning into
- * `undefined`, `true` and `false`.
- */
+// Messages built here are shown to agents and players verbatim and must keep
+// rendering `None`/`True`/`False` rather than `undefined`/`true`/`false`.
 function pyStr(value: unknown): string {
   if (value === null || value === undefined) return 'None'
   if (value === true) return 'True'
@@ -181,11 +130,6 @@ function pyStr(value: unknown): string {
   return String(value)
 }
 
-// =============================================================================
-// InventoryItem
-// =============================================================================
-
-/** Constructor fields for {@link InventoryItem}, mirroring the dataclass. */
 export interface InventoryItemFields {
   id: string
   name: string
@@ -194,12 +138,7 @@ export interface InventoryItemFields {
   properties?: Record<string, unknown> | null
 }
 
-/**
- * Domain representation of an inventory item.
- *
- * Supports both the reference-based format (`item_id` + `instance_properties`)
- * and the legacy embedded format (full item data in `player.yaml`).
- */
+/** An inventory item, in either storage format. */
 export class InventoryItem {
   readonly id: string
   readonly name: string
@@ -215,13 +154,7 @@ export class InventoryItem {
     this.properties = fields.properties ?? null
   }
 
-  /**
-   * Serialize to the legacy embedded format: every field, always all five keys.
-   *
-   * This is what the API returns to the frontend and what the DB inventory blob
-   * holds. `properties` is normalised to `{}` rather than left null, matching
-   * Python's `self.properties or {}`.
-   */
+  /** The embedded format — all five keys — as sent to the frontend and stored. */
   toDict(): InventoryEntry {
     return {
       item_id: this.id,
@@ -233,14 +166,9 @@ export class InventoryItem {
   }
 
   /**
-   * Serialize to the reference format `player.yaml` persists.
-   *
-   * Deliberately *not* the same key set as {@link toDict}: only `item_id` and
-   * `quantity`, plus `instance_properties` when there is something to store.
-   * Name and description live in `items/<item_id>.yaml` and must not be
-   * duplicated into the player file, or an edited template would be shadowed by
-   * a stale copy. The `instance_properties` key is omitted entirely for empty
-   * properties (Python's `if self.properties:`), not written as `{}`.
+   * The reference format `player.yaml` persists — deliberately not
+   * {@link toDict}'s key set: name and description live in the item template and
+   * duplicating them here would shadow an edit with a stale copy.
    */
   toReferenceDict(): InventoryEntry {
     const result: InventoryEntry = {
@@ -253,13 +181,7 @@ export class InventoryItem {
     return result
   }
 
-  /**
-   * Build from a dictionary in either id spelling.
-   *
-   * `id` wins over `item_id`, and `properties` over `instance_properties` — but
-   * only when non-empty, because Python chains these with `or`, so an empty
-   * `properties` falls through to `instance_properties`.
-   */
+  /** Either id spelling; `id` wins, and a *non-empty* `properties` wins. */
   static fromDict(data: InventoryEntry): InventoryItem {
     return new InventoryItem({
       id: data.id || data.item_id || '',
@@ -271,16 +193,9 @@ export class InventoryItem {
   }
 
   /**
-   * Build from the reference format, merging an item template underneath it.
-   *
-   * Merge precedence: template defaults first, instance properties over the top,
-   * so a per-instance durability overrides the template's default durability and
-   * a template gaining a new default property back-fills existing instances.
-   * `default_properties` is the modern template key; `properties` is the older
-   * one and is only consulted when `default_properties` is empty.
-   *
-   * With no template this is the legacy path, where `player.yaml` carried the
-   * whole item: name and description come from the reference itself.
+   * Reference format with a template merged underneath: template defaults first,
+   * instance properties on top, so a new default back-fills existing instances.
+   * `properties` is the older `default_properties` and is read only if it is empty.
    */
   static fromReference(refData: InventoryEntry, template?: ItemTemplate | null): InventoryItem {
     const itemId = refData.item_id || refData.id || ''
@@ -299,9 +214,7 @@ export class InventoryItem {
 
       return new InventoryItem({
         id: itemId,
-        // Python's `template.get("name", item_id)` keeps an explicit `name: null`
-        // as None; `??` falls back to the id instead. A template with a null name
-        // is malformed either way, and a visible id beats a null in the UI.
+        // A template with a null name is malformed; show the id, not a null.
         name: template.name ?? itemId,
         description: template.description ?? null,
         quantity,
@@ -319,17 +232,7 @@ export class InventoryItem {
   }
 }
 
-// =============================================================================
-// Stats
-// =============================================================================
-
-/**
- * Build the `stat name -> definition` lookup used for clamping.
- *
- * A definition without a `name` throws, as Python's `stat["name"]` raises
- * KeyError: a stat that cannot be addressed by name can never be clamped, and
- * silently dropping it would let values drift past their bounds unnoticed.
- */
+/** Throws on a nameless definition: dropping it would let values drift unbounded. */
 export function buildStatMap(statDefinitions: StatDefinitions | null | undefined): StatMap {
   if (!statDefinitions) return {}
 
@@ -344,12 +247,8 @@ export function buildStatMap(statDefinitions: StatDefinitions | null | undefined
 }
 
 /**
- * Clamp a stat value to its declared bounds.
- *
- * A stat with no definition is returned untouched — unbounded, not clamped to
- * zero. Ad-hoc stats invented mid-game by an agent take this path, and so does
- * every stat when the caller passes no definitions at all. Each bound is
- * independent: a stat may declare only a `min` or only a `max`.
+ * Clamp a stat to its declared bounds. An undefined stat comes back untouched —
+ * unbounded, not zeroed — which is what ad-hoc agent-invented stats rely on.
  */
 export function clampStatValue(value: number, statName: string, statMap: StatMap): number {
   const statDef = statMap[statName]
@@ -361,12 +260,7 @@ export function clampStatValue(value: number, statName: string, statMap: StatMap
   return clamped
 }
 
-/**
- * Apply `name -> delta` changes to the current stats, clamping each result.
- *
- * A stat not present in `currentStats` starts from 0, so a change can introduce
- * a stat. The input is copied, never mutated.
- */
+/** Apply `name -> delta` changes, clamping each. A missing stat starts at 0. */
 export function applyStatChanges(
   currentStats: Record<string, number>,
   changes: Record<string, number>,
@@ -384,11 +278,8 @@ export function applyStatChanges(
 }
 
 /**
- * Build the starting stats block for a new character.
- *
- * Every declared stat gets its `default` (0 when it declares none), then the
- * overrides are layered on top. Overrides are *not* clamped and may introduce
- * stats the definitions never mention — character creation is trusted here.
+ * Starting stats: each declared `default` (0 if absent), then overrides on top.
+ * Overrides are *not* clamped and may introduce undeclared stats.
  */
 export function initializeStatsFromDefinitions(
   statDefinitions: StatDefinitions,
@@ -409,11 +300,7 @@ export function initializeStatsFromDefinitions(
   return stats
 }
 
-// =============================================================================
-// Inventory
-// =============================================================================
-
-/** Result of {@link findInventoryItem}: both fields are null when not found. */
+/** Both fields are null when not found. */
 export interface FoundInventoryItem {
   /** The live entry from the passed list, not a copy — callers mutate it. */
   item: InventoryEntry | null
@@ -434,12 +321,8 @@ export function findInventoryItem(
 }
 
 /**
- * Add an item, stacking onto an existing entry of the same id.
- *
- * Everything stacks: there is no per-item `stackable` flag, so two swords land
- * as one entry with `quantity: 2` exactly as two potions would. The entries are
- * shallow-copied, so the returned list is safe to persist but nested
- * `properties` objects are still shared with the input.
+ * Add an item, stacking onto an entry of the same id — everything stacks, there
+ * is no `stackable` flag. Shallow-copied, so nested `properties` stay shared.
  */
 export function mergeInventoryItem(
   inventory: InventoryEntry[],
@@ -457,7 +340,6 @@ export function mergeInventoryItem(
   return newInventory
 }
 
-/** Result of {@link removeInventoryItem}. */
 export interface RemoveInventoryResult {
   /** On failure this is the *original* array, unchanged and not copied. */
   inventory: InventoryEntry[]
@@ -467,12 +349,8 @@ export interface RemoveInventoryResult {
 }
 
 /**
- * Remove `quantity` of an item, dropping the entry when it hits zero.
- *
- * Removing more than is held fails outright rather than removing what there is:
- * a partial consume would leave the caller thinking the whole cost was paid.
- * The failure still reports the held quantity so the caller can say how short
- * the player was.
+ * Remove `quantity`, dropping the entry at zero. Removing more than is held
+ * fails outright — a partial consume would look like the whole cost was paid.
  */
 export function removeInventoryItem(
   inventory: InventoryEntry[],
@@ -501,12 +379,7 @@ export function removeInventoryItem(
   return { inventory: newInventory, success: true, remaining }
 }
 
-/**
- * Replace one item's `instance_properties`.
- *
- * Only the first match is updated, and a miss is not an error — the list comes
- * back copied either way.
- */
+/** Replace one item's `instance_properties`. A miss is not an error. */
 export function updateInventoryItemProps(
   inventory: InventoryEntry[],
   itemId: string,
@@ -524,17 +397,7 @@ export function updateInventoryItemProps(
   return newInventory
 }
 
-// =============================================================================
-// Property normalization (higher_is_better metadata)
-// =============================================================================
-
-/**
- * Property names where a lower number is the better one.
- *
- * The default is "higher is better", so this set is the inversion list, matched
- * case-insensitively against the property name. It exists so the UI can colour a
- * comparison without the world author annotating every property.
- */
+/** Lower-is-better property names, matched case-insensitively; the default is the opposite. */
 export const LOWER_IS_BETTER_PROPERTIES: ReadonlySet<string> = new Set([
   'weight',
   'cursed_level',
@@ -548,15 +411,8 @@ export const LOWER_IS_BETTER_PROPERTIES: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Normalize one property value to `{value, higher_is_better}`.
- *
- * An already-structured `{value: ...}` keeps its own `higher_is_better` (default
- * true), which is how a world author overrides the name-based guess. A bare
- * value gets the guess: better-when-higher unless the name is in
- * {@link LOWER_IS_BETTER_PROPERTIES}.
- *
- * Python passes a non-boolean `higher_is_better` straight through; this coerces
- * it, since the field is typed and every consumer only tests its truthiness.
+ * An already-structured `{value: ...}` keeps its own `higher_is_better`,
+ * overriding the guess made from {@link LOWER_IS_BETTER_PROPERTIES}.
  */
 export function normalizePropertyValue(prop: unknown, propName = ''): NormalizedProperty {
   if (isRecord(prop) && 'value' in prop) {
@@ -585,32 +441,19 @@ export function normalizeProperties(
   return normalized
 }
 
-// =============================================================================
-// Equipment
-// =============================================================================
-
-/** Result of {@link equipItem} / {@link unequipSlot}. */
 export interface EquipResult {
   /** On failure this is the *original* equipment object, unchanged. */
   equipment: Equipment
-  /** The item displaced from the slot, if any. */
   unequippedItemId: string | null
   /** Human-readable outcome, shown to the player verbatim. */
   message: string
 }
 
 /**
- * Equip an inventory item into a slot.
- *
- * Validation order matters — the first failing check is the message the player
- * sees: slot exists, item is held, item is equippable at all, item declares this
- * slot, then slot/item type compatibility. Failures are reported in the message
- * rather than thrown; the caller is a tool handler that narrates the reason.
- *
- * An empty `slotCatalog` skips slot validation entirely (Python's
- * `if slot_catalog and ...`), which is how a world with no slot definitions
- * still allows equipping. Likewise `accepts_as` is only enforced when both sides
- * declare it.
+ * Validation order is the order the player sees blame in: slot exists, item
+ * held, item equippable, item declares this slot, then type compatibility.
+ * Failures come back in `message`, not thrown. An empty `slotCatalog` skips slot
+ * validation, and `accepts_as` is enforced only when both sides declare it.
  */
 export function equipItem(
   inventory: InventoryEntry[],
@@ -658,8 +501,7 @@ export function equipItem(
     }
   }
 
-  // Occupied slots swap rather than refuse: the displaced id comes back so the
-  // caller can put it away, and the slot never holds two items.
+  // Occupied slots swap; the displaced id comes back so the caller stows it.
   const newEquipment: Equipment = { ...equipment }
   const unequippedId = newEquipment[slot] ?? null
   newEquipment[slot] = itemId
@@ -695,12 +537,7 @@ export function unequipSlot(equipment: Equipment, slot: string): EquipResult {
   }
 }
 
-/**
- * Sum the passive stat modifiers of everything currently equipped.
- *
- * An item id with no template contributes nothing rather than throwing, so a
- * deleted item template degrades the bonus instead of breaking the turn.
- */
+/** An id with no template contributes nothing, degrading the bonus not the turn. */
 export function getEquippedPassiveEffects(
   equipment: Equipment,
   itemTemplates: Record<string, ItemTemplate>,
@@ -719,11 +556,6 @@ export function getEquippedPassiveEffects(
   return totalEffects
 }
 
-// =============================================================================
-// Affordances
-// =============================================================================
-
-/** Result of {@link checkAffordanceRequirements}. */
 export interface RequirementCheck {
   canUse: boolean
   /** Why — the first unmet requirement, or a confirmation when all are met. */
@@ -731,12 +563,8 @@ export interface RequirementCheck {
 }
 
 /**
- * Check whether the player meets an affordance's requirements.
- *
- * Returns on the first failure, so the reason names one specific blocker rather
- * than a list. An affordance with no `requirements` block is always usable.
- * Stats missing from `currentStats` read as 0 and flags missing from `flags`
- * read as false, which makes `flags_none` pass by default.
+ * Returns on the first failure so the reason names one blocker. Missing stats
+ * read as 0 and missing flags as false.
  */
 export function checkAffordanceRequirements(
   affordance: Affordance,
@@ -785,7 +613,6 @@ export function checkAffordanceRequirements(
   return { canUse: true, reason: 'Requirements met' }
 }
 
-/** Result of {@link applyAffordanceCosts}. */
 export interface AffordanceCostResult {
   /** On failure this is the *original* stats object: costs are all-or-nothing. */
   stats: Record<string, number>
@@ -794,15 +621,10 @@ export interface AffordanceCostResult {
 }
 
 /**
- * Deduct an affordance's costs from the player's stats.
- *
- * Unlike {@link applyAffordanceEffects}, a cost that would push a stat below its
- * declared minimum *fails* instead of clamping — that is the whole point of a
- * cost, and clamping would let the player cast a spell they cannot pay for. The
- * maximum still clamps, since overshooting a cap is not a failure to pay. A stat
- * with no minimum defined can therefore go negative.
- *
- * Costs are all-or-nothing: a later change failing discards the earlier ones.
+ * Unlike {@link applyAffordanceEffects}, a cost pushing a stat below its minimum
+ * *fails* instead of clamping — clamping would let the player cast a spell they
+ * cannot pay for. The maximum still clamps, a stat with no minimum can go
+ * negative, and costs are all-or-nothing.
  */
 export function applyAffordanceCosts(
   affordance: Affordance,
@@ -819,8 +641,7 @@ export function applyAffordanceCosts(
   const newStats: Record<string, number> = { ...currentStats }
 
   for (const change of statChanges) {
-    // Python would happily write a `None` key here and only fail later, when the
-    // stats blob is serialized. A nameless change is dropped instead.
+    // A nameless change is dropped rather than written under a null key.
     const statName = change.stat
     if (typeof statName !== 'string') continue
     const delta = change.delta ?? 0
@@ -848,7 +669,6 @@ export function applyAffordanceCosts(
   return { stats: newStats, success: true, message: 'Costs applied' }
 }
 
-/** Result of {@link applyAffordanceEffects}. */
 export interface AffordanceEffectResult {
   stats: Record<string, number>
   flags: Record<string, boolean>
@@ -856,12 +676,7 @@ export interface AffordanceEffectResult {
   message: string
 }
 
-/**
- * Apply an affordance's effects: stat deltas and flag assignments.
- *
- * Effects clamp at both bounds and cannot fail — a heal past max health is
- * capped, not refused. Compare {@link applyAffordanceCosts}, which refuses.
- */
+/** Effects clamp at both bounds and cannot fail, unlike {@link applyAffordanceCosts}. */
 export function applyAffordanceEffects(
   affordance: Affordance,
   currentStats: Record<string, number>,
@@ -890,8 +705,7 @@ export function applyAffordanceEffects(
 
     newStats[statName] = newValue
 
-    // The reported delta is the requested one, not the clamped result, matching
-    // Python. "health +50" after a cap at +10 is what the player sees.
+    // The requested delta, not the clamped result: "health +50" after a +10 cap.
     const sign = delta > 0 ? '+' : ''
     effectMessages.push(`${statName} ${sign}${delta}`)
   }
@@ -909,21 +723,9 @@ export function applyAffordanceEffects(
 }
 
 /**
- * Record a use of an affordance in the item's instance properties.
- *
  * Charges and cooldowns are keyed per affordance (`charges_<id>`,
- * `cooldown_<id>`) inside one flat properties dict, so an item with several
- * affordances tracks each separately. An affordance with no `id` shares the
- * `default` key.
- *
- * Charges only exist when `charges.max` is set, and a cooldown is only written
- * when the affordance declares both a domain and a non-zero value *and* the
- * caller knows the current value of that time domain — without it there is
- * nothing to compute an expiry from, so the use simply does not start a
- * cooldown.
- *
- * Python also takes a `current_time` mapping here and never reads it; it is not
- * ported.
+ * `cooldown_<id>`) in one flat dict; no `id` means `default`. A cooldown needs a
+ * domain, a non-zero value and a known `timeDomainValue`.
  */
 export function updateChargesAndCooldown(
   instanceProperties: Record<string, unknown>,
@@ -937,9 +739,7 @@ export function updateChargesAndCooldown(
   const maxCharges = chargesConfig.max
   if (maxCharges !== null && maxCharges !== undefined) {
     const chargesKey = `charges_${affordanceId}`
-    // An unused item has no stored count yet and starts from a full bar. A
-    // stored non-number is malformed (Python would raise on the subtraction) and
-    // is treated the same as unused rather than failing the turn.
+    // Unused (or malformed) reads as a full bar rather than failing the turn.
     const stored = newProps[chargesKey]
     const currentCharges = typeof stored === 'number' ? stored : maxCharges
     const consume = chargesConfig.consume ?? 1
@@ -956,19 +756,12 @@ export function updateChargesAndCooldown(
   return newProps
 }
 
-/** Result of {@link checkCooldownReady}. */
 export interface CooldownCheck {
   ready: boolean
   message: string
 }
 
-/**
- * Check whether an affordance is off cooldown.
- *
- * A missing entry means "never used", which is ready. The stored entry carries
- * its own domain so the message can say "3 turns remaining" or "3 days
- * remaining"; the caller supplies the current value of that domain.
- */
+/** A missing entry means never used. The entry carries its own time domain. */
 export function checkCooldownReady(
   instanceProperties: Record<string, unknown>,
   affordance: Affordance,
@@ -979,8 +772,7 @@ export function checkCooldownReady(
 
   if (!cooldownData) return { ready: true, message: 'Ready' }
   if (!isRecord(cooldownData)) {
-    // Python raises AttributeError on the `.get` below. A malformed entry is
-    // read as "no cooldown recorded" instead of failing the player's turn.
+    // Malformed reads as "no cooldown recorded", not a failed turn.
     return { ready: true, message: 'Ready' }
   }
 
@@ -993,7 +785,6 @@ export function checkCooldownReady(
   return { ready: false, message: `On cooldown (${remaining} ${domain}s remaining)` }
 }
 
-/** Result of {@link checkChargesAvailable}. */
 export interface ChargesCheck {
   hasCharges: boolean
   /** Charges left, or -1 for an affordance with no charge limit. */
@@ -1001,13 +792,7 @@ export interface ChargesCheck {
   message: string
 }
 
-/**
- * Check whether an affordance has charges left for one more use.
- *
- * An affordance without `charges.max` is unlimited and reports -1, which is why
- * callers must test `hasCharges` rather than the count. An item that has never
- * been used has no stored count and reads as full.
- */
+/** Without `charges.max` an affordance is unlimited and reports -1, so test `hasCharges`. */
 export function checkChargesAvailable(
   instanceProperties: Record<string, unknown>,
   affordance: Affordance,

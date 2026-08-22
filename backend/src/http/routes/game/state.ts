@@ -1,16 +1,9 @@
 /**
- * Game state queries — port of `backend/routers/game/state.py`.
- *
- * Four read-only endpoints feeding the right-hand game panel. What they have in
- * common is worth naming once: **the filesystem wins on every field it owns.**
- * `player.yaml` holds the authoritative inventory, clock and equipment, and
- * `stats.yaml` the stat definitions; the matching `player_states` columns are a
- * cache that these routes deliberately do not read for those fields. A turn's
- * tools write the files first, so reading the columns instead would show the
- * player a panel one turn behind the prose they are looking at.
- *
- * The `stats` *values* are the exception — those do come from the column, since
- * `crud/player_state.py` is what mutates them.
+ * Read-only game state for the right-hand panel. **The filesystem wins on every
+ * field it owns** — inventory, clock, equipment, stat definitions — and the
+ * matching `player_states` columns are a cache these routes deliberately skip:
+ * a turn's tools write the files first, so the columns would show a panel one
+ * turn behind the prose. Stat *values* are the exception.
  */
 
 import { Hono } from 'hono'
@@ -30,7 +23,6 @@ const logger = getLogger('GameRouter.State')
 export function createStateRoutes(state: AppState): Hono<AppEnv> {
   const routes = new Hono<AppEnv>()
 
-  /** The full player state: stats, resolved inventory, location, clock. */
   routes.get('/worlds/:world_id/state', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const world = requireWorld(state, c, worldId)
@@ -43,22 +35,16 @@ export function createStateRoutes(state: AppState): Hono<AppEnv> {
     return c.json(
       toPlayerState(playerState, {
         inventory: state.services.players.getResolvedInventory(world.name),
-        // Both null when there is no `player.yaml` at all — the shape the
-        // frontend renders as "no clock yet" during onboarding.
+        // Both null without a `player.yaml` — the frontend renders that as
+        // "no clock yet" during onboarding.
         gameTime: fsState ? GameTime.parse(fsState.gameTime) : null,
         equipment: fsState ? (fsState.equipment ?? {}) : null,
       }),
     )
   })
 
-  /**
-   * Stat definitions plus current values, for the stat bars.
-   *
-   * **No 404 when the player state is missing**, unlike `/state` above: Python
-   * fetches the row, never checks it, and falls back to `{}` for the values. A
-   * world mid-creation therefore renders empty bars rather than an error, which
-   * is the behaviour the panel is written against.
-   */
+  // **No 404 when the player state is missing**, unlike `/state` above: a world
+  // mid-creation renders empty bars, which is what the panel expects.
   routes.get('/worlds/:world_id/state/stats', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const world = requireWorld(state, c, worldId)
@@ -72,7 +58,6 @@ export function createStateRoutes(state: AppState): Hono<AppEnv> {
     })
   })
 
-  /** The inventory, with every reference resolved against its item template. */
   routes.get('/worlds/:world_id/state/inventory', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const world = requireWorld(state, c, worldId)
@@ -81,13 +66,8 @@ export function createStateRoutes(state: AppState): Hono<AppEnv> {
     return c.json({ items: resolved, count: resolved.length })
   })
 
-  /**
-   * The world's item catalogue — every template under `worlds/<name>/items/`,
-   * whether or not the player holds one.
-   *
-   * Distinct from `/state/inventory`: this is what *exists*, that is what is
-   * *carried*. The crafting and shop UIs read this one.
-   */
+  // Every template under `worlds/<name>/items/` — what *exists*, where
+  // `/state/inventory` is what is *carried*.
   routes.get('/worlds/:world_id/items', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const world = requireWorld(state, c, worldId)

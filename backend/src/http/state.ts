@@ -31,17 +31,9 @@ import type { Identity } from './access-control'
 import type { AppEnv } from './types'
 
 /**
- * Everything the routers need that outlives a request.
- *
- * The FastAPI counterpart is `app.state` plus the `Depends(...)` functions in
- * `core/dependencies.py`. There is no dependency-injection framework here and
- * none is wanted: a route module is a factory that takes this object, which is
- * the shape Phase 1 already settled on for `createAuthRoutes()` and the reason
- * that router is a factory rather than a module singleton.
- *
- * One instance per server. It is created in {@link createAppState} at startup
- * and torn down by {@link AppState.shutdown}, so a test can stand up a whole
- * backend against a temp database without touching module-level state.
+ * Everything the routers need that outlives a request; a route module is a
+ * factory that takes it. One per server, so a test can stand up a whole backend
+ * without module-level state.
  */
 
 const logger = getLogger('AppState')
@@ -54,7 +46,6 @@ export interface AppState {
   orchestrator: RoomOrchestrator
   /** The four filesystem services the world is actually stored in. */
   services: GameplayServices
-  /** What the MCP tool servers are handed, per request. */
   serverDeps: ServerDeps
   /** The loopback MCP endpoint the spawned CLIs call tools through. */
   mcp: McpTools
@@ -67,18 +58,11 @@ export interface AppState {
   reset: WorldResetService
   /** Drives the History_Summarizer over `history.md`. */
   history: HistoryCompressionService
-  /** Per-room SSE fan-out; the streaming half of the chat surface. */
+  /** Per-room SSE fan-out. */
   broadcaster: EventBroadcaster
   /** Single-use tickets, because `EventSource` cannot send a header. */
   tickets: SSETicketManager
-  /**
-   * Autonomous chat rounds, on Python's two-second cadence.
-   *
-   * Constructed here but *not* started: `createAppState` is what the test suite
-   * and `bun run smoke` build, and neither wants a timer firing turns at them.
-   * `main.ts` starts it; `shutdown()` stops it either way, so a caller that
-   * never started it still pays nothing.
-   */
+  /** Constructed but *not* started — `main.ts` does that, so tests get no timer. */
   scheduler: BackgroundScheduler
   projectRoot: string
   shutdown(): Promise<void>
@@ -96,10 +80,8 @@ export function createAppState(options: CreateAppStateOptions): AppState {
   const worldsDir = options.worldsDir ?? settings.paths.worldsDir
   const projectRoot = options.projectRoot ?? settings.paths.projectRoot
 
-  // Each service keeps its own mtime cache, which is the hot-reload mechanism —
-  // not a request cache. They are deliberately *not* given a shared one: a
-  // shared cache would make an edit to one world's files invalidate reads of
-  // another's, and the entries are small enough that sharing buys nothing.
+  // Own mtime cache each — the hot-reload mechanism, not a request cache.
+  // Sharing one would cross-invalidate between worlds.
   const services: GameplayServices = {
     worlds: new WorldService(worldsDir),
     players: new PlayerService(worldsDir),
@@ -114,11 +96,8 @@ export function createAppState(options: CreateAppStateOptions): AppState {
   const agentFactory = new AgentFactory(agentConfigs)
 
 
-  // `serverDeps` is built before the orchestrator and closes over it. The cycle
-  // is real — tools report progress to the orchestrator, and the orchestrator
-  // runs the turns that build the tools — and a closure is the narrowest place
-  // to break it: the callback cannot fire until a turn is running, by which
-  // point the binding is long since initialised.
+  // Built before the orchestrator and closing over it. The cycle is real, and
+  // the closure breaks it: no callback fires before a turn is running.
   const serverDeps: ServerDeps = {
     players: services.players,
     rooms: services.rooms,
@@ -131,18 +110,14 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     agentFactory,
     persistence: (db, worldId, worldName) =>
       new PersistenceManager(db, worldId, worldName, worldsDir),
-    // Bound per world by `buildServers`, because the facade's write-through
-    // targets one `player_states` row. Passed explicitly rather than left to
-    // the default so it shares this state's `PlayerService` — and with it the
-    // mtime cache that makes the filesystem reads hot.
+    // Bound per world by `buildServers`: the facade writes through to one
+    // `player_states` row. Explicit so it shares this `PlayerService`.
     mutations: (db, worldId) => new PlayerFacade(services.players, db, worldId),
-    // The player's input unblocks on narration rather than on the turn ending:
-    // the Action Manager keeps working afterwards (stats, suggestions) and
-    // there is nothing left to wait for once the prose is on screen.
+    // Input unblocks on narration, not turn end: the Action Manager keeps
+    // working afterwards on stats and suggestions.
     onNarrationProduced: (roomId: number) => { orchestrator.setNarrationProduced(roomId) },
-    // The inversion the SDK layer depends on: tools report progress and fire
-    // turn side effects through these callbacks, so nothing under `src/sdk/`
-    // ever imports the orchestrator.
+    // The inversion the SDK layer depends on: nothing under `src/sdk/` imports
+    // orchestration, it fires side effects through these callbacks.
     status: {
       setSubAgentActive: (roomId, name, thinkingText) => {
         orchestrator.setSubAgentActive(roomId, name, thinkingText)
@@ -161,16 +136,13 @@ export function createAppState(options: CreateAppStateOptions): AppState {
 
 
 
-  // Ordered so nothing has to be forward-declared: `serverDeps` closes over the
-  // orchestrator lazily but references nothing here eagerly, the endpoint needs
-  // only `serverDeps`, and the pool needs the endpoint's eviction hook — which
-  // keeps a session and its MCP binding dying together.
+  // The pool takes the endpoint's eviction hook, so a session and its MCP
+  // binding die together.
   const mcp = new McpTools(serverDeps)
   const pool = new SessionPool(10, mcp.release)
 
-  // Its own `WorldService` and mtime cache, deliberately: `compressHistory`
-  // rewrites `history.md` through `fs` directly and drops that path's cache
-  // entry itself, which it can only do for a cache it owns.
+  // Its own `WorldService`: `compressHistory` rewrites `history.md` through
+  // `fs` and drops that cache entry itself.
   const history = new HistoryCompressionService(
     createSummarizer(pool, { useSonnet: settings.useSonnet }),
     worldsDir,
@@ -213,34 +185,27 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     scheduler,
     projectRoot,
     async shutdown() {
-      // Before anything else: the scheduler is the only thing that *starts*
-      // work on its own, so it has to stop first or a tick can hand the
-      // orchestrator a fresh round while the next line is draining it.
+      // First: the scheduler is the only thing that *starts* work on its own,
+      // so stopping it later lets a tick queue a round mid-drain.
       await scheduler.stop()
-      // Then: an open stream holds a request alive, and every one of them has
-      // to be told to finish before the turns that feed them stop existing.
+      // Then the streams: an open one holds a request alive.
       logger.info('Closing SSE streams...')
       broadcaster.shutdown()
       logger.info('Stopping in-flight turns...')
       await orchestrator.shutdown()
       logger.info('Closing agent sessions...')
       await pool.shutdown()
-      // After the sessions, not before: a session still unwinding can have a
-      // sub-agent tool call in flight, and tearing the listener out from under
-      // it would turn an orderly shutdown into a connection error.
+      // After the sessions: one still unwinding can have a sub-agent tool call
+      // in flight, and pulling the listener would make that a connection error.
       mcp.stop()
     },
   }
 }
 
 /**
- * The authenticated caller. Port of `get_request_identity`.
- *
- * The defaults matter and are Python's: an unauthenticated request that somehow
- * reaches a handler is treated as `admin`, because the middleware's exclusion
- * table — not the handler — is what decides whether a route is public. Changing
- * the default to `guest` here would silently 403 every excluded route instead of
- * serving it.
+ * The authenticated caller. The defaults matter: a request reaching a handler
+ * unauthenticated is `admin`, because the middleware's exclusion table decides
+ * what is public — `guest` here would silently 403 every excluded route.
  */
 export function identityOf(c: Context<AppEnv>): Identity {
   const role = c.get('userRole') ?? 'admin'

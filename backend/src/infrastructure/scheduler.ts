@@ -1,35 +1,18 @@
 /**
- * Background scheduler for autonomous agent chat rounds.
+ * Background scheduler for autonomous agent chat rounds: every **2 seconds**
+ * each active chat room gets one round, so the agents keep talking while nobody
+ * is watching; every **5 minutes** expired cache entries and stale orchestrator
+ * state are swept. It picks rooms and does not orchestrate — *how* a round runs
+ * belongs to {@link RoomOrchestrator.handleAutonomousRound}, which gives a
+ * background round the interrupt and in-flight rules a user message gets.
  *
- * Port of `backend/infrastructure/scheduler.py`. Two periodic jobs, both of
- * which Python ran on APScheduler:
+ * **A tick arriving while the previous one is still running is dropped, not
+ * queued.** A bare `setInterval` with an async callback does the opposite: a
+ * slow tick stacks up overlapping runs that all hit the same rooms.
+ * {@link BackgroundScheduler.tick} guards on the in-flight promise instead.
  *
- * - every **2 seconds**, give each active chat room one autonomous round, so
- *   the agents keep talking to each other while nobody is watching;
- * - every **5 minutes**, sweep expired cache entries and stale orchestrator
- *   state.
- *
- * The scheduler picks rooms; it does not orchestrate. Everything about *how* a
- * round runs — who speaks, in what order, when the room is finished — belongs to
- * {@link RoomOrchestrator.handleAutonomousRound}, which is also what gives a
- * background round the same interrupt and in-flight rules a user's message gets.
- *
- * ## `setInterval` is not APScheduler
- *
- * The Python jobs are declared `max_instances=1, coalesce=True,
- * misfire_grace_time=None`: a tick that comes round while the previous one is
- * still running is **dropped**, not queued. A bare `setInterval` with an async
- * callback does the opposite — it keeps firing, and a slow tick stacks up
- * overlapping runs that all hit the same rooms. {@link BackgroundScheduler.tick}
- * therefore guards on the in-flight promise and returns immediately, which is
- * the whole of `max_instances=1` plus `coalesce=True` for an interval job.
- *
- * ## Queries live here
- *
- * The active-room select and its agent-count filter are written against the
- * Drizzle handle in this file rather than added to `src/crud/`: they are the
- * scheduler's own selection policy, they exist nowhere else in the app, and
- * Python likewise builds them inline in `scheduler.py` rather than in `crud/`.
+ * The active-room select lives here rather than in `src/crud/`: it is the
+ * scheduler's own selection policy and exists nowhere else.
  */
 
 import { and, count, desc, eq, gte, inArray, isNull } from 'drizzle-orm'
@@ -41,46 +24,32 @@ import { getLogger } from './logging/logger'
 
 const logger = getLogger('BackgroundScheduler')
 
-/** Python's `seconds=2` interval job. */
 export const PROCESS_INTERVAL_MS = 2_000
 
-/** Python's `minutes=5` interval job. */
 export const CLEANUP_INTERVAL_MS = 5 * 60_000
 
 /**
- * How recently a room must have seen activity to be scheduled.
- *
- * Read off `rooms.last_activity_at` rather than by scanning messages — Python's
- * comment on the same query: the column exists so this poll does not re-count
- * a room's whole transcript every two seconds.
+ * How recently a room must have seen activity to be scheduled. Read off
+ * `rooms.last_activity_at` rather than by scanning messages: the column exists
+ * so this poll does not re-count a room's whole transcript every two seconds.
  */
 export const ACTIVE_WINDOW_MS = 5 * 60_000
 
 /** Below this, there is nobody for an agent to talk *to*. */
 const MIN_AGENTS = 2
 
-/**
- * What the scheduler needs from the orchestrator.
- *
- * Narrowed to two methods so a test can drive the scheduler without a session
- * pool, an SDK or a model — and so this module keeps depending on orchestration
- * only through a shape it declares itself.
- */
+/** Narrowed to two methods, so a test can drive the scheduler without a session
+ * pool or a model and this module declares its own dependency shape. */
 export interface SchedulerOrchestrator {
   handleAutonomousRound(roomId: number): Promise<{ skipped?: boolean }>
-  /** Python's `ChatOrchestrator.cleanup_stale_entries`. */
   cleanupStaleEntries?(maxAgeSeconds?: number): number
 }
 
 export interface BackgroundSchedulerDeps {
   db: Db
   orchestrator: SchedulerOrchestrator
-  /**
-   * Caps both the number of rooms selected per tick and how many are processed
-   * at once — Python applies it as a `LIMIT` *and* as a semaphore, and both
-   * halves are kept because the limit is per tick while the semaphore also
-   * covers a tick whose rooms are slower than the interval.
-   */
+  /** Caps the rooms selected per tick (`LIMIT`) *and* how many run at once (a
+   * semaphore) — the latter also covers a tick slower than the interval. */
   maxConcurrentRooms: number
   /** Overridable so tests do not have to wait on real wall-clock intervals. */
   processIntervalMs?: number
@@ -113,7 +82,7 @@ export class BackgroundScheduler {
     return this.running
   }
 
-  /** Idempotent, like Python's `if not self.is_running`. */
+  /** Idempotent. */
   start(): void {
     if (this.running) return
     this.running = true
@@ -135,12 +104,9 @@ export class BackgroundScheduler {
   }
 
   /**
-   * Stop the timers and wait for the tick already in flight.
-   *
-   * Idempotent, and awaitable for the reason Python's synchronous
-   * `scheduler.shutdown()` does not have to be: a half-finished tick here holds
-   * a database handle a test is about to delete, so shutdown has to be able to
-   * join it rather than merely stop scheduling more.
+   * Stop the timers and wait for the in-flight tick. Idempotent, and awaitable
+   * because a half-finished tick holds a database handle a test is about to
+   * delete — shutdown must join it, not merely stop scheduling more.
    */
   async stop(): Promise<void> {
     if (this.processTimer) clearInterval(this.processTimer)
@@ -159,15 +125,12 @@ export class BackgroundScheduler {
   }
 
   /**
-   * One pass over the active rooms. Public so tests can drive it directly
-   * instead of sleeping on the interval.
-   *
-   * Never rejects and never leaves the scheduler wedged: one room's failure is
-   * logged and the rest of the tick continues, and a failure of the tick itself
-   * still clears {@link inFlight}.
+   * One pass over the active rooms; public so tests can drive it directly. Never
+   * rejects and never wedges: one room's failure is logged and the tick
+   * continues, and a failure of the tick itself still clears {@link inFlight}.
    */
   async tick(): Promise<void> {
-    // `max_instances=1` + `coalesce=True`: skip, do not queue.
+    // Skip, do not queue — overlapping ticks would hit the same rooms twice.
     if (this.inFlight !== null) {
       logger.debug('Previous tick still running, skipping this one')
       return
@@ -208,23 +171,15 @@ export class BackgroundScheduler {
   }
 
   /**
-   * The rooms that should get an autonomous round, in Python's order.
+   * The rooms that get an autonomous round: not paused, not finished, active
+   * within {@link ACTIVE_WINDOW_MS}, `world_id IS NULL` (a TRPG room's turns
+   * come from the game tapes; scheduling one here would run chat-room agents
+   * inside a world), newest first, capped, and holding {@link MIN_AGENTS} agents.
+   * `= 0` is *false* for a NULL column in SQLite, so NULL flags mean skipped.
    *
-   * Every clause is `scheduler.py::_get_active_rooms`, kept verbatim including
-   * the NULL semantics: `is_paused = 0` and `is_finished = 0` compare *false*
-   * for a NULL column in SQLite, so a room with NULL flags is skipped in both
-   * backends rather than treated as active.
-   *
-   * - not paused, not finished
-   * - active within {@link ACTIVE_WINDOW_MS}
-   * - **`world_id IS NULL`** — a TRPG room's turns come from the game tapes, and
-   *   scheduling one here would run chat-room agents inside a world
-   * - most recently active first, capped at `maxConcurrentRooms`
-   * - at least {@link MIN_AGENTS} agents
-   *
-   * The agent count is a second query rather than a join, because the cap
-   * applies to the *rooms* selected: joining would either need a `GROUP BY`
-   * before the limit or risk the limit counting membership rows.
+   * The agent count is a second query rather than a join because the cap applies
+   * to the *rooms* selected: a join would need a `GROUP BY` before the limit or
+   * risk the limit counting membership rows.
    */
   activeRooms(): Room[] {
     const cutoff = new Date(Date.now() - ACTIVE_WINDOW_MS)
@@ -265,18 +220,9 @@ export class BackgroundScheduler {
   }
 
   /**
-   * The five-minute sweep — `scheduler.py::_cleanup_cache`.
-   *
-   * Python cleaned three things; two of them have a counterpart here:
-   *
-   * 1. the request cache's expired entries, plus its stats line;
-   * 2. the orchestrator's stale supersede stamps.
-   *
-   * The third, `agent_manager.cleanup_stale_resources()`, has **no TS
-   * counterpart**. It swept per-client `asyncio.Lock` objects left behind for
-   * clients no longer in the pool; `SessionPool` serializes concurrent opens
-   * with a promise it deletes when the open settles, so there is no lock table
-   * to grow stale. Nothing was reimplemented to fill the gap.
+   * The five-minute sweep: expired cache entries, the stats line, and the
+   * orchestrator's stale supersede stamps. No per-session lock sweep is needed —
+   * `SessionPool` deletes its open-serializing promise when the open settles.
    */
   cleanup(): void {
     try {
@@ -291,14 +237,9 @@ export class BackgroundScheduler {
   }
 }
 
-/**
- * Cap on how many of the passed functions run at once.
- *
- * Python's `asyncio.Semaphore(max_concurrent_rooms)`, created once on the
- * scheduler and shared across ticks. Here a tick already awaits everything it
- * starts, so the semaphore is per tick — the only difference is a tick that
- * overruns the interval, and that tick is skipped rather than overlapped.
- */
+// Cap on how many of the passed functions run at once. Per tick rather than
+// shared across ticks, which is safe because a tick awaits everything it starts
+// and an overrunning tick is skipped rather than overlapped.
 function semaphore(limit: number): <T>(body: () => Promise<T>) => Promise<T> {
   if (limit <= 0) return (body) => body()
 

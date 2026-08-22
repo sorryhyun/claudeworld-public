@@ -8,14 +8,10 @@ import type { AgentReaction } from './tape/models'
 import { toLangKey } from '../domain/enums'
 
 /**
- * Builds what the Action Manager sees. Port of `orchestration/gameplay_context.py`.
- *
- * Everything here is read from the filesystem, not the database — the world's
- * lore, history, clock, stats and locations all live under `worlds/{name}/` and
- * the DB rows are a cache. Note what is deliberately *absent* from the prompt:
- * the inventory and the character roster, which the Action Manager pulls on
- * demand through `list_inventory` and `list_characters` rather than carrying in
- * context every turn.
+ * Builds what the Action Manager sees, read from the filesystem rather than the
+ * database. The inventory and the character roster are deliberately absent: the
+ * Action Manager pulls those on demand through `list_inventory` and
+ * `list_characters` rather than carrying them in context every turn.
  */
 
 export interface GameplayServices {
@@ -133,10 +129,8 @@ export function buildActionManagerUserMessage(
 }
 
 /**
- * The per-language line that primes the model's thinking block.
- *
- * It reads oddly out of context ("start thinking by <thinking> ...") because it
- * is doing exactly that — seeding the first thinking token so the SDK's native
+ * The per-language line that primes the model's thinking block. It reads oddly
+ * out of context because it is seeding the first thinking token, so the SDK's
  * thinking process engages and the UI has something to show.
  */
 export function responseInstruction(

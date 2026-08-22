@@ -1,34 +1,14 @@
 /**
- * Polling — port of `backend/routers/game/polling.py`.
+ * `GET /worlds/{id}/poll` — the endpoint the whole frontend lives on, running
+ * every two seconds per open world.
  *
- * `GET /worlds/{id}/poll` is the endpoint the entire frontend lives on: it runs
- * every two seconds per open world and is the only way messages, stats, the
- * phase, the clock and the suggestion buttons reach the client. There is no
- * websocket and no SSE on this path.
- *
- * It is also the subtlest module in the game surface, because it is not a read.
- * Four things happen here that mutate state, and each one exists because the
- * agent side of the app writes to the *filesystem* and something has to notice:
- *
- * 1. **Phase sync.** `world.yaml` is the source of truth for a world's phase.
- *    The onboarding `complete` tool flips it there, and this is the request that
- *    copies it onto the row — which is what makes the "Enter World" button
- *    appear.
- * 2. **Player-state sync.** When onboarding finishes, the World Seed Generator
- *    has written `player.yaml` with stats, an inventory and a starting location,
- *    but the database knows none of it. The first poll after the transition
- *    imports all three, creating the starting location's row from disk if the
- *    seed generator invented it.
- * 3. **The arrival message.** Immediately after that import, this endpoint
- *    writes the "<player> arrives at <place>" system line into the starting
- *    room. It is a real message, in the transcript, and it is also
- *    4. **the first turn** — replayed as the action a background task hands to
- *    the Action Manager, which is how a brand-new world produces its opening
- *    scene without the player typing anything.
- *
- * Steps 2-4 are one-shot by construction: they run only while the phase is
- * `active` and the row still has no `current_location_id`, and step 2 is what
- * fills that in.
+ * It is not a read. Because the agent side of the app writes to the
+ * *filesystem*, this request also syncs the phase off `world.yaml` (what makes
+ * the "Enter World" button appear), imports the seed generator's `player.yaml`,
+ * writes the "<player> arrives at <place>" line and replays it to the Action
+ * Manager as the world's first turn. All but the phase sync are one-shot: they
+ * run only while the phase is `active` and the row has no
+ * `current_location_id`, which the import fills in.
  */
 
 import { Hono } from 'hono'
@@ -67,7 +47,7 @@ import {
 
 const logger = getLogger('GameRouter.Polling')
 
-/** The `state` block of the poll response. Read field-for-field by `usePolling`. */
+/** The `state` block of the poll response, read field-for-field by `usePolling`. */
 interface PollState {
   stats: Record<string, unknown>
   inventory_count: number
@@ -94,22 +74,14 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
   routes.get('/worlds/:world_id/poll', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const sinceMessageId = intQueryParam(c, 'since_message_id')
-    /**
-     * Keeps the client on the onboarding room after the phase has already
-     * flipped to `active`. The transition happens mid-conversation, and without
-     * this the interview's last few lines would vanish from under the player the
-     * instant the seed generator finished.
-     */
+    // Keeps the client on the onboarding room after the phase flips to
+    // `active`, so the interview's last lines do not vanish.
     const pollOnboarding = boolQueryParam(c, 'poll_onboarding', false)
 
     let world = requireWorld(state, c, worldId)
 
-    // ---- 1. Filesystem → database sync ------------------------------------
-    //
-    // A near-copy of `worlds.ts::syncWorldFromFs`, kept separate for the reason
-    // Python keeps it separate: the new phase is needed *before* the write, to
-    // route this very request. Calling the shared helper and re-reading the row
-    // would work but would hide that dependency.
+    // A near-copy of `worlds.ts::syncWorldFromFs`, separate because the new
+    // phase is needed *before* the write, to route this very request.
     const fsConfig = state.services.worlds.loadWorldConfig(world.name)
     let currentPhase: WorldPhase = world.phase ?? 'onboarding'
 
@@ -155,16 +127,14 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
 
     let playerState = getPlayerState(state.db, worldId)
 
-    // ---- 2. Which room is this poll about? --------------------------------
     let targetRoomId: number | null = null
     let location: Location | null = null
 
     if ((pollOnboarding || currentPhase === 'onboarding') && world.onboardingRoomId) {
       targetRoomId = world.onboardingRoomId
     } else if (currentPhase === 'active' && !pollOnboarding) {
-      // The one-shot post-onboarding import. `current_location_id` being null
-      // while the world is already active is the precise signature of "the seed
-      // generator finished and nothing has adopted its output yet".
+      // A null `current_location_id` on an already-active world means the seed
+      // generator finished and nothing has adopted its output yet.
       if (playerState && !playerState.currentLocationId) {
         const fsState = state.services.players.loadPlayerState(world.name)
         if (fsState?.currentLocation) {
@@ -221,18 +191,13 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
       }
     }
 
-    // No room means there is nothing to show yet — an active world whose
-    // starting location has not been adopted, or an onboarding world with no
-    // room. The client keeps polling; this is not an error.
+    // No room means nothing to show yet. The client keeps polling; not an error.
     if (!targetRoomId) {
       return c.json<PollResponseBody>({ messages: [], state: null })
     }
 
-    // ---- 3. Messages ------------------------------------------------------
-    //
-    // Chat mode and gameplay share a room; `chat_session_id` partitions them.
-    // Which half this poll wants depends on the mode the *player* is in, except
-    // during onboarding, where there is no chat mode and everything is shown.
+    // `chat_session_id` partitions the shared room; which half this poll wants
+    // depends on the player's mode, except in onboarding, which shows all.
     const isChatMode = playerState?.isChatMode ?? false
 
     let messages: MessageWithAgent[]
@@ -247,9 +212,7 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
       messages = getMessagesExcludingChat(state.db, targetRoomId)
     }
 
-    // System messages are the game talking to itself — onboarding triggers,
-    // chat-mode markers, the arrival line the Action Manager answers. The player
-    // sees the answer, not the prompt.
+    // System messages are the game talking to itself; the player sees answers.
     const visible = messages.filter((m) => m.participantType !== 'system')
 
     const fsState = state.services.players.loadPlayerState(world.name)
@@ -294,26 +257,13 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
   })
 
   /**
-   * Who is currently thinking, and what they have produced so far.
+   * Typing indicators: real agents with a live session, plus two virtual ids
+   * owning no room agent — the World Seed Generator (`-1`) and a Task sub-agent
+   * (`-2`), which must differ because the frontend keys rows by id.
    *
-   * Polled alongside `/poll` to render the typing indicators. Three kinds of row
-   * can appear:
-   *
-   * - **real agents** with a live session in the room;
-   * - **the World Seed Generator** (`id: -1`), which does tens of seconds of work
-   *   during onboarding's `complete` tool without owning a room agent;
-   * - **a Task sub-agent** (`id: -2`), same situation mid-turn.
-   *
-   * The two negative ids are virtual and Python's; the frontend keys rows by id
-   * and would collapse them into one another if they shared a value.
-   *
-   * **Gap: `thinking_text` and `response_text` are always empty.** Python reads
-   * them from `AgentManager.get_streaming_state_for_room`, a per-room registry of
-   * partially-streamed responses. The TypeScript SDK layer keeps that state on
-   * the turn instead of on a manager (see `sdk/agent/turn-runner.ts`), and
-   * nothing publishes it per room yet, so the indicator shows *that* an agent is
-   * working but not what it has written. `has_narrated` — the flag that actually
-   * unblocks the player's input — is fully wired.
+   * **Gap: `thinking_text` and `response_text` are always empty.** They need a
+   * per-room registry of partially-streamed responses; the SDK layer keeps that
+   * on the turn instead. `has_narrated`, which unblocks input, is wired.
    */
   routes.get('/worlds/:world_id/chatting-agents', (c) => {
     const worldId = intPathParam(c, 'world_id')
@@ -336,8 +286,7 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
         const info: Record<string, unknown> = {
           id: agent.id,
           name: agent.name,
-          // The Action Manager is a narrator, not a character: showing its
-          // avatar would put a face on the prose.
+          // The Action Manager narrates; an avatar would put a face on the prose.
           profile_pic: isActionManager(agent.name) ? null : agent.profilePic,
           thinking_text: '',
           response_text: '',
@@ -378,13 +327,9 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
 }
 
 /**
- * Which room `/chatting-agents` reports on.
- *
- * Deliberately *not* the same selection as `/poll`: this one reads the row's
- * phase rather than the filesystem's, and it has no player-state sync. Both are
- * Python's, and the difference is harmless — a phase that has flipped on disk
- * but not in the database means one poll cycle of indicators against the old
- * room, and the next `/poll` fixes the row.
+ * Deliberately *not* `/poll`'s room selection: the row's phase, not the
+ * filesystem's, and no player-state sync. A phase flipped on disk but not in the
+ * DB costs one cycle of indicators against the old room.
  */
 function chattingAgentsRoom(state: AppState, world: World, pollOnboarding: boolean): number | null {
   if ((pollOnboarding || world.phase === 'onboarding') && world.onboardingRoomId) {

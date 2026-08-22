@@ -1,14 +1,7 @@
 /**
- * Cache statistics and manual cache maintenance.
- *
- * Ported from `backend/routers/debug.py`, mounted under `/debug`. Python routes
- * these through `services/cache_service.py`, which for all three endpoints is a
- * pass-through to the cache manager — so they go straight to `getCache()` here
- * rather than growing a service layer whose only job would be to forward.
- *
- * Nothing in `frontend/` calls these; they exist for poking at a running
- * backend. They are still behind auth, exactly as in Python — `/debug` is on
- * neither exclusion list.
+ * Cache statistics and manual cache maintenance, under `/debug`. Nothing in
+ * `frontend/` calls these; they exist for poking at a running backend, and they
+ * are behind auth — `/debug` is on neither exclusion list.
  */
 
 import { Hono } from 'hono'
@@ -19,13 +12,8 @@ import type { AppEnv } from '../types'
 
 const logger = getLogger('Debug')
 
-/**
- * The wire shape of `CacheManager.get_stats()`.
- *
- * `src/infrastructure/cache.ts` keeps its counters in camelCase because it is
- * an internal module; Python's dict keys are what actually go out over HTTP, so
- * the rename happens here and only here.
- */
+// `infrastructure/cache.ts` keeps its counters in camelCase; the snake_case
+// rename to the wire happens only here.
 interface CacheStatsResponse {
   hits: number
   misses: number

@@ -1,17 +1,7 @@
-/**
- * TRPG request/response schemas — port of `backend/schemas/game.py`.
- *
- * Three of these models are *not* plain reflections of a table, and the
- * difference is where the parity risk lives:
- *
- * - `World` merges a DB row with two filesystem reads (`lore.md`, `stats.yaml`),
- *   because the filesystem is the source of truth for both.
- * - `PlayerState` is assembled by `routers/game/state.py` from a DB row plus the
- *   *resolved* inventory, clock and equipment out of `player.yaml`. The
- *   `model_validator` on the Python class that reads all of this off an ORM row
- *   instead is dead code — nothing constructs a `PlayerState` that way.
- * - `Location` reproduces a live bug; see {@link toLocation}.
- */
+// Three models are not plain reflections of a table: `World` merges a row with
+// `lore.md` and `stats.yaml`, `PlayerState` merges one with the resolved
+// inventory/clock/equipment from `player.yaml`, and `Location` reproduces a live
+// bug — see `toLocation`.
 
 import { z } from 'zod'
 import type { PlayerStateWithLocation } from '../crud/player-state'
@@ -31,10 +21,6 @@ import {
   serializeOptionalUtcDatetime,
 } from './common'
 
-// =============================================================================
-// World
-// =============================================================================
-
 export const WorldBase = z.object({
   name: z.string(),
   /** The player's display name *inside* the world, set during onboarding. */
@@ -48,13 +34,8 @@ export const WorldCreate = WorldBase
 
 export type WorldCreate = z.infer<typeof WorldCreate>
 
-/**
- * A partial world update.
- *
- * `stat_definitions` is an open `dict` here, not `StatDefinitions` — the update
- * path writes whatever it is given straight into the TEXT column, while the read
- * path wraps it in `{stats: [...]}`. The asymmetry is Python's and is preserved.
- */
+/** `stat_definitions` is deliberately open: the update path writes it into the
+ * TEXT column as-is, while the read path wraps it in `{stats: []}`. */
 export const WorldUpdate = z.object({
   phase: z.enum(WORLD_PHASES).nullable().default(null),
   genre: optionalString(),
@@ -65,12 +46,8 @@ export const WorldUpdate = z.object({
 
 export type WorldUpdate = z.infer<typeof WorldUpdate>
 
-/**
- * One stat the world tracks, as authored in `worlds/<world>/stats.yaml`.
- *
- * `max` is optional because uncapped stats exist (currency, reputation), and
- * `min`/`color` are optional because the frontend has its own fallbacks.
- */
+/** As authored in `worlds/<world>/stats.yaml`. `max` is optional because uncapped
+ * stats exist; `min`/`color` have UI fallbacks. */
 export const StatDefinition = z.object({
   name: z.string(),
   display: z.string(),
@@ -82,20 +59,14 @@ export const StatDefinition = z.object({
 
 export type StatDefinition = z.infer<typeof StatDefinition>
 
-/**
- * The `{ stats: [...] }` wrapper.
- *
- * It exists purely for frontend compatibility — `GameStatePanel` reads
- * `world.stat_definitions?.stats`, so the array cannot be hoisted to the top
- * level even though nothing else uses the wrapper.
- */
+/** `GameStatePanel` reads `world.stat_definitions?.stats`, so the array cannot be
+ * hoisted even though nothing else uses the wrapper. */
 export const StatDefinitions = z.object({
   stats: StatDefinition.array().default([]),
 })
 
 export type StatDefinitions = z.infer<typeof StatDefinitions>
 
-/** The world listing shape. */
 export const WorldSummary = WorldBase.extend({
   id: pydanticInt(),
   owner_id: optionalString(),
@@ -110,7 +81,6 @@ export const WorldSummary = WorldBase.extend({
 
 export type WorldSummary = z.infer<typeof WorldSummary>
 
-/** The full world: the summary plus the two filesystem-sourced fields. */
 export const World = WorldSummary.extend({
   stat_definitions: StatDefinitions.nullable().default(null),
   lore: optionalString(),
@@ -118,13 +88,9 @@ export const World = WorldSummary.extend({
 
 export type World = z.infer<typeof World>
 
-/**
- * A world present in `worlds/` but absent from the database — offered for import.
- *
- * The only response model with no `from_attributes`: it is built field by field
- * from a `WorldConfig`, never from a row, so it has no `id` and its `created_at`
- * is optional (a hand-made world folder need not carry one).
- */
+/** A world in `worlds/` but absent from the database — offered for import. Built
+ * from a `WorldConfig`, never a row, so it has no `id` and a hand-made world
+ * folder need not carry a `created_at`. */
 export const ImportableWorld = z.object({
   name: z.string(),
   owner_id: optionalString(),
@@ -155,7 +121,6 @@ export const WorldResetResponse = z.object({
 
 export type WorldResetResponse = z.infer<typeof WorldResetResponse>
 
-/** Drizzle row → `WorldSummary` response. */
 export function toWorldSummary(row: WorldRow): WorldSummary {
   return {
     name: row.name,
@@ -173,30 +138,17 @@ export function toWorldSummary(row: WorldRow): WorldSummary {
   }
 }
 
-/**
- * What `routers/game/worlds.py::_build_world_response` overlays on the row.
- *
- * Both come from the filesystem and both *replace* rather than merge: the
- * `worlds.stat_definitions` column is a cache that the read path ignores.
- */
+/** Both fields *replace* rather than merge: the `worlds.stat_definitions` column
+ * is a cache the read path ignores. */
 export interface WorldFilesystemOverlay {
-  /** `WorldService.load_lore(world.name)`. */
   lore: string | null
-  /** `PlayerService.load_stat_definitions(world.name)`, already `{stats: [...]}`. */
+  /** Already in `{stats: [...]}` form. */
   stat_definitions: StatDefinitions | null
 }
 
-/**
- * Drizzle row → `World` response.
- *
- * Without an overlay this is `World.model_validate(orm_world)`: `lore` is
- * `null` — the ORM model has no such attribute, so Pydantic falls back to the
- * default — and `stat_definitions` is decoded from the TEXT column. Every real
- * caller passes the overlay, because the route reads both from disk.
- *
- * The column's shape is not fixed: `{"stats": [...]}` and a bare `[...]` are
- * both in the wild, and the validator normalizes them to the former.
- */
+/** Without an overlay `lore` is null and `stat_definitions` comes from the TEXT
+ * column, whose shape is not fixed — `{"stats": []}` and a bare `[]` are both in
+ * the wild. Every real caller passes the overlay. */
 export function toWorld(row: WorldRow, overlay?: WorldFilesystemOverlay): World {
   return {
     ...toWorldSummary(row),
@@ -205,7 +157,7 @@ export function toWorld(row: WorldRow, overlay?: WorldFilesystemOverlay): World 
   }
 }
 
-/** `worlds.stat_definitions` TEXT → `StatDefinitions`, or null if unreadable. */
+/** Null when the column is unreadable. */
 export function parseStatDefinitionsColumn(raw: string | null): StatDefinitions | null {
   return parseJsonColumn(
     raw,
@@ -213,28 +165,14 @@ export function parseStatDefinitionsColumn(raw: string | null): StatDefinitions 
   )
 }
 
-/**
- * `stats.yaml`'s raw `stats:` list → `StatDefinitions`.
- *
- * This one **throws** on a malformed entry, unlike the DB-blob decoders which
- * fall back to null. The difference is deliberate: a bad JSON blob is one row in
- * a listing and should cost that row's field, while `stats.yaml` is a single
- * hand-authored file whose breakage should be loud rather than silently
- * emptying the player's stat panel. Python raises here too.
- */
+/** **Throws** on a malformed entry, unlike the DB-blob decoders that fall back to
+ * null: a hand-authored file breaking should be loud. */
 export function toStatDefinitions(raw: readonly Record<string, unknown>[]): StatDefinitions {
   return { stats: raw.map((entry) => StatDefinition.parse(entry)) }
 }
 
-/**
- * `WorldConfig` → `ImportableWorld`.
- *
- * Typed structurally rather than against `services/world-service.ts`'s
- * `WorldConfig` so this module does not depend on the service layer; the config
- * satisfies it as written. `language` and `phase` are unvalidated strings on the
- * config (a world folder can hold anything), so both are narrowed here with the
- * same fallbacks Pydantic's enum defaults give.
- */
+/** Typed structurally so this module does not depend on the service layer.
+ * `language`/`phase` are unvalidated on the config, so both are narrowed here. */
 export function toImportableWorld(config: {
   name: string
   ownerId: string | null
@@ -261,14 +199,9 @@ function oneOf<T extends string>(allowed: readonly T[], value: string, fallback:
   return (allowed as readonly string[]).includes(value) ? (value as T) : fallback
 }
 
-// =============================================================================
-// Location
-// =============================================================================
-
 export const LocationBase = z.object({
   /** The folder name under `worlds/<world>/locations/`, e.g. `old_mill`. */
   name: z.string(),
-  /** The human-readable heading, e.g. `Old Mill`. */
   display_name: optionalString(),
   description: optionalString(),
 })
@@ -278,10 +211,7 @@ export type LocationBase = z.infer<typeof LocationBase>
 export const LocationCreate = LocationBase.extend({
   position_x: pydanticInt().default(0),
   position_y: pydanticInt().default(0),
-  /**
-   * Named `adjacent_to` on the way in and `adjacent_locations` on the way out.
-   * The rename is Python's; the column is `adjacent_locations`.
-   */
+  /** Named `adjacent_to` in, `adjacent_locations` out; the column is the latter. */
   adjacent_to: pydanticInt().array().nullable().default(null),
   is_discovered: pydanticBool().default(true),
   /** Set while the Location Designer sub-agent has yet to enrich the stub. */
@@ -319,22 +249,9 @@ export const Location = LocationBase.extend({
 
 export type Location = z.infer<typeof Location>
 
-/**
- * Drizzle row → `Location` response.
- *
- * **Reproduces a live bug.** `Location.parse_adjacent_locations` rebuilds the
- * model as a dict when `adjacent_locations` holds JSON — and that dict omits
- * `is_draft`, so the field falls back to its default. The result is that
- * `is_draft` is reported honestly only for a location with *no* adjacencies, and
- * reads `false` for every connected location no matter what the column says.
- *
- * It is reproduced rather than fixed for the same reason as the Korean particle
- * bug in `to_system_prompt_markdown` (Open Decision 4 in the migration plan):
- * the Phase 4 gate diffs this backend's responses against Python's, and a silent
- * correction here would show up there as a parity failure with no explanation.
- * Nothing in `frontend/` reads `is_draft`, so fixing it is cheap once someone
- * decides to.
- */
+/** **Reproduces a live bug, deliberately:** when `adjacent_locations` holds JSON,
+ * `is_draft` reads `false` whatever the column says. Nothing in `frontend/` reads
+ * it. */
 export function toLocation(row: LocationRow): Location {
   const adjacent = row.adjacentLocations
     ? parseJsonColumn(row.adjacentLocations, pydanticInt().array())
@@ -358,11 +275,7 @@ export function toLocation(row: LocationRow): Location {
   }
 }
 
-// =============================================================================
-// Player state
-// =============================================================================
-
-/** The in-world clock. The defaults are hour 8 of day 1 — a world opens at dawn. */
+/** The defaults are hour 8 of day 1 — a world opens at dawn. */
 export const GameTime = z.object({
   hour: pydanticInt().default(8),
   minute: pydanticInt().default(0),
@@ -371,13 +284,8 @@ export const GameTime = z.object({
 
 export type GameTime = z.infer<typeof GameTime>
 
-/**
- * One inventory entry, resolved against its item template.
- *
- * `player.yaml` stores references keyed `item_id`; the response calls the same
- * field `id`. {@link toInventoryItem} does the rename, which is why nothing
- * downstream has to know both spellings.
- */
+/** `player.yaml` keys the reference `item_id` and the response calls it `id`;
+ * {@link toInventoryItem} renames it so nothing downstream knows both. */
 export const InventoryItem = z.object({
   id: z.string(),
   name: z.string(),
@@ -422,11 +330,7 @@ export const PlayerAction = z.object({
 
 export type PlayerAction = z.infer<typeof PlayerAction>
 
-/**
- * Declared by `schemas/game.py` and used by nothing — no route returns it.
- * `GET .../state` returns a bare `PlayerState` and the world and location come
- * from their own endpoints. Ported so the module is complete.
- */
+/** Unused: no route returns it — `GET .../state` returns a bare `PlayerState`. */
 export const GameStateResponse = z.object({
   world: WorldSummary,
   player_state: PlayerState,
@@ -436,32 +340,16 @@ export const GameStateResponse = z.object({
 
 export type GameStateResponse = z.infer<typeof GameStateResponse>
 
-/**
- * The `player.yaml`-sourced half of a player-state response.
- *
- * All three are filesystem-primary: `player.yaml` is the source of truth and the
- * `player_states` columns are a cache the read path does not consult. When there
- * is no `player.yaml` at all, `game_time` and `equipment` are both null — that
- * is the shape `routers/game/state.py` produces and the frontend renders as "no
- * clock yet".
- */
+/** The `player.yaml`-sourced half of a player-state response; the matching
+ * columns are a cache the read path does not consult. */
 export interface PlayerStateOverlay {
-  /** `PlayerService.getResolvedInventory(worldName)`. */
   inventory: InventoryEntry[]
   gameTime: GameTime | null
   equipment: Record<string, string | null> | null
 }
 
-/**
- * Drizzle row + filesystem overlay → `PlayerState` response.
- *
- * Port of `routers/game/state.py::get_game_state`, which is the only thing that
- * builds this model. Note `stats`, `effects` and `action_history` are `null`
- * when their column is empty, *not* `{}` / `[]` — the route decodes them with a
- * bare `json.loads` guarded by a truthiness check, so an unset column and an
- * empty one both come back as null. `PlayerStateSerializer`'s empty-collection
- * defaults are not in play on this path.
- */
+/** `stats`, `effects` and `action_history` come back `null` when their column is
+ * empty, *not* `{}` / `[]`. */
 export function toPlayerState(row: PlayerStateWithLocation, overlay: PlayerStateOverlay): PlayerState {
   const location = row.currentLocation
   return {
@@ -481,15 +369,9 @@ export function toPlayerState(row: PlayerStateWithLocation, overlay: PlayerState
   }
 }
 
-/**
- * A resolved `player.yaml` entry → `InventoryItem`.
- *
- * `item_id` wins over `id` when both are present, and an entry with neither
- * becomes `""` rather than an error — Python's `item.get("item_id") or
- * item.get("id", "")`. An unnamed item likewise becomes `""`. Both are the
- * shapes a partially-written `player.yaml` produces mid-turn, and rendering a
- * blank row beats 500-ing the game panel.
- */
+/** `item_id` wins over `id`, and an entry with neither — or with no name —
+ * becomes `""` rather than an error: a half-written `player.yaml` produces those
+ * shapes mid-turn, and a blank row beats 500-ing the panel. */
 export function toInventoryItem(entry: InventoryEntry): InventoryItem {
   return {
     id: entry.item_id || entry.id || '',

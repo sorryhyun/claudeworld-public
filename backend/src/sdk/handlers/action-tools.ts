@@ -5,21 +5,11 @@ import { memorizeTool, recallTool, skipTool } from '../tools/action'
 import { resolveTool } from '../tools/registry'
 import { tool, toolSuccess, type SdkTool, type ToolContext } from './context'
 
-/**
- * The tools every character has: decline to speak, write a memory, read one.
- * Port of `sdk/handlers/action_tools.py`.
- */
+// The tools every character has: decline to speak, write a memory, read one.
 
 export interface ActionDeps {
-  /**
-   * Owns the write to `recent_events.md`.
-   *
-   * Phase 0 inlined an `appendFileSync` here and emitted `- entry\n`. That is
-   * wrong in two ways the service gets right: entries carry a *leading*
-   * newline, so they are blank-line separated the way Python's are, and the
-   * in-world timestamp is formatted as `- [Day 3, 14:05] …` rather than
-   * whatever a caller-supplied label happened to say.
-   */
+  // Owns the write to `recent_events.md`: entries carry a *leading* newline and
+  // a `- [Day 3, 14:05] …` stamp. Do not inline an `appendFileSync` instead.
   agentConfigs: AgentConfigService
   /** Source of the in-world clock a memory is stamped with. */
   players?: PlayerService
@@ -27,13 +17,8 @@ export interface ActionDeps {
   invalidateAgentConfig?: (agentId: number) => void
 }
 
-/**
- * Fill an agent's name and memory list into a description template.
- *
- * The description is what tells a character which memories it has, so it is
- * per-agent text rather than a constant — `recall`'s description literally lists
- * the subtitles this character can ask for.
- */
+// Per-agent text, not a constant: `recall`'s description lists the subtitles
+// this character can ask for.
 function describe(template: string, ctx: ToolContext): string {
   return formatTemplate(template, {
     agent_name: ctx.agentName,
@@ -46,10 +31,9 @@ function describe(template: string, ctx: ToolContext): string {
 export function createActionTools(ctx: ToolContext, deps: ActionDeps): SdkTool[] {
   const tools: SdkTool[] = []
 
-  // Resolved through the registry so a `group_config.yaml` override of the
-  // description or the response text reaches the model, and so a group that
-  // disables a tool — `group_gameplay` disables all three — is honoured here
-  // rather than only in the allowed-tools list.
+  // Resolved through the registry so a `group_config.yaml` override reaches the
+  // model, and a group that disables a tool is honoured here rather than only in
+  // the allowed-tools list.
   const skipDef = resolveTool('skip', ctx.groupName)
   const memorizeDef = resolveTool('memorize', ctx.groupName)
   const recallDef = resolveTool('recall', ctx.groupName)
@@ -57,8 +41,7 @@ export function createActionTools(ctx: ToolContext, deps: ActionDeps): SdkTool[]
   if (skipDef) {
     tools.push(
       tool(skipTool.name, describe(skipDef.description, ctx), skipTool.inputSchema, async () =>
-        // No side effect at all. The signal is the call itself: the stream parser
-        // notices the tool use and the turn is reported as skipped.
+        // No side effect: the stream parser notices the tool use itself.
         toolSuccess(skipDef.response ?? ''),
       ),
     )
@@ -73,10 +56,8 @@ export function createActionTools(ctx: ToolContext, deps: ActionDeps): SdkTool[]
         async (args) => {
           const entry = args.memory_entry
 
-          // Python's fallback when the agent has no config folder: the memory is
-          // acknowledged and dropped, rather than the call failing. A character
-          // with no folder on disk is a database row without a home, and the
-          // turn should still finish.
+          // No config folder: acknowledge and drop rather than fail, so the
+          // turn still finishes.
           if (!ctx.configFile) {
             return toolSuccess(`Memory noted (no config file): ${entry}`)
           }
@@ -110,9 +91,8 @@ export function createActionTools(ctx: ToolContext, deps: ActionDeps): SdkTool[]
             const available = Object.keys(ctx.longTermMemoryIndex)
               .map((s) => `'${s}'`)
               .join(', ')
-            // Success, not an error: Python returns a plain `RecallOutput` here,
-            // and the difference is visible to the model — an `is_error` result
-            // reads as a broken tool, where this reads as "ask for one of these".
+            // Success, not an error: `is_error` reads to the model as a broken
+            // tool, where this reads as "ask for one of these".
             return toolSuccess(
               `Memory subtitle '${subtitle}' not found. Available subtitles: ${available}`,
             )

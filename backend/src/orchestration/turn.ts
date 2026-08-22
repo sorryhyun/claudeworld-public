@@ -40,26 +40,14 @@ import { TapeExecutor, type RespondArgs, type RespondResult } from './tape/execu
 import type { AgentReaction, ExecutionResult } from './tape/models'
 
 /**
- * Runs one turn. Port of the paths through `orchestration/trpg_orchestrator.py`,
- * `chat_mode_orchestrator.py` and `response_generator.py`.
- *
- * Three turn shapes share almost everything and differ in exactly the places
- * worth naming:
- *
- * | | agents | hidden | persists prose |
- * |---|---|---|---|
- * | **gameplay** | NPCs at the location, then the Action Manager | yes | no — the `narration` tool writes the visible message |
- * | **onboarding** | the Onboarding Manager, alone | no | yes |
- * | **chat** | NPCs at the location, one per cell | no | yes, tagged with the chat session |
- *
- * "Hidden" is the axis that matters: a hidden agent's prose is scratch work the
- * player never sees, so nothing is written for it. The other two modes are
- * conversations, and the reply *is* the output.
+ * Runs one turn, in three shapes: gameplay (NPCs, then the Action Manager, all
+ * hidden), onboarding (the Onboarding Manager alone) and chat (NPCs, one per
+ * cell). A hidden agent's prose is never persisted — its `narration` tool writes
+ * the visible message instead.
  */
 
 const logger = getLogger('Turn')
 
-/** Python's `max_total_messages` per orchestrator: 30 for gameplay, 15 for chat. */
 const MAX_TOTAL_MESSAGES_GAMEPLAY = 30
 const MAX_TOTAL_MESSAGES_CHAT = 15
 
@@ -68,28 +56,16 @@ export interface TurnDeps {
   pool: SessionPool
   services: GameplayServices
   serverDeps: ServerDeps
-  /**
-   * The stateless MCP surface the spawned CLI calls back into.
-   *
-   * Every turn binds its context here before running, and the endpoint resolves
-   * that binding per tool call. It replaces the in-process servers this file
-   * used to build per turn — which a warm session silently discarded, leaving
-   * the CLI calling turn 1's closures forever. See `sdk/mcp/`.
-   */
+  // Every turn binds its context here first and the endpoint resolves that
+  // binding per tool call. Per-turn in-process servers would be discarded by a
+  // warm session, leaving the CLI calling turn 1's closures forever.
   mcp: McpTools
   projectRoot: string
   useSonnet?: boolean
   onEvent?: (agent: Agent, event: TurnEvent) => void
   onTelemetry?: (event: HookTelemetry) => void
-  /**
-   * Has the player spoken again since this response started?
-   *
-   * Python's `ResponseGenerator._was_interrupted`: a reply that was already in
-   * flight when the player sent their next message is stale, and showing it
-   * would answer a question the player has moved on from. The generator drops
-   * it rather than persisting it. Supplied by {@link RoomOrchestrator}; absent
-   * in tests and in the pilot, where nothing can interrupt.
-   */
+  // Has the player spoken again since this response started? A reply in flight
+  // when the next player message lands is stale and gets dropped.
   isSuperseded?: (roomId: number, startedAt: number) => boolean
 }
 
@@ -101,28 +77,14 @@ export interface RunTurnInput {
 }
 
 export interface RunChatTurnInput extends RunTurnInput {
-  /**
-   * Groups this exchange into one chat session.
-   *
-   * Chat sessions are how a side conversation stays out of the game log: the
-   * column is NULL for gameplay messages, so a filter on it separates the two
-   * without a second table.
-   */
+  /** NULL for gameplay messages, so a filter keeps side chat out of the log. */
   chatSessionId: number | null
 }
 
-// ============================================================================
-// Gameplay and onboarding
-// ============================================================================
-
 /**
- * Run a player action — the gameplay tape, or the onboarding one while the
- * world is still being interviewed into existence.
- *
- * Throws when the room cannot produce a tape at all. Python fell through to a
- * generic sequential handler in that case, which ran whichever agents happened
- * to be in the room and produced output that looked like a turn but was not one;
- * the pilot flagged that as a trap worth failing loudly on instead.
+ * Run a player action — the gameplay tape, or the onboarding one. Throws when
+ * the room cannot produce a tape: a generic fallback would run whichever agents
+ * happen to be present and produce output that only looks like a turn.
  */
 export async function runGameplayTurn(
   deps: TurnDeps,
@@ -187,17 +149,9 @@ export async function runGameplayTurn(
   })
 }
 
-// ============================================================================
-// Chat mode
-// ============================================================================
-
 /**
- * Run a player message in chat mode.
- *
- * There is no Action Manager and no Narrator here — the NPCs at the player's
- * location simply answer, in priority order, each seeing the replies of those
- * before them. An empty location is a completed turn, not an error: talking to
- * nobody is something a player is allowed to do.
+ * Chat mode: no Action Manager, no Narrator, just the NPCs at the player's
+ * location answering in priority order. An empty location is a completed turn.
  */
 export async function runChatTurn(
   deps: TurnDeps,
@@ -238,43 +192,26 @@ export async function runChatTurn(
   })
 }
 
-// ============================================================================
-// Chat rooms
-// ============================================================================
-
-/** Follow-up rounds after the initial one — Python's `MAX_FOLLOW_UP_ROUNDS`. */
+/** Follow-up rounds after the initial one. */
 export const MAX_FOLLOW_UP_ROUNDS = 5
 
-/** Runaway guard across every round of one turn — Python's `MAX_TOTAL_MESSAGES`. */
+/** Runaway guard across every round of one turn. */
 export const MAX_TOTAL_MESSAGES_CHAT_ROOM = 30
 
 export interface RunChatRoomTurnInput {
   roomId: number
   action: string
-  /**
-   * Agent ids parsed out of `@mentions`, or null for "everyone".
-   *
-   * Ids not in the room are dropped with a warning rather than failing the
-   * turn: the mention came from a client-side parse of free text, and a stale
-   * roster there should not cost the user their message.
-   */
+  // Null for "everyone". Ids not in the room are dropped with a warning rather
+  // than failing the turn: the mentions come from a client-side parse.
   mentionedAgentIds?: number[] | null
   signal?: AbortSignal
 }
 
 /**
- * Run one user message in a plain chat room — port of
- * `ChatOrchestrator._process_agent_responses`.
- *
- * A chat room has no world, no location and no Action Manager; the agents in
- * the room simply talk, first to the user and then to each other. That second
- * half is what makes this different from every other turn in the system: it is
- * a *loop* of tapes, not one tape.
- *
- * The loop stops on the first of: pause, interruption, the room's
- * `max_interactions` ceiling, {@link MAX_FOLLOW_UP_ROUNDS}, or a round in which
- * every agent skipped — which is read as the conversation having run its course
- * and marks the room finished.
+ * Run one user message in a plain chat room: the agents talk to the user, then
+ * to each other, which makes this a *loop* of tapes. It stops on pause,
+ * interruption, `max_interactions`, {@link MAX_FOLLOW_UP_ROUNDS}, or a round in
+ * which every agent skipped — which also marks the room finished.
  */
 export async function runChatRoomTurn(
   deps: TurnDeps,
@@ -315,16 +252,13 @@ export async function runChatRoomTurn(
 
   if (total.wasPaused || total.wasInterrupted || total.reachedLimit) return total
 
-  /** What is left of the cumulative runaway budget after the rounds so far. */
   const budget = (): number => Math.max(0, MAX_TOTAL_MESSAGES_CHAT_ROOM - total.totalResponses)
 
-  // A one-agent room has nobody to talk *to*, so there is nothing to follow up.
   const allAgents = tapes.allAgents
   if (allAgents.length <= 1) return total
 
-  // A room whose only interrupt agents are transparent has no visible reactor,
-  // and Python skips the follow-up entirely rather than running rounds nobody
-  // sees.
+  // Only-transparent interrupt agents leave no visible reactor; running
+  // follow-up rounds nobody sees is pointless.
   if (interruptAgents.length > 0 && interruptAgents.every((a) => (a.transparent ?? false))) {
     logger.info('[ChatRoom] All interrupt agents are transparent, skipping follow-up rounds')
     return total
@@ -335,11 +269,9 @@ export async function runChatRoomTurn(
     if (tape === null) break
 
     const result = await executor.execute(tape, {
-      // No user message: the agents are answering each other now.
       userMessage: '',
       signal: input.signal,
-      // The guard is cumulative across rounds — Python threads `current_total`
-      // into the executor for this; subtracting from the budget is the same sum.
+      // The guard is cumulative across rounds, not per round.
       maxTotalMessages: budget(),
     })
 
@@ -369,29 +301,12 @@ export interface RunAutonomousRoundInput {
 }
 
 /**
- * Run *one* follow-up round in a plain chat room, with no user message — port of
- * `ChatOrchestrator.process_autonomous_round`.
- *
- * This is what the background scheduler drives every couple of seconds so that
- * agents keep talking to each other while nobody is watching. It is deliberately
- * the same tape {@link runChatRoomTurn} uses for its follow-ups — round 0 of
- * {@link ChatRoomTapes.followUp} — rather than a second scheduler: the only
- * difference between "the user said something and the agents followed up" and
- * "the agents talked among themselves" is where the first line came from.
- *
- * Unlike {@link runChatRoomTurn} there is no loop. One tick, one round; the next
- * tick two seconds later is the loop, and it re-reads pause, finished and
- * `max_interactions` from the database on the way in — which is what makes the
- * conversation stoppable from the UI between rounds.
- *
- * Stopping conditions, all of them Python's:
- *
- * - **fewer than 2 agents** — nobody to talk to, so nothing is scheduled.
- * - **`max_interactions` reached** — counted against the assistant messages
- *   already in the room, exactly as {@link roomGuards} counts it mid-tape, and
- *   surfaced as `reachedLimit` so the caller can tell it apart from a quiet round.
- * - **every agent skipped** — the conversation has run its course, and the room
- *   is marked finished so the scheduler stops selecting it.
+ * Run *one* follow-up round in a plain chat room, with no user message — what
+ * the background scheduler drives every couple of seconds so agents keep talking
+ * while nobody is watching, on round 0 of {@link runChatRoomTurn}'s follow-up
+ * tape. There is no loop: the next tick two seconds later is the loop, and it
+ * re-reads pause, finished and `max_interactions` on the way in, which is what
+ * makes the conversation stoppable from the UI between rounds.
  */
 export async function runAutonomousRound(
   deps: TurnDeps,
@@ -400,8 +315,8 @@ export async function runAutonomousRound(
   const { db } = deps
   const { roomId } = input
 
-  // Cached, like Python's `crud.get_agents_cached`: this runs on a 2-second
-  // timer for every active room, and the roster changes far more slowly.
+  // Cached: this runs on a 2-second timer for every active room, and the roster
+  // changes far more slowly.
   const roster = getAgentsCached(db, roomId)
   if (roster.length < 2) {
     logger.debug(`[Autonomous] Room ${roomId} has fewer than 2 agents, skipping`)
@@ -423,7 +338,7 @@ export async function runAutonomousRound(
   const executor = new TapeExecutor({
     ...guards,
     respond: makeResponder(deps, {
-      // No world: a chat room belongs to none. See `ResponderContext.world`.
+      // No world: see `ResponderContext.world`.
       world: null,
       roomId,
       locationName: null,
@@ -435,7 +350,6 @@ export async function runAutonomousRound(
   })
 
   const result = await executor.execute(tape, {
-    // The agents are answering each other; there is no user turn to answer.
     userMessage: '',
     signal: input.signal,
     maxTotalMessages: MAX_TOTAL_MESSAGES_CHAT_ROOM,
@@ -453,13 +367,9 @@ export async function runAutonomousRound(
   return result
 }
 
-/**
- * Narrow the roster to the mentioned agents, if any were mentioned.
- *
- * An empty intersection means every mention was stale, and Python treats that
- * as "no filter" rather than "nobody responds" — the message still gets an
- * answer instead of vanishing into a silent room.
- */
+// Narrow the roster to the mentioned agents. An empty intersection means every
+// mention was stale, and is treated as "no filter", so the message still gets
+// an answer.
 function filterMentioned<T extends { id: number; name: string }>(
   roster: T[],
   mentionedAgentIds: number[] | null,
@@ -485,11 +395,6 @@ function filterMentioned<T extends { id: number; name: string }>(
   return filtered
 }
 
-// ============================================================================
-// Turn side effects
-// ============================================================================
-
-/** Python's default prompt for the memory round, kept verbatim. */
 export const MEMORY_ROUND_PROMPT =
   'Use the memorize tool to remember any significant events from this conversation ' +
   'before the player leaves.'
@@ -503,17 +408,10 @@ export interface MemoryRoundInput {
 }
 
 /**
- * Give the NPCs at a location one turn to write down what just happened.
- *
- * Fired by the `travel` tool before the player leaves. Each NPC runs hidden and
- * with `skipContext`: the conversation being remembered is already in that NPC's
- * own SDK session, so the prompt is an instruction *about* it rather than a turn
- * *in* it — sending conversation context here would replay the scene the agent
- * has just lived through.
- *
- * Best-effort throughout. Returns how many NPCs actually did something; a
- * character that skips, errors, or has no session left simply does not count,
- * because the player is leaving either way.
+ * Give the NPCs at a location one turn to write down what just happened, fired
+ * by `travel` before the player leaves. Each runs hidden and with `skipContext`:
+ * the conversation is already in its own SDK session, so sending context would
+ * replay the scene it just lived through. Best-effort throughout.
  */
 export async function runMemoryRound(
   deps: TurnDeps,
@@ -577,19 +475,10 @@ export async function runMemoryRound(
 }
 
 /**
- * Open sessions for the characters at a location without running a turn.
- *
- * Pure latency work, and it only pays off if the options built here are
- * *identical* to the ones the real turn will build: the pool reopens a session
- * whose fingerprint has changed, so a pre-connect that guesses differently is
- * worse than none — it pays the subprocess cost twice. That is why this goes
- * through {@link buildAgentTurn} rather than assembling options of its own, and
- * why the message it passes is irrelevant (the fingerprint covers the system
- * prompt, tools and model, never the message).
- *
- * Capped at five characters, as Python's `_pre_connect_npcs` is: a crowded
- * location would otherwise try to spawn one subprocess per character at once.
- * Every failure is swallowed — the turn opens the session on demand instead.
+ * Open sessions for the characters at a location without running a turn. Only
+ * pays off if the options are *identical* to the real turn's — the pool reopens
+ * a session whose fingerprint changed — hence {@link buildAgentTurn} rather than
+ * options of its own. Capped at five, and failures are swallowed.
  */
 export async function preConnectLocation(
   deps: TurnDeps,
@@ -628,25 +517,11 @@ export async function preConnectLocation(
   return warmed
 }
 
-// ============================================================================
-// Shared turn machinery
-// ============================================================================
-
-/**
- * The between-cell checks the executor makes against the room.
- *
- * Both are re-read every cell rather than captured once: a player can pause a
- * room, or hit its `max_interactions` ceiling, part-way through a turn, and the
- * point of checking between cells is to notice.
- *
- * Deliberately absent: `onCellComplete`, the hook that re-resolves the room
- * after a hidden cell because `travel` may have moved the player. Python ran it
- * after every hidden cell, but the Action Manager's cell is the *last* one on
- * both tapes, so the refreshed room id was never read by anything — the room a
- * turn writes to is fixed when the turn starts, and the next turn resolves the
- * new location for itself. The hook stays available on the executor for a tape
- * that one day has a cell after the Action Manager's.
- */
+// Re-read every cell rather than captured once: a player can pause a room, or
+// hit its `max_interactions` ceiling, part-way through a turn. `onCellComplete`
+// is deliberately unused — it would re-resolve the room after a hidden cell in
+// case `travel` moved the player, but the Action Manager's cell is the *last* on
+// both tapes, so the refreshed id would never be read.
 function roomGuards(
   db: Db,
   roomId: number,
@@ -662,13 +537,8 @@ function roomGuards(
 }
 
 interface ResponderContext {
-  /**
-   * The world this room belongs to, or null for a plain chat room.
-   *
-   * Chat rooms (`rooms.world_id IS NULL`) predate the TRPG mode and still have
-   * no world, no player state and no location. Everything below that reads a
-   * world field therefore has a non-world fallback; see {@link buildAgentTurn}.
-   */
+  // Null for a plain chat room, which has no player state or location either, so
+  // everything below that reads a world field needs a fallback.
   world: World | null
   roomId: number
   locationName: string | null
@@ -678,11 +548,8 @@ interface ResponderContext {
   runner: TurnRunner
 }
 
-/**
- * Builds the executor's `respond` function: one agent, one turn, start to
- * finish — prompt assembly, the SDK stream, session bookkeeping, and the
- * decision of whether anything is persisted.
- */
+// Builds the executor's `respond` function: one agent, one turn — prompt
+// assembly, the SDK stream, session bookkeeping, and whether to persist.
 function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
   const { db } = deps
 
@@ -696,9 +563,8 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
     const agent = ctx.byId.get(agentId)
     if (!agent) return { responded: false, responseText: '', agentName: `Agent ${agentId}` }
 
-    // Captured before the model runs, so a player message that lands *during*
-    // the turn compares as newer. Taking it afterwards would make every
-    // interruption look like it arrived first.
+    // Captured before the model runs, so a player message landing *during* the
+    // turn compares as newer.
     const startedAt = Date.now()
 
     const built = buildAgentTurn(deps, {
@@ -729,9 +595,8 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       deps.onEvent?.(agent, event)
       if (event.type !== 'stream_end') continue
 
-      // Persisted before the next turn runs: if the new id is not written
-      // back, the next turn resumes a stale session and silently forks the
-      // conversation.
+      // If the new id is not written back, the next turn resumes a stale
+      // session and silently forks the conversation.
       if (event.sessionId && event.sessionId !== built.resume) {
         updateRoomAgentSession(db, ctx.roomId, agent.id, event.sessionId)
       }
@@ -743,8 +608,8 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       responded = !event.skipped && responseText.length > 0
     }
 
-    // A hidden agent has nothing to persist by definition — whatever it wanted
-    // the player to see, its tools already wrote.
+    // A hidden agent has nothing to persist: whatever it wanted the player to
+    // see, its tools already wrote.
     if (hidden || !responded) {
       return { responded, responseText, agentName: agent.name }
     }
@@ -762,11 +627,9 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       thinking: thinkingText || null,
       anthropicCalls: anthropicCalls.length > 0 ? anthropicCalls : null,
       chatSessionId: ctx.chatSessionId,
-      // Read at save time rather than turn start: a tool may have advanced the
-      // clock during the turn, and the stamp should say when the line was
-      // spoken, not when the turn began.
-      // A chat room has no world and therefore no clock; the column stays NULL,
-      // which is what every message written before the TRPG mode existed has.
+      // Read at save time, not turn start: a tool may have advanced the clock
+      // mid-turn, and the stamp should say when the line was spoken. A chat room
+      // has no clock, so the column stays NULL.
       gameTimeSnapshot:
         ctx.world === null
           ? null
@@ -777,26 +640,17 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
   }
 }
 
-/**
- * Why this finished response must not be shown, or `null` to persist it.
- *
- * Both reasons are races the player created and both are late checks by design
- * — the answer is only knowable once the model has finished, because that is
- * when the window closes.
- */
+// Why this finished response must not be shown, or `null` to persist it. Both
+// are races only knowable once the model has finished — hence the late check.
 function discardReason(deps: TurnDeps, roomId: number, startedAt: number): string | null {
   if (deps.isSuperseded?.(roomId, startedAt)) return 'superseded by a newer player message'
   if (getRoom(deps.db, roomId)?.isPaused === true) return 'room was paused mid-response'
   return null
 }
 
-/**
- * Assistant messages in a room, for the `max_interactions` ceiling.
- *
- * Python counts `role == ASSISTANT`, not "has an agent_id" — the two differ for
- * the narration tool's output, which is written with the Action Manager's id
- * *and* the assistant role, and for system messages, which have neither.
- */
+// Assistant messages in a room, for the `max_interactions` ceiling. Counts on
+// `role`, not "has an agent_id": narration output has both, system messages
+// neither.
 function countAssistantMessages(db: Db, roomId: number): number {
   return (
     db
@@ -820,10 +674,6 @@ function emptyResult(): ExecutionResult {
   }
 }
 
-// ============================================================================
-// Prompt assembly
-// ============================================================================
-
 interface BuildTurnInput {
   /** Null for a plain chat room. See {@link ResponderContext.world}. */
   world: World | null
@@ -834,17 +684,11 @@ interface BuildTurnInput {
   npcReactions: AgentReaction[] | undefined
   chatSessionId: number | null
   timings: SubagentTimings
-  /**
-   * Send `userMessage` as written instead of building conversation context.
-   *
-   * Python's `skip_context`. Used by the memory round, where the SDK session
-   * already holds the conversation being remembered and the prompt is an
-   * instruction about it rather than a turn in it.
-   */
+  /** Send `userMessage` as written instead of building conversation context. */
   skipContext?: boolean
 }
 
-/** Assembles one agent's prompt, tools and message for a single turn. */
+// Assembles one agent's prompt, tools and message for a single turn.
 function buildAgentTurn(
   deps: TurnDeps,
   input: BuildTurnInput,
@@ -867,9 +711,8 @@ function buildAgentTurn(
     configFile: agent.configFile ?? undefined,
     groupName: agent.group ?? undefined,
     roomId: input.roomId,
-    // Both optional on `ToolContext`, and absent for a chat room. The tools a
-    // character is offered (skip, memorize, recall, guidelines) read the agent's
-    // own folder, not the world, so none of them needs these.
+    // Absent for a chat room; the tools a character is offered read the agent's
+    // own folder, not the world.
     worldName: world?.name,
     worldId: world?.id,
     longTermMemoryIndex: config?.longTermMemoryIndex ?? {},
@@ -877,18 +720,16 @@ function buildAgentTurn(
     getDb: () => db,
   }
 
-  // One role for both the tool set and the sub-agent set. Deriving them from
-  // separate expressions is how a parent ends up with `mcp__subagents__*` in
-  // its allow-list and no sub-agent to hand them to, or the reverse.
+  // One role for both the tool set and the sub-agent set: deriving them
+  // separately leaves a parent with `mcp__subagents__*` in its allow-list and no
+  // sub-agent to hand them to, or the reverse.
   const role: ServerRole = asActionManager
     ? 'action_manager'
     : asOnboardingManager
       ? 'onboarding'
       : 'character'
 
-  // Binds before the session is acquired, which the ordering here already
-  // guarantees: the caller does not touch the pool until these options exist,
-  // and the CLI's first `tools/list` cannot precede its own subprocess.
+  // Must bind before the session is acquired; the ordering here guarantees it.
   const servers = deps.mcp.bindTurn({ roomId: input.roomId, agentId: agent.id }, ctx, {
     role,
     configDir: agent.configFile
@@ -900,9 +741,8 @@ function buildAgentTurn(
   let message: string
 
   if (asActionManager) {
-    // Unreachable for a chat room: the Action Manager is a gameplay agent and
-    // is never a member of one. Asserted rather than defaulted, because a world
-    // silently substituted here would produce narration against the wrong one.
+    // Asserted rather than defaulted: a world silently substituted here would
+    // produce narration against the wrong one.
     if (world === null) {
       throw new Error(`${agent.name} requires a world; room ${input.roomId} has none`)
     }
@@ -922,17 +762,11 @@ function buildAgentTurn(
   } else if (input.skipContext) {
     message = input.userMessage
   } else {
-    // Characters — and the Onboarding Manager, which is a conversational agent
-    // in the same sense — are not handed the action directly. They read it out
-    // of the room's messages, where it was persisted before the turn started,
-    // which is what makes their view of the scene identical to any other
-    // observer's.
-    //
-    // The two "keep only the latest" filters are a gameplay economy: in a game
-    // turn a character needs the newest narration and the newest player action
-    // and nothing else, because the rest is already in its own SDK session. An
-    // onboarding interview and a chat conversation are ordinary dialogue, where
-    // dropping intermediate turns would delete the conversation.
+    // Characters and the Onboarding Manager read the action out of the room's
+    // messages rather than being handed it. The "keep only the latest" filters
+    // are a gameplay economy — a game turn needs only the newest narration and
+    // player action — but onboarding and chat are ordinary dialogue, where
+    // dropping intermediate turns deletes the conversation.
     const conversational = asOnboardingManager || input.chatSessionId !== null
     const messages = getMessagesAfterAgentResponse(
       db,
@@ -954,8 +788,7 @@ function buildAgentTurn(
       agentId: agent.id,
       agentName: agent.name,
       // A chat room has no world to name the user, so the global `USER_NAME`
-      // stands in — which is the setting Python's chat rooms have always used
-      // for exactly this, and the language falls back to the prompt default.
+      // stands in and the language falls back to the prompt default.
       worldUserName: world?.userName ?? getSettings().userName,
       worldLanguage: world?.language ?? null,
       includeResponseInstruction: true,
@@ -980,11 +813,10 @@ function buildAgentTurn(
       systemPrompt,
       mcpServers: servers.mcpServers,
       toolNames: servers.toolNames,
-      // What the dispatch tool — handed to every agent in `options-builder.ts`
-      // — can actually reach. `undefined` for a character, which is why a
-      // character's dispatch stays inert rather than reaching a designer. The
-      // tool names are passed so a designer whose persist tool this turn does
-      // not serve is dropped rather than offered with nothing to call.
+      // What the dispatch tool can reach; `undefined` for a character, so its
+      // dispatch stays inert. Tool names are passed so a designer whose persist
+      // tool this turn does not serve is dropped rather than left with nothing
+      // to call.
       agents: buildSubagentDefinitionsForRole(role, servers.toolNames),
       hooks,
       resume,
@@ -995,15 +827,9 @@ function buildAgentTurn(
   }
 }
 
-/**
- * Should a stored message appear in this turn's context?
- *
- * Gameplay messages (`chat_session_id IS NULL`) are visible to everyone: a chat
- * happens inside the world, and an NPC that just watched a monster arrive should
- * not lose that because the player opened a side conversation. What is filtered
- * out is *other* chat sessions — earlier conversations the SDK session already
- * remembers, and which would otherwise be replayed into context every turn.
- */
+// Gameplay messages (`chat_session_id IS NULL`) are visible to everyone; what is
+// filtered out is *other* chat sessions, which the SDK session already
+// remembers and would otherwise be replayed into context every turn.
 function visibleInSession(messageSession: number | null, turnSession: number | null): boolean {
   if (turnSession === null) return true
   return messageSession === null || messageSession === turnSession

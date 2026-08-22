@@ -8,20 +8,16 @@ import {
 } from './models'
 
 /**
- * Runs a tape. Port of `orchestration/tape/executor.py`.
- *
- * The executor knows nothing about the SDK or the database. It is handed a
+ * Runs a tape. Knows nothing about the SDK or the database — it is handed a
  * `respond` function and a few predicates, which is what makes a turn testable
- * without a live model: the pilot passes the real generator, tests pass a stub.
- * Python reached into `crud` and `response_generator` from inside the loop and
- * could only be tested end-to-end.
+ * without a live model.
  */
 
 export interface RespondArgs {
   agentId: number
   userMessage: string
   hidden: boolean
-  /** Reactions collected from earlier cells; only the Action Manager cell gets these. */
+  /** From earlier cells; only the Action Manager cell receives these. */
   npcReactions?: AgentReaction[]
   signal?: AbortSignal
 }
@@ -34,32 +30,22 @@ export interface RespondResult {
 
 export interface ExecutorDeps {
   respond(args: RespondArgs): Promise<RespondResult>
-  /** Re-read pause state between cells; a paused room stops the tape. */
+  /** Re-read between cells; a paused room stops the tape. */
   isPaused(): Promise<boolean> | boolean
   /**
-   * The room's own `max_interactions` ceiling, re-counted between cells.
-   *
-   * Separate from `maxTotalMessages`, which is the executor's runaway guard.
-   * This one is a per-room setting a user can configure, counted against the
-   * agent messages already in the room rather than against this turn — so a
-   * room can start a turn already over its limit and stop before the first cell.
-   * Omitted by callers that do not expose the setting.
+   * The room's own `max_interactions` ceiling, separate from `maxTotalMessages`.
+   * It counts the agent messages already in the room rather than this turn's, so
+   * a room can start already over its limit and stop before the first cell.
    */
   isInteractionLimitReached?(): Promise<boolean> | boolean
-  /**
-   * Re-resolve the room after a hidden cell.
-   *
-   * The `travel` tool moves the player to a different location, and each
-   * location is its own room — so a cell can change where the *next* cell's
-   * messages belong. Python did this after every hidden cell for the same reason.
-   */
+  /** `travel` moves the player, so a hidden cell can change where the next writes. */
   onCellComplete?(cell: TurnCell): Promise<void> | void
 }
 
 export interface ExecuteOptions {
   userMessage: string
   signal?: AbortSignal
-  /** Safety valve against a runaway tape. Python's default was 30. */
+  /** Safety valve against a runaway tape. */
   maxTotalMessages?: number
 }
 
@@ -104,9 +90,7 @@ export class TapeExecutor {
       totalResponses += result.responses
       totalSkips += result.skips
       if (cell.isReaction) collected.push(...result.reactions)
-      // Hidden cells persist nothing, so they cannot advance a limit that counts
-      // messages. Without this a two-cell hidden turn would consume the budget
-      // for messages it never wrote.
+      // Hidden cells persist nothing, so they must not spend a message budget.
       if (!cell.hidden) visibleMessages += result.responses
 
       await this.deps.onCellComplete?.(cell)
@@ -130,8 +114,8 @@ export class TapeExecutor {
     opts: ExecuteOptions,
     collected: AgentReaction[],
   ): Promise<CellResult> {
-    // Only the non-reaction cell is given the reactions — a reaction cell would
-    // otherwise be shown its own siblings' output mid-flight.
+    // Only the non-reaction cell gets them; a reaction cell would otherwise see
+    // its own siblings' output mid-flight.
     const npcReactions = cell.isReaction ? undefined : collected
 
     const run = (agentId: number): Promise<RespondResult> =>
@@ -161,10 +145,9 @@ export class TapeExecutor {
     let skips = 0
 
     for (const [index, outcome] of outcomes.entries()) {
-      // A failed agent does not fail the cell: one NPC whose session died should
-      // not cost the player their turn. The others still react and the Action
-      // Manager still narrates. It is not counted as a skip either — a crash is
-      // not a character choosing silence.
+      // A failed agent does not fail the cell — one NPC whose session died must
+      // not cost the player their turn — and is not counted as a skip either,
+      // since a crash is not a character choosing silence.
       if (outcome.status === 'rejected') continue
       const { responded, responseText, agentName } = outcome.value
       if (!responded) {

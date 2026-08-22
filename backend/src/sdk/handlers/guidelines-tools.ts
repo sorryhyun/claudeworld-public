@@ -5,19 +5,12 @@ import { resolveTool } from '../tools/registry'
 import { tool, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * The `anthropic` escalation tool. Port of `sdk/handlers/guidelines_tools.py`.
- *
- * It exists to give a character somewhere to put a request it has judged
- * harmful, and to answer that judgement in one place rather than in every
- * agent's prompt. The server is built for *every* agent — `mcp_registry.py`
- * adds it unconditionally, outside the enabled-groups computation — which is
- * why this factory takes no dependencies at all.
- *
- * The extreme-traits branch overrides the whole response rather than appending
- * to it, despite the comment in Python saying "append". Reproduced verbatim,
- * including the Korean text, because the response is prompt input: rewording it
- * changes how an agent in one of those groups behaves. No group ships an
- * `extreme_traits.yaml` today, so the live path is the plain one.
+ * The `anthropic` escalation tool: somewhere for a character to put a request it
+ * has judged harmful, answered in one place rather than in every agent's prompt.
+ * Built unconditionally for *every* agent, hence no dependencies. The
+ * extreme-traits branch overrides the whole response rather than appending; its
+ * text is prompt input, so rewording it changes agent behaviour. No group ships
+ * an `extreme_traits.yaml` today, so the live path is the plain one.
  */
 
 export function createGuidelinesTools(ctx: ToolContext): SdkTool[] {

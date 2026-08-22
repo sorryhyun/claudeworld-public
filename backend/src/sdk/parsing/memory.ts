@@ -1,26 +1,14 @@
-/**
- * Long-term memory file parsing.
- *
- * Ported from `backend/sdk/parsing/memory_parser.py`.
- *
- * `consolidated_memory.md` is a flat list of memories, each introduced by a
- * `## [subtitle]` heading. Only the subtitles are injected into an agent's
- * context; the bodies are fetched on demand by the `recall` tool, which is what
- * keeps the baseline token cost low.
- */
+// `consolidated_memory.md` is a flat list of memories under `## [subtitle]`
+// headings. Only the subtitles go into an agent's context; `recall` fetches a body
+// on demand, which is what keeps the baseline token cost low.
 
 import { readFileSync } from 'node:fs'
 
 /** `## [subtitle]` — the bracket is what separates a memory from a plain heading. */
 const SUBTITLE_PATTERN = /^##\s*\[([^\]]+)\]/
 
-/**
- * Parse a memory file into `subtitle -> content`.
- *
- * Text before the first subtitle is discarded (it is file-level preamble, not a
- * memory). A missing or unreadable file yields `{}` — agents without memories
- * are the common case, not an error.
- */
+/** Text before the first subtitle is discarded as preamble; a missing or
+ * unreadable file yields `{}`, since an agent without memories is normal. */
 export function parseLongTermMemory(filePath: string): Record<string, string> {
   let content: string
   try {

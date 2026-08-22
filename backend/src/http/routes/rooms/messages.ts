@@ -1,12 +1,7 @@
 /**
- * Chat room messages — port of `backend/routers/messages.py`.
- *
- * Four routes: the full transcript, the incremental poll, the typing
+ * Chat room messages: the full transcript, the incremental poll, the typing
  * indicators, and the send that starts a turn. `usePolling.ts` drives all four.
- *
- * The rate limits are Python's slowapi decorators, per-IP and per-route:
- * 60/min on the poll, 120/min on the indicators (which the frontend polls
- * faster), 30/min on sends.
+ * Rate limits are per-IP and per-route.
  */
 
 import { Hono } from 'hono'
@@ -25,7 +20,6 @@ import { ensureRoomAccessFor } from './shared'
 
 const logger = getLogger('MessageRouter')
 
-/** Python's `MAX_IMAGES` in `send_message`. */
 const MAX_IMAGES = 5
 
 export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
@@ -47,17 +41,8 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
     description: '30 per 1 minute',
   })
 
-  // ---------------------------------------------------------------------------
-  // Reads
-  // ---------------------------------------------------------------------------
-
-  /**
-   * The whole transcript.
-   *
-   * Uncached on purpose, and Python says why: a hard reload must not be served
-   * a stale or half-warmed cache, because unlike the poll there is no later
-   * request to correct it.
-   */
+  // Uncached on purpose: a hard reload must not be served a stale or
+  // half-warmed cache, since unlike the poll no later request corrects it.
   routes.get('/rooms/:room_id/messages', (c) => {
     const roomId = intPathParam(c, 'room_id')
     ensureRoomAccessFor(c, state.db, roomId)
@@ -72,17 +57,13 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
   })
 
   /**
-   * Who is mid-response, for the "…is typing" rows.
+   * Who is mid-response, for the "…is typing" rows. The access check is spelled
+   * out rather than delegated to `ensureRoomAccess` so it can read the *cached*
+   * room, keeping this hot path off the relational load.
    *
-   * The access check here is written out rather than delegated to
-   * `ensureRoomAccess`, because Python's is: it reads the *cached* room to keep
-   * this hot path off the relational load, and answers 404 through
-   * `RoomNotFoundError` before the ownership test.
-   *
-   * **Gap: `thinking_text` and `response_text` are always empty**, exactly as in
-   * `routes/game/polling.ts` — the TypeScript SDK keeps partial response text on
-   * the turn rather than in a per-room registry, so the indicator shows *that*
-   * an agent is working, not what it has written so far.
+   * **Gap: `thinking_text` and `response_text` are always empty**, as in
+   * `routes/game/polling.ts` — partial response text lives on the turn, not in
+   * a per-room registry.
    */
   routes.get('/rooms/:room_id/chatting-agents', chattingLimit, (c) => {
     const roomId = intPathParam(c, 'room_id')
@@ -112,18 +93,11 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
     return c.json({ chatting_agents: chattingAgents })
   })
 
-  // ---------------------------------------------------------------------------
-  // Send
-  // ---------------------------------------------------------------------------
-
   /**
    * Save the user's message, then start the agents on it in the background.
-   *
-   * The response carries only the saved user message; the replies arrive over
-   * SSE and the poll. That is what keeps the request fast, and it is why the
-   * turn is started with `startBackground` rather than awaited — `bun:sqlite`
-   * is synchronous, so an `async` function handed to a plain call would run to
-   * its first `await` *inside* this request. See `routes/game/shared.ts`.
+   * `startBackground` rather than a plain call because `bun:sqlite` is
+   * synchronous: an `async` function would otherwise run to its first `await`
+   * *inside* this request.
    */
   routes.post('/rooms/:room_id/messages/send', sendLimit, async (c) => {
     const roomId = intPathParam(c, 'room_id')
@@ -146,8 +120,7 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
       thinking: body.thinking,
       anthropicCalls: body.anthropic_calls,
       images,
-      // The legacy single-image columns are folded into `images` above, so they
-      // are never written by this path — only read off older rows.
+      // Folded into `images` above; written never, read off older rows only.
       imageData: null,
       imageMediaType: null,
       chatSessionId: body.chat_session_id,
@@ -155,12 +128,10 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
     })
     logger.info(`[send_message] Message saved with ID: ${saved.id}`)
 
-    // The saved message is a new event for anyone already watching.
     state.broadcaster.broadcast(roomId, { type: 'new_message', message_id: saved.id })
 
-    // A room that belongs to a world is a TRPG room and its turns run through
-    // the `/worlds` action surface, which the frontend uses for those; only a
-    // plain chat room starts a turn from here.
+    // A room with a world is a TRPG room; its turns run through the `/worlds`
+    // action surface instead, so only a plain chat room starts a turn here.
     const room = getRoomCached(state.db, roomId)
     if (room?.worldId == null) {
       startBackground(
@@ -182,14 +153,9 @@ export function createRoomMessageRoutes(state: AppState): Hono<AppEnv> {
   return routes
 }
 
-/**
- * Narrow a client-supplied clock to the three fields the column stores.
- *
- * The request schema accepts any `Record<string, int>`, because Pydantic's
- * `Dict[str, int]` does — but the stored snapshot is `{hour, minute, day}` and
- * anything else is not a game time. A partial object is dropped rather than
- * stored half-filled, which would render as a broken timestamp forever.
- */
+// The request schema accepts any `Record<string, int>`, but the stored snapshot
+// is `{hour, minute, day}`. A partial object is dropped rather than stored
+// half-filled, which would render as a broken timestamp forever.
 function toGameTime(
   raw: Record<string, number> | null,
 ): { hour: number; minute: number; day: number } | null {
@@ -202,17 +168,8 @@ function toGameTime(
   return { hour, minute, day }
 }
 
-/**
- * Fold every supplied image into the modern `images` array, capped and
- * compressed — port of the two image branches in Python's `send_message`.
- *
- * The cap and the legacy-format migration are applied here too, so the stored
- * row has one shape regardless of which format the client sent.
- *
- * The images are encoded concurrently — Python compresses them in a loop, but
- * it has no choice, and libvips runs each encode on its own thread. The order
- * of the array is preserved, which is the only part of the loop that mattered.
- */
+// Capped and compressed into the modern `images` array, so the stored row has
+// one shape whatever the client sent. Array order is preserved.
 async function compressImages(
   images: { data: string; media_type: string }[] | null,
   roomId: number,

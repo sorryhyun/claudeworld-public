@@ -1,20 +1,12 @@
 /**
- * Player action routes — port of `backend/routers/game/actions.py`.
+ * `POST /worlds/{id}/action` — the only way a player affects the world, and
+ * deliberately fire-and-forget: it validates, writes the message, starts the
+ * turn in the background and answers `{status: "processing"}`, since a turn
+ * takes tens of seconds and results come back through `/poll`.
  *
- * `POST /worlds/{id}/action` is the only way a player affects the world, and it
- * is deliberately a *fire-and-forget* endpoint: it validates, writes the
- * player's message, starts the turn in the background and answers immediately
- * with `{status: "processing"}`. Everything the agents produce reaches the
- * client through `GET /worlds/{id}/poll`. A turn takes tens of seconds; holding
- * the request open for it would put the whole game behind one HTTP timeout.
- *
- * The same endpoint carries three different flows, chosen in this order:
- *
- * 1. a slash command (`/chat`, `/end`) — dispatched to `./chat-mode`;
- * 2. a message while chat mode is on — also `./chat-mode`;
- * 3. anything else — the gameplay tape.
- *
- * Only the third increments the turn counter or writes to the action history.
+ * Three flows, in this order: a slash command (`/chat`, `/end`), a message while
+ * chat mode is on (both go to `./chat-mode`), and everything else — the gameplay
+ * tape, the only one that bumps the turn counter or the action history.
  */
 
 import { Hono } from 'hono'
@@ -39,9 +31,8 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
 
   routes.post('/worlds/:world_id/action', async (c) => {
     const worldId = intPathParam(c, 'world_id')
-    // Body before world lookup: FastAPI validates every declared parameter
-    // before the handler runs, so a malformed body on a world that does not
-    // exist is a 422, not a 404.
+    // Body before world lookup, so a malformed body on a nonexistent world is a
+    // 422 rather than a 404.
     const action = await parseBody(c, PlayerAction)
     const world = requireWorld(state, c, worldId)
 
@@ -50,9 +41,8 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
 
     updateWorldLastPlayed(state.db, worldId)
 
-    // Which room the action lands in depends on the phase, not on the request:
-    // during onboarding there is one room for the whole world, and during play
-    // there is one per location and only the player's current one is live.
+    // The room depends on the phase, not the request: onboarding has one room
+    // per world, play has one per location.
     let targetRoomId: number | null = null
     let currentLocationId: number | null = null
 
@@ -71,9 +61,8 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
     const parsed = parseSlashCommand(action.text)
 
     if (parsed.commandType === 'chat') {
-      // 200 with an error envelope, not a 4xx: the frontend shows `message` as a
-      // system line in the transcript, and a rejected slash command is a game
-      // rule rather than a bad request.
+      // 200 with an error envelope, not a 4xx: the frontend shows `message` as
+      // a system line, and a rejected slash command is a game rule.
       if (world.phase !== 'active') {
         return c.json({
           status: 'error',
@@ -107,24 +96,17 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
       )
     }
 
-    // ---- Regular TRPG flow -------------------------------------------------
-
-    // Compressed *before* the first write, not next to the `createMessage` it
-    // feeds. Pillow encodes on the calling thread, so Python runs its three
-    // writes — history, turn, message — with no suspension point between them;
-    // sharp resolves a promise, and an `await` sitting mid-sequence would let a
-    // second action for the same world slip its message row in between this
-    // one's turn bump and its message. Hoisting the only `await` above the
-    // writes restores that block.
+    // Hoisted above the three writes (history, turn, message) so they run with
+    // no suspension point between them; an `await` in the middle would let a
+    // concurrent action interleave its own message row.
     const image = await tryCompressImage(
       action.image_data,
       action.image_media_type,
       `world ${worldId}`,
     )
 
-    // Recorded as "Processing..." and never updated: nothing writes the real
-    // outcome back. The history exists to remind the Action Manager what the
-    // player has been *attempting*, which the action text alone carries.
+    // Recorded as "Processing..." and never updated: the history exists to
+    // remind the Action Manager what the player has been *attempting*.
     addActionToHistory(state.db, worldId, {
       turn: (playerState.turnCount ?? 0) + 1,
       action: action.text,
@@ -153,15 +135,11 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
     startBackground(
       async () => {
         // A location created before the gameplay agents were seeded has a room
-        // with no Action Manager in it; without this the tape cannot be built
-        // and the turn throws. Idempotent, so it runs every turn rather than
-        // being conditional on a state nothing tracks.
+        // with no Action Manager, and the tape needs one. Idempotent.
         addGameplayAgentsToRoom(state.db, roomId)
 
-        // Python opens a fresh DB session here because its request session is
-        // already closed. `bun:sqlite` is one synchronous handle with no session
-        // lifetime, so `state.db` is used directly — but the world row is still
-        // re-read, because a phase sync or another turn may have moved it on.
+        // The world row is re-read because a phase sync or another turn may
+        // have moved it on since the request handler read it.
         const taskWorld = getWorld(state.db, worldId)
         if (!taskWorld) return
         await state.orchestrator.handlePlayerAction({
@@ -183,12 +161,9 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
   })
 
   /**
-   * The Action Manager's latest suggested next moves.
-   *
-   * Read straight out of `_state.json`, never the database: `suggest_options`
-   * writes them there mid-turn, and the poll response carries the same list for
-   * exactly the race this endpoint would otherwise lose — suggestions saved
-   * after the narration message but before the next poll.
+   * Read from `_state.json`, where `suggest_options` writes them mid-turn. The
+   * poll response carries the same list, for suggestions saved after the
+   * narration but before the next poll.
    */
   routes.get('/worlds/:world_id/action/suggestions', (c) => {
     const worldId = intPathParam(c, 'world_id')

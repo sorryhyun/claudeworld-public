@@ -20,18 +20,15 @@ import type { LocationPersistenceFactory, TurnStatusPort } from './ports'
 import { tool, requireAgentId, requireRoomId, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * Moving the player, and creating somewhere to move them to.
- * Port of `sdk/handlers/location_tools.py`.
- *
- * `list_locations` is not here — Phase 0 put it in `world-tools.ts`.
+ * Moving the player, and creating somewhere to move them to. (`list_locations`
+ * lives in `world-tools.ts`.)
  *
  * **`travel` is the widest side effect in the game.** One call ends the scene,
  * writes its summary to world history, gives the departing NPCs a memory round,
- * opens a *new room* at the destination, moves the player and their companions,
- * writes the arrival narration into that new room, saves the next turn's
- * suggested actions and parks a continuity payload for the following turn. It
- * is one tool rather than six because every one of those has to happen, in that
- * order, or the player arrives somewhere with no narration and no way to act.
+ * opens a *new room* at the destination, moves the player and companions, writes
+ * the arrival narration there, saves the next turn's suggested actions and parks
+ * a continuity payload. It is one tool rather than six because all of it has to
+ * happen in that order, or the player arrives with no narration and no actions.
  */
 
 const logger = getLogger('GameplayTools.Location')
@@ -91,9 +88,8 @@ export function createLocationTools(ctx: ToolContext, deps: LocationToolDeps): S
           try {
             const config = deps.locations.loadLocation(worldName, fromLocationName)
             const fromDisplay = config?.displayName ?? fromLocationName
-            // The database's turn count, not the filesystem's: `incrementTurn`
-            // writes the row and `player.yaml` may not have caught up yet, so
-            // reading the file here numbers the history entry one turn behind.
+            // The database's turn count, not the filesystem's: `player.yaml`
+            // may not have caught up, which would number the entry one behind.
             const turn = getPlayerState(db, worldId)?.turnCount ?? 0
             deps.worlds.addHistoryEntry(worldName, turn, fromDisplay, chatSummary)
           } catch (error) {
@@ -112,11 +108,9 @@ export function createLocationTools(ctx: ToolContext, deps: LocationToolDeps): S
 
         const dbLocations = getLocations(db, worldId)
         const destinationLower = destination.toLowerCase()
-        // Folder name only, and substring-tolerant — Python matches
-        // `loc.name.lower() == dest or dest in loc.name.lower()`, deliberately
-        // *not* consulting display names. `getLocationByName` would be a wider
-        // net; using it here would let the model travel to a location whose
-        // folder does not exist, and the room key is built from the folder name.
+        // Folder name only, substring-tolerant, deliberately *not* consulting
+        // display names: the room key is built from the folder name, so the
+        // wider net of `getLocationByName` could name a folder that is not there.
         const match = dbLocations.find(
           (loc) =>
             loc.name.toLowerCase() === destinationLower ||
@@ -157,9 +151,7 @@ export function createLocationTools(ctx: ToolContext, deps: LocationToolDeps): S
         const movedCharacters: string[] = []
         for (const charName of bringCharacters) {
           try {
-            // Looked up world-wide, matching Python's `get_agent_by_name(db, name)`
-            // with no world filter — a companion may have been created before the
-            // world scoping existed.
+            // World-wide: a companion may predate world scoping.
             const agent = getAgentByName(db, charName)
             if (agent) {
               moveCharacterToLocation(db, agent.id, fromLocation?.id ?? null, match.id)
@@ -226,11 +218,10 @@ export function createLocationTools(ctx: ToolContext, deps: LocationToolDeps): S
 }
 
 /**
- * `persist_location_design` — the Location Designer sub-agent's callback.
- *
- * Refuses to overwrite. A designer that re-runs and clobbers a location the
- * player has already visited would silently rewrite the map under them, so an
- * existing name is an error the sub-agent has to work around by picking another.
+ * `persist_location_design` — the Location Designer sub-agent's callback. It
+ * refuses to overwrite: a re-run that clobbered a location the player has
+ * visited would rewrite the map under them, so an existing name is an error the
+ * sub-agent has to work around by picking another.
  */
 export function createPersistLocationTool(
   ctx: ToolContext,

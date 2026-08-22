@@ -1,21 +1,8 @@
 /**
- * The chat-room surface — port of the `rooms`, `room_agents`, `messages` and
- * `sse` routers in `backend/routers/`.
- *
- * Mounted at the root rather than at `/rooms`, for the reason `routes/game`
- * gives: each module writes its own `/rooms/...` paths so that both `/rooms`
- * and `/rooms/` can be answered, which a sub-app mounted at `/rooms` cannot
- * express.
- *
- * **Registration order is load-bearing.** Hono runs matching handlers in
- * registration order, and several paths here overlap:
- *
- * - `POST /rooms/:room_id/stream/ticket` must precede nothing in particular,
- *   but `GET /rooms/:room_id/agents` and `GET /rooms/:room_id/messages` would
- *   both be shadowed by a `GET /rooms/:room_id` registered before them if that
- *   route were a prefix match — it is not, Hono matches full paths, but the
- *   ordering below still mirrors Python's `include_router` order so that any
- *   future overlap resolves the same way in both backends.
+ * The chat-room surface. Mounted at the root rather than at `/rooms` so each
+ * module writes its own `/rooms/...` paths and both `/rooms` and `/rooms/` are
+ * answerable. Hono matches in registration order, so keep the order below when
+ * adding a route that could overlap an existing one.
  */
 
 import { Hono } from 'hono'

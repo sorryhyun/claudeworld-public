@@ -1,10 +1,5 @@
 /**
- * Centralized application settings.
- *
- * Ported from `backend/core/settings.py` (pydantic `BaseSettings`). Env var
- * names are unchanged so a single `.env` drives both backends.
- *
- * Layering matches pydantic-settings: real process env wins over `.env` file
+ * Centralized application settings. Real process env wins over `.env` file
  * values, and `.env` is read from the *project root*, not from `backend/`.
  */
 
@@ -23,10 +18,6 @@ import { getLogger } from '../infrastructure/logging/logger'
 const logger = getLogger('Settings')
 
 export type EnvRecord = Record<string, string | undefined>
-
-// ============================================================================
-// Application Constants
-// ============================================================================
 
 /** Used when no system prompt can be loaded from the guidelines YAML. */
 export const DEFAULT_FALLBACK_PROMPT = 'You are a helpful AI assistant.'
@@ -54,15 +45,8 @@ export const AGENT_TOOL_NAMES: Record<string, string> = Object.fromEntries(
   Object.values(AGENT_TOOL_NAMES_BY_GROUP).flatMap((group) => Object.entries(group)),
 )
 
-// ============================================================================
-// Parsing helpers
-// ============================================================================
-
-/**
- * Pydantic's validators here are all `v.lower() == "true"`, so any other value
- * — including "1", "yes", "on" — is false. Reproduced exactly; see
- * {@link isGuestLoginEnabled} for the one place that accepts a wider set.
- */
+// Only the literal "true" is true — "1", "yes" and "on" are not. See
+// {@link isGuestLoginEnabled} for the one place that accepts a wider set.
 function parseBool(raw: string | undefined, fallback: boolean): boolean {
   if (raw === undefined) return fallback
   return raw.trim().toLowerCase() === 'true'
@@ -75,21 +59,12 @@ function parseInteger(raw: string | undefined, fallback: number): number {
 }
 
 function optional(raw: string | undefined): string | null {
-  // pydantic treats an unset var and an empty string differently, but every
-  // consumer of these fields does a truthiness check, so collapsing "" to null
-  // keeps downstream code from having to test both.
+  // "" collapses to null so consumers do not have to test both.
   return raw === undefined || raw === '' ? null : raw
 }
 
-// ============================================================================
-// .env file
-// ============================================================================
-
-/**
- * Minimal dotenv parser: `KEY=value`, optional `export ` prefix, `#` comments,
- * single- or double-quoted values (escapes only expanded inside double quotes,
- * matching python-dotenv).
- */
+// `KEY=value`, optional `export ` prefix, `#` comments, single- or
+// double-quoted values; escapes expand only inside double quotes.
 export function parseDotEnv(content: string): Record<string, string> {
   const result: Record<string, string> = {}
 
@@ -121,20 +96,11 @@ export function parseDotEnv(content: string): Record<string, string> {
   return result
 }
 
-/**
- * Env var that makes {@link loadDotEnv} behave as if the file were absent.
- *
- * Set by the test preload (`src/tests/setup/env.ts`). Without it the suite's
- * result depends on whether the developer has run `make setup` and on what
- * that wrote: a `.env` carrying `GUIDELINES_FILE=…` redirects
- * `settings.paths.guidelinesConfigPath` at a YAML that does not exist, and the
- * six tests that read the real `guidelines_3rd.yaml` fail against a tree that
- * is green on CI, where no `.env` is ever written. Pinning the *absent* case is
- * what makes the two agree, since that is the case CI and a fresh clone have.
- */
+// Makes {@link loadDotEnv} behave as if the file were absent. Set by the test
+// preload: without it the suite depends on whatever `make setup` wrote, and
+// diverges from CI, which has no `.env`.
 export const SKIP_DOTENV_ENV_VAR = 'CW_TEST_NO_DOTENV'
 
-/** Read `<projectRoot>/.env`, returning `{}` when absent or unreadable. */
 export function loadDotEnv(projectRoot: string): Record<string, string> {
   if (process.env[SKIP_DOTENV_ENV_VAR]) return {}
   const envPath = join(projectRoot, '.env')
@@ -147,66 +113,46 @@ export function loadDotEnv(projectRoot: string): Record<string, string> {
   }
 }
 
-// ============================================================================
-// Settings
-// ============================================================================
-
 export interface Settings {
-  // Authentication
   readonly apiKeyHash: string | null
   readonly jwtSecret: string | null
   readonly guestPasswordHash: string | null
   readonly enableGuestLogin: boolean
 
-  // User configuration
   readonly userName: string
 
   /** Raw comma-separated `PRIORITY_AGENTS` value; see {@link getPriorityAgentNames}. */
   readonly priorityAgents: string
 
-  // CORS
   readonly frontendUrl: string | null
   readonly vercelUrl: string | null
 
   /** Basename of the guidelines YAML, without extension. */
   readonly guidelinesFile: string
 
-  // Model / debug
   readonly useSonnet: boolean
   readonly debugAgents: boolean
 
-  // Background scheduler
   readonly maxConcurrentRooms: number
 
-  // CLI tracing
   readonly enableCliTracing: boolean
   readonly cliTraceOutput: string | null
 
-  // Image pipeline (Python reads these ad hoc in utils/images.py)
   readonly imageWebpQuality: number
   readonly imageConvertToWebp: boolean
 
   /** Direct API key; when null the SDK falls back to Claude Code auth. */
   readonly claudeApiKey: string | null
 
-  /**
-   * Raw `DATABASE_URL`. Kept verbatim (including the SQLAlchemy driver prefix)
-   * because translating it to a SQLite file path is the db layer's job.
-   */
+  /** Raw `DATABASE_URL`; translating it to a SQLite path is the db layer's job. */
   readonly databaseUrl: string
 
   readonly paths: ProjectPaths
 }
 
-/** Python's `connection.py` default; unchanged so both backends agree. */
 export const DEFAULT_DATABASE_URL = 'postgresql+asyncpg://postgres:postgres@localhost:5432/claudeworld'
 
-/**
- * Build a Settings object from an explicit env map.
- *
- * Pure and side-effect free — no `.env` reading, no caching — so tests can
- * exercise parsing without the developer's real environment leaking in.
- */
+// Pure — no `.env` reading, no caching — so tests can parse in isolation.
 export function createSettings(env: EnvRecord = process.env): Settings {
   const guidelinesFile = env.GUIDELINES_FILE || DEFAULT_GUIDELINES_FILE
 
@@ -244,13 +190,8 @@ export function createSettings(env: EnvRecord = process.env): Settings {
 
 let cachedSettings: Settings | null = null
 
-/**
- * Settings singleton, resolved on first use.
- *
- * Mirrors Python's two-pass `get_settings()`: the root is discovered first so
- * that `<root>/.env` can be located, then the file's values are layered
- * *underneath* the process env.
- */
+// Two passes: find the root so `<root>/.env` can be read, then layer its values
+// *underneath* the process env.
 export function getSettings(): Settings {
   if (cachedSettings === null) {
     const projectRoot = resolveProjectRoot()
@@ -260,16 +201,10 @@ export function getSettings(): Settings {
   return cachedSettings
 }
 
-/** Drop the singleton so the next {@link getSettings} re-reads the environment. */
 export function resetSettings(): void {
   cachedSettings = null
 }
 
-// ============================================================================
-// Derived accessors
-// ============================================================================
-
-/** Split `PRIORITY_AGENTS` into trimmed, non-empty agent names. */
 export function getPriorityAgentNames(settings: Settings = getSettings()): string[] {
   if (!settings.priorityAgents) return []
   return settings.priorityAgents
@@ -278,14 +213,8 @@ export function getPriorityAgentNames(settings: Settings = getSettings()): strin
     .filter((name) => name.length > 0)
 }
 
-/**
- * Whether guest login is enabled.
- *
- * `infrastructure/auth.py` re-reads `ENABLE_GUEST_LOGIN` directly and accepts
- * the wider `{1,true,yes,on}` set, so a `.env` saying `ENABLE_GUEST_LOGIN=1`
- * enables guests there while `settings.enableGuestLogin` reports false. This
- * function is the auth-path behaviour; prefer it over the raw field.
- */
+// Accepts the wider `{1,true,yes,on}` set than `settings.enableGuestLogin`
+// does; prefer this over the raw field.
 export function isGuestLoginEnabled(
   env: EnvRecord = process.env,
   settings: Settings = getSettings(),
@@ -309,9 +238,7 @@ export function getCorsOrigins(settings: Settings = getSettings()): string[] {
   if (settings.frontendUrl) origins.push(settings.frontendUrl)
   if (settings.vercelUrl) origins.push(`https://${settings.vercelUrl}`)
 
-  // Python resolves the hostname via DNS and gets back a single address; here
-  // we enumerate the interfaces directly, which is both synchronous and more
-  // complete (a laptop on Wi-Fi + Ethernet gets both).
+  // Interfaces, not DNS: synchronous, and Wi-Fi + Ethernet both get an entry.
   try {
     for (const addresses of Object.values(networkInterfaces())) {
       for (const address of addresses ?? []) {
@@ -320,7 +247,7 @@ export function getCorsOrigins(settings: Settings = getSettings()): string[] {
       }
     }
   } catch {
-    // Matches Python's bare `except: pass` — CORS should never block startup.
+    // CORS should never block startup.
   }
 
   return origins

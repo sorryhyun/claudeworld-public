@@ -1,42 +1,17 @@
-/**
- * The enums from `backend/domain/value_objects/enums.py` that have no column
- * to live in.
- *
- * Most of that file's enums are persisted, so they belong next to the table
- * that stores them: `WorldPhase`, `Language` and `MessageRole` are in
- * `db/schema.ts`, and `UserRole` is in `auth/roles.ts`. What is left are the
- * three that only ever travel through prompts, tool arguments and JSON blobs —
- * plus `Language`'s one helper, which is behaviour rather than a column type.
- *
- * All of these are `str, Enum` in Python and therefore serialise as bare
- * strings into the world files the Python backend still reads. String-literal
- * unions reproduce that exactly and cost nothing at runtime; the `const` array
- * beside each is there so a value can be validated or iterated. This matches
- * the shape already used by `auth/roles.ts` and `db/schema.ts`.
- *
- */
+// The enums with no column to live in. Persisted ones live next to their table:
+// `WorldPhase`/`Language`/`MessageRole` in `db/schema.ts`, `UserRole` in
+// `auth/roles.ts`.
 
 import { LANGUAGES, type Language } from '../db/schema'
 
-/**
- * Which context builder a turn runs through.
- *
- * `normal` is the pre-TRPG chat room, still reachable for non-world rooms;
- * `chat` is the in-world NPC conversation entered with `/chat`.
- */
+/** Which context builder a turn runs through. `normal` is the pre-TRPG chat room,
+ * still reachable for non-world rooms; `chat` is the `/chat` NPC conversation. */
 export const CONVERSATION_MODES = ['normal', 'onboarding', 'game', 'chat'] as const
 
 export type ConversationMode = (typeof CONVERSATION_MODES)[number]
 
-/** An NPC's standing attitude toward the player, carried in character files. */
-/**
- * Who authored a message. Port of `ParticipantType`.
- *
- * Not the same axis as `role`: `role` is the Anthropic user/assistant
- * distinction the SDK needs, while this says whether the author was the player,
- * a character, a system notice, or a non-character agent. Both columns are
- * written on every row, and the frontend renders off this one.
- */
+/** Who authored a message — a different axis from `role`, which is the Anthropic
+ * user/assistant distinction. Both are written; the frontend renders off this. */
 export const PARTICIPANT_TYPES = ['user', 'character', 'system', 'agent'] as const
 
 export type ParticipantType = (typeof PARTICIPANT_TYPES)[number]
@@ -45,6 +20,7 @@ export function isParticipantType(value: unknown): value is ParticipantType {
   return (PARTICIPANT_TYPES as readonly unknown[]).includes(value)
 }
 
+/** An NPC's standing attitude toward the player, carried in character files. */
 export const CHARACTER_DISPOSITIONS = ['friendly', 'neutral', 'wary', 'hostile'] as const
 
 export type CharacterDisposition = (typeof CHARACTER_DISPOSITIONS)[number]
@@ -54,18 +30,9 @@ export const INVENTORY_CHANGE_ACTIONS = ['add', 'remove'] as const
 
 export type InventoryChangeAction = (typeof INVENTORY_CHANGE_ACTIONS)[number]
 
-/**
- * `Language.to_lang_key` from `enums.py:61-66`.
- *
- * Config files key their per-language strings by `en` / `ko` / `jp`, and a
- * world's stored language can be absent, or a value that predates the enum.
- * Anything unrecognised falls back to English rather than raising, so a bad
- * value degrades the prompt's wording instead of failing the turn.
- *
- * The helper lives here rather than beside `Language` in `db/schema.ts`
- * because it is prompt-building logic, and `db/schema.ts` is kept to the
- * table definitions the drift gate compares.
- */
+/** A world's stored language can be absent or predate the enum, so anything
+ * unrecognised falls back to English rather than raising: a bad value degrades
+ * the prompt's wording instead of failing the turn. */
 export function toLangKey(lang: string | null | undefined): Language {
   return lang === 'ko' || lang === 'jp' ? lang : 'en'
 }

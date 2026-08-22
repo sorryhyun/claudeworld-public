@@ -1,21 +1,9 @@
 /**
- * Interactive `.env` setup wizard.
+ * Interactive `.env` wizard, called by `make setup` and `install.sh`. A fresh
+ * checkout gets a complete `.env`; an existing one gets a password change that
+ * rewrites *only* `API_KEY_HASH`, since people keep `CLAUDE_API_KEY` and
+ * `DATABASE_URL` in there.
  *
- * Ported from `backend/scripts/setup_env.py` when the Python tree was deleted;
- * `make setup` and `scripts/install/install.sh` both call it, so it is the one
- * thing standing between a fresh clone and a bootable app.
- *
- * On a fresh checkout it writes a complete `.env`: a bcrypt hash of a password
- * it prompts for, a random `JWT_SECRET`, and a display name. When `.env`
- * already exists it offers to change the password, rewriting *only*
- * `API_KEY_HASH` and leaving every other setting alone — people keep
- * `CLAUDE_API_KEY` and `DATABASE_URL` in there.
- *
- * `Bun.password.hash` with `algorithm: 'bcrypt'` emits the same `$2b$` hashes
- * Python's `bcrypt.hashpw` did, which is what lets an existing `.env` survive
- * the migration untouched (see `src/auth/passwords.ts`).
- *
- * Usage:
  *     bun run setup            # interactive setup / password change
  *     bun run setup --force    # skip the confirmation prompt
  *     bun run setup --check    # exit 0 if .env is configured, 1 if not
@@ -29,16 +17,11 @@ import { Writable } from 'node:stream'
 
 import { resolveProjectRoot } from '../config/paths'
 
-/** Cost factor. Python's `bcrypt.gensalt()` defaults to 12; match it. */
+/** Cost factor; 12 matches the hashes existing `.env` files already carry. */
 const BCRYPT_COST = 12
 
-/**
- * Placeholder fragments that mark a value as *not yet filled in*.
- *
- * `.env.example` ships with `API_KEY_HASH=$2b$12$example_hash_paste_your_…`,
- * which is a syntactically valid assignment — checking for the key alone would
- * call a copied example file "configured" and leave the user unable to log in.
- */
+// `.env.example` ships a syntactically valid `API_KEY_HASH=…example…`, so
+// checking for the key alone would call a copied example file "configured".
 const HASH_PLACEHOLDERS = ['example_hash', 'paste_your', 'paste_here']
 const JWT_PLACEHOLDERS = ['your-random-secret', 'key-here']
 
@@ -54,13 +37,8 @@ function isConfigured(envFile: string): boolean {
   return hasHash && hasJwt
 }
 
-/**
- * Read a line from the terminal, echoing nothing when `hidden`.
- *
- * `node:readline` has no `getpass`. Muting is done by intercepting the
- * interface's own output stream rather than by putting the TTY in raw mode:
- * raw mode would also cost us line editing, backspace and Ctrl-C.
- */
+// Muting intercepts readline's own output stream rather than using raw mode,
+// which would also cost line editing, backspace and Ctrl-C.
 function ask(question: string, hidden = false): Promise<string> {
   return new Promise((resolve, reject) => {
     let muted = false
@@ -94,7 +72,6 @@ function ask(question: string, hidden = false): Promise<string> {
   })
 }
 
-/** Prompt for a password twice and return its bcrypt hash. */
 async function promptPasswordHash(): Promise<string> {
   for (;;) {
     const password = await ask('Enter password: ', true)
@@ -150,7 +127,7 @@ DEBUG_AGENTS=false
 `
 }
 
-/** Replace an uncommented `KEY=…` line, or append one if absent. */
+// Replaces an uncommented `KEY=…` line, or appends one.
 function setEnvVar(content: string, key: string, value: string): string {
   const pattern = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}=.*$`, 'm')
   if (pattern.test(content)) return content.replace(pattern, `${key}=${value}`)

@@ -1,22 +1,10 @@
 /**
- * The game surface — port of `backend/routers/game/__init__.py`.
- *
- * Python assembles five routers under `APIRouter(prefix="/worlds")` and
- * `app_factory.py` includes the result with no further prefix, so every path
- * below begins `/worlds`. That prefix is written out in each module rather than
- * applied here, for two reasons:
- *
- * - Hono's router is strict about trailing slashes and does not redirect, so the
- *   collection routes have to be registered as both `/worlds` and `/worlds/` to
- *   answer everything Starlette answers. A mounted sub-app cannot express the
- *   second spelling.
- * - The paths are a frozen contract with `frontend/`, and a literal path is
- *   greppable from the frontend call site in a way `mergePath` is not.
- *
- * **Registration order is Python's and is load-bearing.** Hono runs matching
- * handlers in the order they were registered, so `worlds` must come first: it
- * owns `GET /worlds/importable`, which also matches its own
- * `GET /worlds/:world_id`. The remaining four do not overlap each other.
+ * Five routers, each spelling its own `/worlds/...` paths rather than being
+ * mounted under a prefix: Hono does not redirect on trailing slashes, so
+ * collection routes must register both `/worlds` and `/worlds/`, which a mounted
+ * sub-app cannot express. **Registration order is load-bearing** — Hono matches in
+ * registration order, so `worlds` must come first: it owns
+ * `GET /worlds/importable`, which also matches its own `GET /worlds/:world_id`.
  */
 
 import { Hono } from 'hono'

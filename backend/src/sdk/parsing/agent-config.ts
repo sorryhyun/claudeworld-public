@@ -1,11 +1,7 @@
 /**
- * Agent configuration parsing from the `agents/` tree.
- *
- * Ported from `backend/sdk/parsing/agent_parser.py`.
- *
- * The filesystem is the source of truth: each agent is a folder of markdown
- * sections that are re-read on every response, so an edit to
- * `characteristics.md` lands without a restart. The database only caches this.
+ * Agent configuration parsing from the `agents/` tree. The filesystem is the
+ * source of truth: each agent is a folder of markdown sections re-read on every
+ * response, so an edit lands without a restart. The database only caches it.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -50,7 +46,6 @@ export interface AgentConfigEntry {
   group: string | null
 }
 
-/** True when at least one of the identity sections has content. */
 export function hasContent(config: AgentConfigData): boolean {
   return Boolean(config.inANutshell || config.characteristics || config.recentEvents)
 }
@@ -77,17 +72,13 @@ function readYamlConfig(folderPath: string): Record<string, unknown> {
   return {}
 }
 
-/**
- * Locate the agent's profile image.
- *
- * Conventional names win over an arbitrary image so a folder holding both
- * `profile.png` and a screenshot picks the intended one.
- */
+// Conventional names win over an arbitrary image, so a folder holding both
+// `profile.png` and a screenshot picks the intended one.
 function findProfilePic(folderPath: string): string | null {
   let entries: string[]
   try {
-    // Sorted: Python relies on readdir order for the fallback scan, which is
-    // filesystem-dependent and can pick a different file on two machines.
+    // Sorted: raw readdir order is filesystem-dependent, so the fallback scan
+    // below would pick a different file on two machines.
     entries = readdirSync(folderPath).sort()
   } catch {
     return null
@@ -118,11 +109,8 @@ function isDirectory(path: string): boolean {
 }
 
 /**
- * Parse an agent folder.
- *
- * `folderPath` may be absolute or relative to the project root (the form stored
- * in the `config_file` column, e.g. `agents/group_gameplay/Action_Manager`).
- * Returns `null` when the folder does not exist.
+ * Parse an agent folder. `folderPath` may be absolute or relative to the project
+ * root — the form stored in the `config_file` column. `null` when missing.
  */
 export function parseAgentConfig(folderPath: string): AgentConfigData | null {
   const settings = getSettings()
@@ -141,8 +129,8 @@ export function parseAgentConfig(folderPath: string): AgentConfigData | null {
       const parsed = parseLongTermMemory(memoryFile)
       if (Object.keys(parsed).length > 0) {
         longTermMemoryIndex = parsed
-        // Quoted and comma-joined here rather than at injection time because
-        // this exact string is what gets persisted and rendered in the prompt.
+        // Quoted and joined here, not at injection time: this exact string is
+        // what gets persisted and rendered in the prompt.
         longTermMemorySubtitles = Object.keys(parsed)
           .map((subtitle) => `'${subtitle}'`)
           .join(', ')
@@ -153,8 +141,7 @@ export function parseAgentConfig(folderPath: string): AgentConfigData | null {
     const homeLocation = yamlConfig.home_location
 
     return {
-      // Python leaves config_file unset here; the caller supplies it from the
-      // DB row. Kept null for parity rather than helpfully filling it in.
+      // The caller supplies this from the DB row.
       configFile: null,
       inANutshell: readSection(absolute, 'in_a_nutshell.md'),
       characteristics: readSection(absolute, 'characteristics.md'),
@@ -175,11 +162,9 @@ function hasRequiredFile(folderPath: string): boolean {
 }
 
 /**
- * Enumerate every agent folder under `agents/`.
- *
- * Both layouts are supported: `agents/<name>/` (ungrouped) and
- * `agents/group_<group>/<name>/`. Agent names are the map keys, so two groups
- * cannot hold the same agent name — the second one silently wins, as in Python.
+ * Enumerate every agent folder under `agents/`, in both layouts:
+ * `agents/<name>/` and `agents/group_<group>/<name>/`. Agent names are the map
+ * keys, so two groups cannot hold the same name — the second silently wins.
  */
 export function listAvailableConfigs(): Record<string, AgentConfigEntry> {
   const { projectRoot, agentsDir } = getSettings().paths

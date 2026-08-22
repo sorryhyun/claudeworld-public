@@ -1,23 +1,6 @@
-/**
- * Registry for fire-and-forget background work.
- *
- * Port of `backend/infrastructure/background.py`. The Python original exists
- * because asyncio keeps only a *weak* reference to a running task, so
- * fire-and-forget work could be collected mid-flight. Promises are not
- * collected while pending, so that specific hazard does not exist here — but
- * the other two reasons the registry exists do:
- *
- *   1. An unobserved rejection is a process-level `unhandledRejection`, which
- *      under Bun's default is fatal. Every spawned promise gets a `.catch`.
- *   2. Shutdown has to be able to wait for in-flight turns to finish writing.
- *
- * `run_uninterruptible` has deliberately **no counterpart**. It exists in
- * Python to stop `asyncio.CancelledError` from landing between an INSERT and
- * its COMMIT. JavaScript has no preemptive cancellation: an `AbortSignal` is a
- * flag that cooperating code chooses to read, so a synchronous `bun:sqlite`
- * write cannot be torn in half by a cancellation. The guarantee it bought is
- * free here.
- */
+// Registry for fire-and-forget background work. Two reasons it exists: an
+// unobserved rejection is a process-level `unhandledRejection`, fatal under
+// Bun's default; and shutdown has to wait for in-flight turns to finish.
 
 import { getLogger } from './logging/logger'
 
@@ -32,23 +15,14 @@ interface BackgroundTask {
 const tasks = new Set<BackgroundTask>()
 
 export interface SpawnOptions {
-  /**
-   * Task name, used in logs. Include identifying context the way Python's
-   * callers do — `trigger_trpg_responses:room=12`, not `turn`.
-   */
+  /** Task name for logs. Include context: `enter_world:world=12`, not `turn`. */
   name: string
 }
 
 /**
  * Start fire-and-forget work that stays registered and logs its failures.
- *
- * `body` receives an `AbortSignal` that fires only if the task overruns
- * shutdown. Work that cannot be resumed should read it; work that must land
- * may ignore it.
- *
- * The returned promise never rejects — callers are not expected to await it,
- * and a rejection nobody observes is exactly what this function exists to
- * prevent.
+ * `body`'s `AbortSignal` fires only if the task overruns shutdown, and the
+ * returned promise never rejects.
  */
 export function spawnBackground(
   body: (signal: AbortSignal) => Promise<unknown>,
@@ -56,9 +30,8 @@ export function spawnBackground(
 ): Promise<void> {
   const abort = new AbortController()
 
-  // Deferred so `task` can be captured by the cleanup closure below without a
-  // read-before-assign: the body may complete synchronously up to its first
-  // await, and `tasks.delete(task)` would then run before `task` is bound.
+  // Deferred so the cleanup closure can capture `task`: the body may run
+  // synchronously up to its first await.
   let settle: () => void = () => {}
   const promise = new Promise<void>((resolve) => {
     settle = resolve
@@ -90,12 +63,8 @@ export function pendingBackgroundTasks(): { name: string }[] {
   return [...tasks].map(({ name }) => ({ name }))
 }
 
-/**
- * Wait for outstanding background work, aborting whatever overruns.
- *
- * Called on shutdown so an in-flight agent turn gets a chance to finish
- * writing before the database handle closes.
- */
+// Called on shutdown so an in-flight turn can finish writing before the
+// database handle closes; whatever overruns is aborted.
 export async function drainBackgroundTasks(timeoutMs = 10_000): Promise<void> {
   if (tasks.size === 0) return
 

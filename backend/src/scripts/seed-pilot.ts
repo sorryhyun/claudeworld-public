@@ -1,12 +1,8 @@
 /**
- * Build a self-contained gameplay world for the Phase 0 pilot.
- *
- * The repository's own `claudeworld.db` holds an onboarding-phase world with no
- * locations and no NPCs, so it cannot exercise the gameplay tape. Rather than
- * advance that world (which would mutate the developer's data), this seeds a
- * throwaway root: `agents/` and `backend/` are symlinked to the real repo so
- * agent configs and the YAML guidelines resolve exactly as in production, while
- * the world data and the database are fresh copies under a scratch directory.
+ * Build a self-contained gameplay world for the pilot, so it never mutates the
+ * developer's data: `agents/` and `backend/` are symlinked to the real repo so
+ * configs and guidelines resolve as in production, while the world data and
+ * database are fresh copies under a scratch directory.
  *
  * Usage: bun src/scripts/seed-pilot.ts <scratch-dir> <source-db>
  */
@@ -101,8 +97,6 @@ const NPCS: Npc[] = [
       '- Has not slept more than a few hours at a stretch since.\n',
   },
 ]
-
-// --- Filesystem ------------------------------------------------------------
 
 await Bun.write(
   join(worldDir, 'world.yaml'),
@@ -201,9 +195,8 @@ Rain has been coming and going all afternoon. The door to the road stands half o
 for (const npc of NPCS) {
   const dir = join(worldDir, 'agents', npc.name)
   mkdirSync(dir, { recursive: true })
-  // Third person, per the project's agent-config contract: the SDK prepends an
-  // immutable "You are Claude Code" prompt, and a second-person character sheet
-  // would contradict it.
+  // Third person, per the agent-config contract: the SDK prepends an immutable
+  // "You are Claude Code" prompt that a second-person sheet would contradict.
   await Bun.write(join(dir, 'in_a_nutshell.md'), `${npc.nutshell}\n`)
   await Bun.write(join(dir, 'characteristics.md'), `${npc.characteristics}\n`)
   await Bun.write(join(dir, 'recent_events.md'), npc.recentEvents)
@@ -214,8 +207,6 @@ for (const npc of NPCS) {
     await Bun.write(join(dir, 'consolidated_memory.md'), body)
   }
 }
-
-// --- Database --------------------------------------------------------------
 
 const db = openDb({ path: dbPath })
 const raw = db.$client as Database

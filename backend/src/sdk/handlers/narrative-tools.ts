@@ -5,10 +5,7 @@ import { formatTemplate } from '../tools/definitions'
 import { narrationTool, suggestOptionsTool } from '../tools/gameplay'
 import { tool, requireAgentId, requireRoomId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
-/**
- * The tools that produce what the player actually sees.
- * Port of `sdk/handlers/narrative_tools.py`.
- */
+// The tools that produce what the player actually sees.
 
 export interface NarrativeDeps {
   players: PlayerService
@@ -18,11 +15,9 @@ export interface NarrativeDeps {
 }
 
 /**
- * Wrap NPC reactions for storage in the narration message's `thinking` column.
- *
- * Reactions are never persisted as messages of their own, so this is the only
- * durable record of them. The frontend looks for these markers to render the
- * reactions in a collapsible under the narration.
+ * Wrap NPC reactions for the narration message's `thinking` column — the only
+ * durable record of them, since reactions are never persisted as messages. The
+ * frontend keys on these markers to render the collapsible.
  */
 export function serializeNpcReactions(
   reactions: ReadonlyArray<{ agentName: string; content: string }>,
@@ -36,9 +31,8 @@ export function createNarrativeTools(
   ctx: ToolContext,
   deps: NarrativeDeps,
 ): SdkTool[] {
-  // Resolved once, at build time rather than call time: a tool whose context is
-  // incomplete must not be offered to the model at all, because the model will
-  // call it and can do nothing useful with the failure.
+  // Resolved at build time, not call time: a tool whose context is incomplete
+  // must not be offered to the model at all.
   const roomId = requireRoomId(ctx)
   const agentId = requireAgentId(ctx)
   const worldName = requireWorldName(ctx)
@@ -59,8 +53,7 @@ export function createNarrativeTools(
         gameTimeSnapshot: playerState?.gameTime ?? null,
       })
 
-      // Load-bearing for turn flow, not just presentation: this is the signal
-      // that the turn produced its visible output and input can reopen.
+      // Load-bearing for turn flow: the signal that input can reopen.
       deps.onNarrationProduced?.(roomId)
 
       return toolSuccess(narrationTool.response ?? 'Narrative message created and displayed to player.')
@@ -73,8 +66,7 @@ export function createNarrativeTools(
     suggestOptionsTool.inputSchema,
     async (args) => {
       const { action_1, action_2 } = args
-      // Suggestions live in the world's `_state.json`, not the database — the
-      // frontend reads them from there alongside the room mapping.
+      // Suggestions live in the world's `_state.json`, not the database.
       deps.rooms.saveSuggestions(worldName, [action_1, action_2])
       return toolSuccess(
         formatTemplate(suggestOptionsTool.response ?? '', { action_1, action_2 }),

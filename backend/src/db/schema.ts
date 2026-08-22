@@ -12,21 +12,14 @@ import {
 import { sqlaDateTime } from './columns'
 
 /**
- * Drizzle mirror of backend/infrastructure/database/models.py at Alembic head
- * `e872d9c86c83`.
- *
- * This is a description of a schema that already exists, not a proposal for
- * one: the migration contract is that an untouched `claudeworld.db` opens in
- * either backend, so every name, nullability, default and index here is
- * transcribed from the live DDL rather than chosen. Where SQLAlchemy's
- * modelling and Drizzle's disagree (booleans as INTEGER, enums as VARCHAR(n),
- * datetimes as TEXT) the SQLAlchemy side wins and the difference is noted at
- * the column.
+ * Drizzle mirror of a schema that already exists, not a proposal for one: an
+ * untouched `claudeworld.db` must keep opening, so every name, nullability,
+ * default and index here is transcribed from the live DDL rather than chosen.
+ * Booleans are INTEGER, enums VARCHAR(n) and datetimes TEXT for that reason.
  */
 
-// `Enum(...)` on SQLite is a VARCHAR with a length and a CHECK-less contract —
-// the values are enforced by the application, not the database. Keeping them as
-// unions here restores that enforcement at compile time without changing DDL.
+// An enum column is a plain VARCHAR on SQLite — the values are enforced by the
+// application, not the database. These unions restore that at compile time.
 export const WORLD_PHASES = ['onboarding', 'active', 'ended'] as const
 export type WorldPhase = (typeof WORLD_PHASES)[number]
 
@@ -72,10 +65,9 @@ export const rooms = sqliteTable(
     ownerId: text('owner_id'),
     name: text('name').notNull(),
     maxInteractions: integer('max_interactions'),
-    // These two are the only booleans with a *server* default. Alembic emits
-    // `DEFAULT 0`, so the literal is written as SQL rather than as `false`:
-    // SQLite would accept `DEFAULT false` and evaluate it identically, but the
-    // DDL text is what the drift gate compares.
+    // The only booleans with a *server* default. Written as SQL `0` rather than
+    // `false`: both evaluate the same, but the DDL text is what the drift gate
+    // compares.
     isPaused: integer('is_paused', { mode: 'boolean' }).default(sql`0`),
     isFinished: integer('is_finished', { mode: 'boolean' }).default(sql`0`),
     createdAt: sqlaDateTime('created_at'),
@@ -135,15 +127,13 @@ export const locations = sqliteTable(
     displayName: text('display_name'),
     description: text('description'),
     label: text('label'),
-    // `$defaultFn`, not `.default()`. SQLAlchemy's `default=0` is applied by the
-    // ORM on insert and emits no DDL, so a real database has no DEFAULT clause
-    // here; `.default()` would add one and make a fresh TS install diverge from
-    // every existing database. `$defaultFn` fills the value in the INSERT the
-    // same way SQLAlchemy does, leaving the DDL alone.
+    // `$defaultFn`, not `.default()`: existing databases have no DEFAULT clause
+    // here, and `.default()` would emit one and diverge a fresh install from
+    // every database already on disk.
     positionX: integer('position_x').$defaultFn(() => 0),
     positionY: integer('position_y').$defaultFn(() => 0),
-    // JSON array of location ids. Left as raw text because the Python side
-    // tolerates NULL, '' and '[]' here and callers already branch on that.
+    // JSON array of location ids, as raw text: NULL, '' and '[]' all occur here
+    // and callers already branch on that.
     adjacentLocations: text('adjacent_locations'),
     roomId: integer('room_id').references(() => rooms.id, { onDelete: 'set null' }),
     isCurrent: integer('is_current', { mode: 'boolean' }).$defaultFn(() => false),
@@ -167,9 +157,8 @@ export const messages = sqliteTable(
     participantName: text('participant_name'),
     thinking: text('thinking'),
     anthropicCalls: text('anthropic_calls'),
-    // The only non-boolean column with a server-side default. Python passes an
-    // explicit value on every insert, so this fires for hand-written SQL only —
-    // but it is part of the DDL and has to stay in the mirror.
+    // The only non-boolean column with a server-side default. Every insert
+    // passes a value, so it fires for hand-written SQL only — but it is DDL.
     timestamp: sqlaDateTime('timestamp').notNull().default(sql`CURRENT_TIMESTAMP`),
     imageData: text('image_data'),
     imageMediaType: text('image_media_type'),
@@ -210,9 +199,8 @@ export const roomAgentSessions = sqliteTable(
     agentId: integer('agent_id')
       .notNull()
       .references(() => agents.id, { onDelete: 'cascade' }),
-    // The Claude Agent SDK session id for this room/agent pair. This row is
-    // what makes a conversation resumable across process restarts, so the TS
-    // port has to keep writing it even though its session plumbing differs.
+    // The Claude Agent SDK session id for this room/agent pair — what makes a
+    // conversation resumable across process restarts.
     sessionId: text('session_id').notNull(),
     updatedAt: sqlaDateTime('updated_at'),
   },
@@ -242,18 +230,10 @@ export const playerStates = sqliteTable(
   (t) => [index('ix_player_states_id').on(t.id)],
 )
 
-/**
- * Alembic's bookkeeping table. The TS backend never writes it during Phase 0 —
- * it is mirrored so that a schema dump taken from this side is comparable with
- * one taken from Python's, which is what the Phase 1 drift gate will diff.
- */
+/** Alembic's bookkeeping table: stamped on a fresh install, never written to. */
 export const alembicVersion = sqliteTable('alembic_version', {
   versionNum: text('version_num', { length: 32 }).primaryKey(),
 })
-
-// ---------------------------------------------------------------------------
-// Relations
-// ---------------------------------------------------------------------------
 
 export const worldsRelations = relations(worlds, ({ many, one }) => ({
   locations: many(locations),

@@ -1,16 +1,6 @@
 /**
- * Named, leveled application logging.
- *
- * Ported from `backend/core/logging.py`. Python gets named loggers, a global
- * level and a fixed line format from the stdlib; none of that exists in Bun, so
- * it is reproduced here — deliberately small, because the only properties any
- * caller depends on are the name prefix and the level gate.
- *
- * The line format is copied verbatim from `setup_logging()`:
- *
- *     2026-08-21 14:03:11 | INFO     | AppFactory | 🚀 Application startup...
- *
- * so `make dev` output reads the same whichever backend produced it.
+ * Named, leveled application logging — deliberately small, because the only
+ * properties callers depend on are the name prefix and the level gate.
  */
 
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error'
@@ -22,7 +12,7 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
   error: 40,
 }
 
-/** Python pads `%(levelname)-8s`; the widest name is "CRITICAL". */
+/** Padded to 8 columns so the `|` separators line up. */
 const LEVEL_LABEL: Record<LogLevel, string> = {
   debug: 'DEBUG   ',
   info: 'INFO    ',
@@ -30,14 +20,9 @@ const LEVEL_LABEL: Record<LogLevel, string> = {
   error: 'ERROR   ',
 }
 
-/**
- * Start at INFO rather than WARNING.
- *
- * `setup_logging()` is called from the entrypoint before anything else logs, so
- * Python's own default never shows. Here module-level code can log during
- * import — before {@link setupLogging} runs — and those lines are exactly the
- * startup diagnostics worth seeing.
- */
+// INFO rather than WARNING: module-level code can log during import, before
+// {@link setupLogging} runs, and those lines are the startup diagnostics worth
+// seeing.
 let currentLevel: LogLevel = 'info'
 
 /** Sink indirection so tests can capture lines without touching stdout. */
@@ -49,7 +34,7 @@ let sink: LogSink = (line, level) => {
   else console.log(line)
 }
 
-/** `%Y-%m-%d %H:%M:%S` in local time, matching Python's `datefmt`. */
+/** `%Y-%m-%d %H:%M:%S` in local time. */
 function formatTimestamp(now: Date): string {
   const pad = (n: number, width = 2) => String(n).padStart(width, '0')
   return (
@@ -63,7 +48,6 @@ export interface Logger {
   debug(message: string): void
   info(message: string): void
   warning(message: string): void
-  /** Alias for {@link Logger.warning}; `console`-shaped call sites read better. */
   warn(message: string): void
   error(message: string): void
   /** Log at ERROR with an exception's message and stack appended. */
@@ -78,10 +62,8 @@ function emit(name: string, level: LogLevel, message: string): void {
 const loggers = new Map<string, Logger>()
 
 /**
- * Get (or create) the logger with this name.
- *
- * Cached per name like `logging.getLogger`, so `getLogger('Auth')` from two
- * modules is one object and the identity is stable across hot reloads.
+ * Get (or create) the logger with this name. Cached per name, so `getLogger`
+ * from two modules yields one object with an identity stable across reloads.
  */
 export function getLogger(name: string): Logger {
   const existing = loggers.get(name)
@@ -107,17 +89,10 @@ export function getLogger(name: string): Logger {
 export interface SetupLoggingOptions {
   /** `DEBUG_AGENTS`: INFO when true, WARNING when false. */
   debugMode?: boolean
-  /** Explicit level, overriding `debugMode`. */
   level?: LogLevel
 }
 
-/**
- * Configure application-wide logging. Call once at startup.
- *
- * Python's `SuppressPollingLogsFilter` has no counterpart because there is no
- * uvicorn access log to filter: Hono does not log requests unless middleware
- * says to, so the polling endpoints are quiet by construction.
- */
+/** Configure application-wide logging. Call once at startup. */
 export function setupLogging({ debugMode = false, level }: SetupLoggingOptions = {}): void {
   currentLevel = level ?? (debugMode ? 'info' : 'warning')
   getLogger('Logging').info(`Logging configured with level: ${currentLevel.toUpperCase()}`)

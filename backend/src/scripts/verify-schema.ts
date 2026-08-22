@@ -1,10 +1,7 @@
 /**
- * Parity check: does the Drizzle mirror actually read a Python-written database?
- *
- * Run against a copy of a real `claudeworld.db`. It reads every table through
- * Drizzle and compares the columns Drizzle believes exist against the ones
- * SQLite reports, which is the cheapest way to catch a transcription slip in
- * src/db/schema.ts before any of it is load-bearing.
+ * Parity check against a copy of a real `claudeworld.db`: reads every table
+ * through Drizzle and compares the columns `schema.ts` declares against the ones
+ * SQLite reports. The cheapest way to catch a transcription slip.
  */
 import { Database } from 'bun:sqlite'
 import { openDb, schema } from '../db'
@@ -37,8 +34,8 @@ for (const [table, exportName] of Object.entries(EXPECTED)) {
       .all()
       .map((r) => r.name),
   )
-  // Drizzle keeps the SQL name on each column object; that is what has to match
-  // the live DDL, not the camelCase property the TS code uses.
+  // The SQL name on each column object is what must match the live DDL, not the
+  // camelCase property the TS code uses.
   const table_ = schema[exportName] as unknown as Record<string, unknown>
   const declared = new Set(
     Object.values(table_)

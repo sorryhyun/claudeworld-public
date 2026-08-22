@@ -2,13 +2,10 @@ import { z } from 'zod'
 import { requiredText, requiredTextOfLength, type ToolDefinition } from './definitions'
 
 /**
- * Comprehensive character creation. Port of `sdk/tools/character_design.py`.
- *
- * Used by one agent only — `detailed_character_designer`, invoked through the
- * Task tool during onboarding. The length floors on `appearance`,
- * `personality` and `backstory` are the entire difference between this and
- * `persist_character_design`: they are what stops the tool from producing a
- * one-line NPC when the user asked for a character with a history.
+ * Comprehensive character creation, used only by `detailed_character_designer`
+ * during onboarding. The length floors on `appearance`, `personality` and
+ * `backstory` are the whole difference from `persist_character_design`: they
+ * stop the tool producing a one-line NPC where a history was asked for.
  */
 
 /** One `## [subtitle]` section of a character's `consolidated_memory.md`. */
@@ -113,8 +110,8 @@ More content...
       .array(consolidatedMemorySchema)
       .min(1)
       .describe('List of consolidated memories to implant (each with subtitle and content)',),
-    // Python raises on anything but these two; an enum states the same rule to
-    // the model up front, where a validator only states it after a failed call.
+    // An enum states the rule to the model up front, where a validator would
+    // only state it after a failed call.
     mode: z
       .enum(['append', 'overwrite'])
       .default('append')

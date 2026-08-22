@@ -1,16 +1,8 @@
 /**
- * The agent surface — port of `backend/routers/agents.py` and
- * `agent_management.py`.
- *
- * Python mounts both under `/agents`, **management first**
- * (`app_factory.py:148-149`), and that order is load-bearing rather than
- * incidental: `GET /agents/configs` lives in the management router and
- * `GET /agents/{agent_id}` in the other one. Registered the other way round,
- * "configs" is parsed as an agent id and the config picker becomes a 422. The
- * same hazard `/worlds/importable` has, and it is resolved the same way.
- *
- * Hono runs matching handlers in registration order, so the sections below are
- * in Python's order and must stay that way.
+ * The agent surface. Hono matches in registration order, so the order of the
+ * routes below is load-bearing: `GET /agents/configs` must be registered before
+ * `GET /agents/:agent_id`, or "configs" parses as an agent id and the config
+ * picker 422s. The same hazard `/worlds/importable` has.
  */
 
 import { Hono } from 'hono'
@@ -45,10 +37,6 @@ function agentNotFound(): HttpError {
 export function createAgentRoutes(state: AppState): Hono<AppEnv> {
   const routes = new Hono<AppEnv>()
 
-  // ===========================================================================
-  // Management router — registered first. See the module header.
-  // ===========================================================================
-
   routes.patch('/agents/:agent_id', requireAdmin, async (c) => {
     const agentId = intPathParam(c, 'agent_id')
     const body = await parseBody(c, AgentUpdate)
@@ -71,7 +59,7 @@ export function createAgentRoutes(state: AppState): Hono<AppEnv> {
       return c.json(toAgent(agent))
     } catch (error) {
       if (error instanceof HttpError) throw error
-      // Python narrows to ValueError -> 400; anything else is a real 500.
+      // A rejected config is a 400; anything else is a real 500.
       if (error instanceof Error && !(error instanceof TypeError)) {
         throw new HttpError(400, error.message)
       }
@@ -79,30 +67,21 @@ export function createAgentRoutes(state: AppState): Hono<AppEnv> {
     }
   })
 
-  /**
-   * The config picker.
-   *
-   * Must stay ahead of `GET /agents/:agent_id`, which would otherwise match
-   * "configs" and reject it as a non-integer id.
-   */
+  // Must stay ahead of `GET /agents/:agent_id`, which would otherwise match
+  // "configs" and reject it as a non-integer id.
   routes.get('/agents/configs', (c) => c.json({ configs: listAvailableConfigs() }))
 
   routes.get('/agents/:agent_name/profile-pic', (c) =>
     serveProfilePic(c, state.projectRoot, c.req.param('agent_name') ?? ''),
   )
 
-  // ===========================================================================
-  // Agents router
-  // ===========================================================================
-
   routes.get('/agents', (c) => c.json(getAllAgents(state.db).map(toAgent)))
 
   routes.post('/agents', async (c) => {
     const body = await parseBody(c, AgentCreate)
 
-    // Two creation paths, as in Python: a `config_file` loads the markdown off
-    // disk through the factory (which also merges group settings), while the
-    // inline form builds the prompt from the three fields it was handed.
+    // A `config_file` loads the markdown off disk through the factory (which
+    // merges group settings); the inline form builds from the fields given.
     const agent = body.config_file
       ? state.agentFactory.createFromConfig(state.db, {
           name: body.name,
@@ -134,13 +113,8 @@ export function createAgentRoutes(state: AppState): Hono<AppEnv> {
     return c.json({ message: 'Agent deleted successfully' })
   })
 
-  /**
-   * The 1-on-1 room with an agent, created on first use.
-   *
-   * The ownership check after the lookup is not redundant: an admin asking for
-   * a direct room gets the one owned by `admin`, but the row could already
-   * exist under a different owner if the caller's role changed between visits.
-   */
+  // The ownership check after the lookup is not redundant: the row could
+  // already exist under a different owner if the caller's role changed.
   routes.get('/agents/:agent_id/direct-room', (c) => {
     const agentId = intPathParam(c, 'agent_id')
     const identity = identityOf(c)
@@ -157,26 +131,17 @@ export function createAgentRoutes(state: AppState): Hono<AppEnv> {
 }
 
 /**
- * Create an agent from inline markdown rather than from a config folder.
- *
- * The system prompt is built here rather than accepted from the client — it is
- * derived state, and letting a caller supply it would be a way to give an agent
- * instructions its character files do not show. Python builds it the same way
- * and for the same reason (`agents.py:40`).
- *
- * The three markdown fields default to `''` rather than being passed through as
- * null: `build_system_prompt` renders them into a character sheet, and Python's
- * `AgentConfigData(in_a_nutshell=agent.in_a_nutshell or "")` is what keeps a
- * missing section out of the prompt instead of printing "None".
+ * Create an agent from inline markdown. The system prompt is built here, never
+ * accepted from the client: letting a caller supply it would be a way to give
+ * an agent instructions its character files do not show.
  */
 function createInlineAgent(state: AppState, body: AgentCreate): Agent {
   const systemPrompt = buildSystemPrompt(body.name, {
     inANutshell: body.in_a_nutshell ?? '',
     characteristics: body.characteristics ?? '',
     recentEvents: body.recent_events ?? '',
-    // Empty: long-term memory lives in `consolidated_memory.md`, which only the
-    // config-folder path has. Python's `AgentConfigData()` defaults it the same
-    // way, so an inline agent starts with no memory index either.
+    // Empty: long-term memory lives in `consolidated_memory.md`, which only
+    // the config-folder path has.
     longTermMemorySubtitles: null,
   })
 
@@ -188,9 +153,8 @@ function createInlineAgent(state: AppState, body: AgentCreate): Agent {
     characteristics: body.characteristics,
     recentEvents: body.recent_events,
     group: body.group,
-    // Explicitly null: this path is the *inline* one, and a row that claimed a
-    // config folder it was not built from would be silently overwritten by the
-    // next filesystem sync.
+    // Explicitly null: a row claiming a config folder it was not built from
+    // would be silently overwritten by the next filesystem sync.
     configFile: null,
     interruptEveryTurn: body.interrupt_every_turn,
     priority: body.priority,

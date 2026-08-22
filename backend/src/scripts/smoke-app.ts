@@ -1,14 +1,9 @@
 /**
- * Boot the assembled backend against a throwaway database and hit real routes.
- *
- * The unit suite exercises the app through `app.request()` with hand-built
+ * Boot the assembled backend against a throwaway database and hit real routes
+ * (`bun run smoke`). The unit suite drives `app.request()` with hand-built
  * state; this is the other half — `createAppState()` wiring every real service
- * together, the migrations running on an empty file, and the shutdown path
- * unwinding. A boot failure here is the class of bug no unit test can catch,
- * because every one of them constructs the pieces it needs and none of them
- * constructs all of them at once.
- *
- * Run with `bun run smoke`.
+ * together, migrations on an empty file, and shutdown unwinding. No unit test
+ * constructs all the pieces at once, so boot failures only show up here.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -59,8 +54,8 @@ const login = await check(
 const { api_key: apiKey } = (await login.json()) as { api_key: string }
 const auth = { headers: { 'X-API-Key': apiKey } }
 
-// Both spellings: FastAPI 307-redirects `/worlds` onto `/worlds/`; Hono does
-// not redirect, so the port registers both and this is where that is checked.
+// Both spellings: Hono does not redirect `/worlds` onto `/worlds/`, so both are
+// registered and both are checked here.
 await check('GET /worlds', 200, app.request('/worlds', auth))
 await check('GET /worlds/', 200, app.request('/worlds/', auth))
 // `/importable` must win over `/:world_id`, which also matches it.
@@ -71,15 +66,14 @@ await check('GET /worlds/abc (not an int)', 422, app.request('/worlds/abc', auth
 await check('GET /worlds (no key)', 401, app.request('/worlds'))
 await check('GET /nope', 404, app.request('/nope', auth))
 
-// The routers with no state behind them. `/readme` is checked on its rejection
-// path rather than its happy path because whether `en_readme.md` sits next to
-// this checkout is not something a smoke run should depend on; the 422 proves
-// the route is mounted and the language pattern is enforced.
+// `/readme` is checked on its rejection path: whether `en_readme.md` sits beside
+// this checkout is not something a smoke run should depend on, and the 422 still
+// proves the route is mounted and the language pattern enforced.
 await check('GET /readme?lang=fr', 422, app.request('/readme?lang=fr', auth))
 await check('GET /debug/cache/stats', 200, app.request('/debug/cache/stats', auth))
 await check('GET /auth/health/pool', 200, app.request('/auth/health/pool', auth))
 // Deliberately without `auth`: `/mcp-tools` sits under the `/mcp` exclusion
-// prefix in both backends, so a 401 here would be the regression.
+// prefix, so a 401 here would be the regression.
 await check('GET /mcp-tools/agents (no key)', 200, app.request('/mcp-tools/agents'))
 
 const created = await check(

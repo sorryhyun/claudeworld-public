@@ -8,13 +8,10 @@ import type { PlayerMutationsPort } from './ports'
 import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * `persist_item` — the Item Designer sub-agent's callback.
- * Port of `sdk/handlers/item_tools.py`.
- *
- * Batched on purpose: onboarding creates a dozen starting items, and one call
- * per item would be a dozen sub-agent round trips. An id that already exists is
- * *skipped and reported*, never overwritten — the designer runs repeatedly
- * across a world's life and must not rewrite an item an author has since edited.
+ * `persist_item` — the Item Designer sub-agent's callback. Batched on purpose:
+ * onboarding creates a dozen starting items and one call each would be a dozen
+ * round trips. An existing id is skipped and reported, never overwritten — the
+ * designer runs repeatedly and must not rewrite an author's edits.
  */
 
 const logger = getLogger('GameplayTools.Item')
@@ -28,10 +25,9 @@ export interface ItemToolDeps {
   items: ItemService
   players: PlayerService
   /**
-   * Present during gameplay, absent for a bare sub-agent context. Python falls
-   * back to a filesystem-only inventory append when it has no database session;
-   * that fallback is reproduced below because onboarding's item designer runs
-   * before the world has a room to sync against.
+   * Present during gameplay, absent for a bare sub-agent context. Without it
+   * the inventory append is filesystem-only, which onboarding's item designer
+   * needs: it runs before the world has a room to sync against.
    */
   mutations?: PlayerMutationsPort
 }
@@ -71,10 +67,8 @@ export function createItemTools(ctx: ToolContext, deps: ItemToolDeps): SdkTool[]
               icon: item.icon ?? null,
               stacking: item.stacking ?? null,
               // `Equippable`'s optional fields are `T | undefined`, never
-              // `T | null`, because `isNonEmpty` in the item service tests them
-              // for absence rather than for null. Dropping the nulls here keeps
-              // `equippable: {slot: "hand", accepts_as: null}` from being written
-              // to a template where every reader expects the key to be missing.
+              // `T | null`: the item service tests them for absence, so a
+              // written-out `accepts_as: null` would read as present.
               equippable: item.equippable ? stripNulls(item.equippable) : null,
               usable: item.usable ?? null,
             })
@@ -97,9 +91,8 @@ export function createItemTools(ctx: ToolContext, deps: ItemToolDeps): SdkTool[]
               const state = deps.players.loadPlayerState(worldName)
               if (state) {
                 for (const item of created) {
-                  // Reference form only — id and count. `savePlayerState` writes
-                  // references regardless, and the template just created carries
-                  // the name and description.
+                  // Reference form only — the template just created carries the
+                  // name and description.
                   state.inventory.push({ item_id: item.item_id, quantity: item.quantity })
                   inventoryAdded.push(`${item.quantity}x ${item.name}`)
                 }

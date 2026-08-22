@@ -1,41 +1,21 @@
 /**
- * In-memory cache with TTL, LRU eviction and single-flight misses.
- *
- * Ported from `backend/infrastructure/cache.py`.
- *
- * The Python version carries a long comment about reconciling a `threading.Lock`
- * with an `asyncio.Lock` guarding the same dict. None of that survives the port:
- * every mutation here is synchronous, and synchronous code on this runtime is
- * already mutually exclusive. What *does* survive is the part the locks were
- * protecting against in the first place — the single-flight window, where N
- * concurrent misses on one key must run the factory once rather than N times.
- * That window is between two `await`s and is real in either language.
- *
- * Note this is a *request* cache, distinct from the mtime caches in
- * `sdk/loaders/` and the filesystem services: those exist to make agent files
- * hot-reloadable and key on mtime, this one keys on time-to-live.
+ * In-memory cache with TTL, LRU eviction and single-flight misses. Mutations are
+ * synchronous and so already mutually exclusive; the only real race is the
+ * single-flight window between two `await`s, where N concurrent misses on one
+ * key must run the factory once. Distinct from the mtime caches in
+ * `sdk/loaders/` and the filesystem services, which key on mtime instead.
  */
 
 import { getLogger } from './logging/logger'
 
 const logger = getLogger('Cache')
 
-/**
- * Cap on live entries.
- *
- * Keys are per-room and per-agent, so the cache grows with world count. Without
- * a cap it only ever shrinks when an expired key happens to be read again, or
- * when the scheduler's five-minute sweep runs.
- */
+// Keys are per-room and per-agent, so without a cap the cache grows with world
+// count and shrinks only when an expired key is read again.
 export const DEFAULT_MAX_SIZE = 2000
 
-/**
- * Miss sentinel.
- *
- * A cached `null`/`undefined` has to stay distinguishable from "not cached":
- * conflating them re-runs the factory on every read of a legitimately-null
- * value, which is exactly the case the cache is there to avoid.
- */
+// A cached `null`/`undefined` must stay distinguishable from "not cached", or
+// the factory re-runs on every read of a legitimately-null value.
 const MISSING = Symbol('cache.missing')
 
 interface CacheEntry {
@@ -63,15 +43,8 @@ export class CacheManager {
     this.maxSize = maxSize
   }
 
-  // -- internals -----------------------------------------------------------
-
-  /**
-   * Read a live entry, dropping it when expired.
-   *
-   * `Map` preserves insertion order and has no `move_to_end`, so recency is
-   * maintained by delete-then-set: a re-inserted key moves to the back, which
-   * makes the first key in iteration order the least recently used.
-   */
+  // Recency is maintained by delete-then-set: a re-inserted key moves to the
+  // back, so the first key in iteration order is the least recently used.
   private lookup(key: string): unknown {
     const entry = this.entries.get(key)
     if (entry === undefined) {
@@ -105,8 +78,6 @@ export class CacheManager {
     }
   }
 
-  // -- public API ----------------------------------------------------------
-
   /** Cached value, or `undefined` when absent or expired. */
   get<T = unknown>(key: string): T | undefined {
     const value = this.lookup(key)
@@ -118,7 +89,6 @@ export class CacheManager {
     logger.debug(`Cache set: ${key} (TTL: ${ttlSeconds}s)`)
   }
 
-  /** Remove one key. Returns whether it was present. */
   invalidate(key: string): boolean {
     if (!this.entries.delete(key)) return false
     this.stats.invalidations += 1
@@ -126,7 +96,6 @@ export class CacheManager {
     return true
   }
 
-  /** Remove every key with this prefix. */
   invalidatePattern(prefix: string): void {
     const doomed = [...this.entries.keys()].filter((key) => key.startsWith(prefix))
     for (const key of doomed) {
@@ -145,11 +114,9 @@ export class CacheManager {
   }
 
   /**
-   * Drop expired entries.
-   *
-   * Called on a five-minute cadence by the background scheduler. The LRU cap
-   * bounds the cache regardless; this reclaims entries that expired and were
-   * never read again, before they reach the cap.
+   * Drop expired entries, on a five-minute cadence from the background
+   * scheduler. The LRU cap bounds the cache regardless; this reclaims entries
+   * that expired and were never read again, before they reach the cap.
    */
   cleanupExpired(): void {
     const now = Date.now()
@@ -172,14 +139,9 @@ export class CacheManager {
   }
 
   /**
-   * Async {@link getOrSet}, deduplicated per key.
-   *
-   * If several callers miss the same key at once, exactly one runs the factory
-   * and the rest await its result — without this, N concurrent requests for an
-   * uncached room each issued their own database query.
-   *
-   * A rejecting factory rejects every waiter and caches nothing, leaving the key
-   * usable again immediately.
+   * Async {@link getOrSet}, deduplicated per key: several callers missing at once
+   * run the factory exactly once and the rest await its result. A rejecting
+   * factory rejects every waiter and caches nothing.
    */
   async getOrSetAsync<T>(key: string, factory: () => Promise<T>, ttlSeconds = 60): Promise<T> {
     const cached = this.lookup(key)
@@ -188,8 +150,8 @@ export class CacheManager {
     const existing = this.inflight.get(key)
     if (existing !== undefined) return existing as Promise<T>
 
-    // The promise is registered before it is awaited, so a second caller
-    // arriving in the same tick joins it instead of starting its own factory.
+    // Registered before it is awaited, so a second caller arriving in the same
+    // tick joins it instead of starting its own factory.
     const pending = (async () => {
       const computed = await factory()
       this.store(key, computed, ttlSeconds)
@@ -201,8 +163,7 @@ export class CacheManager {
     try {
       return await pending
     } finally {
-      // Only clear our own slot: a later caller may already have started a new
-      // computation for this key after ours settled.
+      // Only our own slot: a later caller may already have started a new one.
       if (this.inflight.get(key) === pending) this.inflight.delete(key)
     }
   }
@@ -232,11 +193,8 @@ export function getCache(): CacheManager {
   return globalCache
 }
 
-// ============================================================================
-// Key builders
-// ============================================================================
-// Kept as functions rather than inline template strings so that
-// invalidatePattern's prefixes and the keys themselves cannot drift apart.
+// Functions rather than inline template strings, so `invalidatePattern`'s
+// prefixes and the keys themselves cannot drift apart.
 
 export const agentConfigKey = (agentId: number): string => `agent_config:${agentId}`
 export const agentObjectKey = (agentId: number): string => `agent_obj:${agentId}`

@@ -2,27 +2,18 @@ import { z } from 'zod'
 import { requiredText, type ToolDefinition } from './definitions'
 
 /**
- * Travel, location listing and character movement. Port of
- * `sdk/tools/location.py`.
- *
- * `list_locations` and `list_characters` live here rather than in
- * `gameplay.ts` for the same reason they do in Python: they are location
- * queries, and `gameplay.ts` re-exports them so the merged Action Manager set
- * stays one object.
+ * Travel, location listing and character movement. `list_locations` and
+ * `list_characters` live here as location queries; `gameplay.ts` re-exports them
+ * so the merged Action Manager set stays one object.
  */
 
 /**
- * Coerce whatever the model produced into a list of trimmed names.
- *
- * Python's `normalize_characters` validator exists because Claude routinely
- * hands `bring_characters` a *JSON string* — `'["유나-7"]'` — instead of an
- * array, and occasionally a bare name. Rejecting those would fail the travel
- * call outright and lose the narration with it, so all three shapes are
- * accepted and anything else degrades to the empty list.
- *
- * `z.preprocess` rather than `.transform` because the coercion has to happen
- * *before* the array type is checked, which is exactly what `mode="before"`
- * means on the Python side.
+ * Coerce whatever the model produced into a list of trimmed names. Claude
+ * routinely hands `bring_characters` a *JSON string* — `'["유나-7"]'` — instead
+ * of an array, and occasionally a bare name; rejecting those would fail the
+ * travel call and lose the narration with it, so all three shapes are accepted
+ * and anything else degrades to `[]`. `z.preprocess` rather than `.transform`
+ * because the coercion must happen before the array type is checked.
  */
 const characterNameList = z.preprocess((value): unknown => {
   if (value === null || value === undefined) return []
@@ -99,17 +90,6 @@ The character must already exist in the game.`,
   enabled: true,
 } satisfies ToolDefinition
 
-/**
- * Phase 0 rewrote this description; Python's reads:
- * "List all available locations in the current world. / Returns location names,
- * display names, and brief descriptions. / Use this to see where characters can
- * travel or be moved to."
- *
- * The rewrite is left in place deliberately — it is the description a *working*
- * `list_locations` handler was tuned against — but it is a live divergence from
- * the parity contract and is recorded here so the Phase 4 harness has an
- * explanation for the diff rather than a mystery.
- */
 export const listLocationsTool = {
   name: 'list_locations',
   description:
@@ -121,7 +101,6 @@ export const listLocationsTool = {
   enabled: true,
 } satisfies ToolDefinition
 
-/** Same divergence note as {@link listLocationsTool}. */
 export const listCharactersTool = {
   name: 'list_characters',
   description:

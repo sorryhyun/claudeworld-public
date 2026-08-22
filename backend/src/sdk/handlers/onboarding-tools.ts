@@ -18,14 +18,11 @@ import type { AgentFilesystemService } from '../../services/agent-filesystem-ser
 import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * World initialisation. Port of `sdk/handlers/onboarding_tools.py`.
- *
- * The three writing tools run in a fixed order and each leaves the world in a
- * state the next one depends on — see `tools/onboarding.ts` for why. What is
- * worth stating here is what `complete` does *beyond* flipping the phase: it
- * captures the initial-state snapshot that the reset feature restores to, and
- * that snapshot has to be taken after the item designer has run, or "reset this
- * world" hands the player an empty inventory they never started with.
+ * World initialisation. The three writing tools run in a fixed order, each
+ * leaving the world in a state the next depends on (see `tools/onboarding.ts`).
+ * Beyond flipping the phase, `complete` captures the initial-state snapshot the
+ * reset feature restores to — it has to be taken after the item designer has
+ * run, or "reset this world" hands the player an inventory they never had.
  */
 
 const logger = getLogger('OnboardingTools')
@@ -39,13 +36,7 @@ export interface OnboardingDeps {
   agentFiles?: AgentFilesystemService
 }
 
-/**
- * The lore guidelines text, read from `lore_guidelines.yaml`'s active version.
- *
- * Python routes this through `get_tool_description("lore_guidelines")`, a
- * special case inside the tool-description lookup that has nothing to do with
- * tool descriptions. Read directly here; the indirection carried no behaviour.
- */
+/** The lore guidelines text, from `lore_guidelines.yaml`'s active version. */
 function loadLoreGuidelines(): string {
   const config = getLoreGuidelinesConfig()
   const activeVersion = typeof config.active_version === 'string' ? config.active_version : 'v1'
@@ -62,9 +53,6 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
   const worldName = requireWorldName(ctx)
   const tools: SdkTool[] = []
 
-  // --------------------------------------------------------------------
-  // read_lore_guidelines
-  // --------------------------------------------------------------------
   const loreDef = resolveTool(readLoreGuidelinesTool.name, ctx.groupName)
   if (loreDef) {
     // Read once, at build time. The file is hot-reloaded through the mtime cache
@@ -80,15 +68,8 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
     )
   }
 
-  // --------------------------------------------------------------------
-  // draft_world
-  // --------------------------------------------------------------------
-  //
-  // Unconditional in Python — `create_onboarding_tools` gates
-  // `read_lore_guidelines` and `complete` on `is_tool_enabled` and appends
-  // these two without asking. Gated here anyway: an unconditional tool cannot
-  // be turned off from a group config, and there is no reason for these two to
-  // be the exception.
+  // Gated like the others: an unconditional tool cannot be turned off from a
+  // group config.
   const draftDef = resolveTool(draftWorldTool.name, ctx.groupName)
   if (draftDef) {
     tools.push(
@@ -120,9 +101,6 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
     )
   }
 
-  // --------------------------------------------------------------------
-  // persist_world
-  // --------------------------------------------------------------------
   const persistDef = resolveTool(persistWorldTool.name, ctx.groupName)
   if (persistDef) {
     tools.push(
@@ -163,8 +141,8 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
                 : `# World Lore\n\n${args.lore}${existingLore.slice(notesIndex)}`
 
             if (args.world_notes) {
-              // The model emits literal backslash-n inside a YAML-ish string often
-              // enough that Python un-escapes it by hand before writing.
+              // The model emits literal backslash-n inside a YAML-ish string
+              // often enough to be worth un-escaping by hand.
               const notes = args.world_notes.replaceAll('\\n', '\n')
               newLore = `${newLore}\n\n---\n## World Notes\n${notes}`
             }
@@ -184,9 +162,6 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
     )
   }
 
-  // --------------------------------------------------------------------
-  // complete
-  // --------------------------------------------------------------------
   const completeDef = resolveTool(completeTool.name, ctx.groupName)
   if (completeDef) {
     tools.push(
@@ -268,13 +243,9 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
 }
 
 /**
- * Place every NPC onboarding created at the starting location.
- *
- * They were created against the *onboarding room*, which is an interview and
- * not a place, so until this runs they exist in the world with nowhere to
- * stand. Port of `_add_world_agents_to_initial_location`; per-agent failures
- * are logged and skipped, because one unplaceable NPC must not cost the player
- * every other one.
+ * Place every NPC onboarding created at the starting location — they were
+ * created against the *onboarding room*, which is an interview and not a place.
+ * Per-agent failures are skipped: one unplaceable NPC must not cost the rest.
  */
 function addWorldAgentsToInitialLocation(
   ctx: ToolContext,
@@ -295,7 +266,6 @@ function addWorldAgentsToInitialLocation(
   let added = 0
   for (const agentName of agentNames) {
     try {
-      // World-unscoped, matching Python's `get_agent_by_name(db, agent_name)`.
       const agent = getAgentByName(db, agentName)
       if (!agent) {
         logger.warning(`Agent '${agentName}' not found in database`)

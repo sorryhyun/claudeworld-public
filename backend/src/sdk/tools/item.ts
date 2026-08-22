@@ -2,19 +2,14 @@ import { z } from 'zod'
 import { requiredText, type ToolDefinition } from './definitions'
 
 /**
- * Inventory, equipment and item usage. Port of `sdk/tools/item.py`.
+ * Inventory, equipment and item usage.
  *
  * **Only two of these six have handlers.** `list_inventory` and
  * `list_world_item` are implemented in `handlers/mechanics-tools.ts`;
- * `equip_item`, `unequip_item`, `use_item` and `list_equipment` are declared in
- * Python and never implemented — `sdk/handlers/` has no factory that produces
- * them, so they reach the model through `allowed_tool_names` and fail when
- * called. They are ported as *definitions* because `group_config.yaml` can
- * name them and because the definitions are what `getToolNamesByGroup` reads,
- * but no server offers them. Wiring them up would be new behaviour, not parity,
- * even though `domain/player-rules.ts` already carries every rule they need
- * (`equipItem`, `unequipSlot`, `checkAffordanceRequirements`,
- * `applyAffordanceCosts`, `applyAffordanceEffects`).
+ * `equip_item`, `unequip_item`, `use_item` and `list_equipment` exist only as
+ * definitions, because `group_config.yaml` can name them and
+ * `getToolNamesByGroup` reads the definitions — no server offers them, so a call
+ * fails. `domain/player-rules.ts` already carries every rule they would need.
  */
 
 export const listInventoryTool = {
@@ -145,11 +140,9 @@ export const ITEM_TOOLS = {
 } satisfies Record<string, ToolDefinition>
 
 /**
- * The four item tools no MCP server offers, by short name.
- *
- * Exported so a test can pin the omission: if someone later writes handlers for
- * these, the assertion that they are absent from `buildServers` output fails and
- * forces the decision to be made explicitly rather than drifting in.
+ * The four item tools no MCP server offers. Exported so a test can pin the
+ * omission: writing handlers for them breaks that assertion, forcing the
+ * decision to be made explicitly rather than drifting in.
  */
 export const UNIMPLEMENTED_ITEM_TOOLS = [
   'equip_item',

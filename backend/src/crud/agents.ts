@@ -1,11 +1,4 @@
-/**
- * CRUD operations for Agent entities — port of `backend/crud/agents.py`.
- *
- * Every function here is synchronous. `bun:sqlite` executes a statement to
- * completion before returning, so the Python side's `retry_on_db_lock` /
- * `serialized_write` wrappers have nothing left to guard against and are not
- * carried over.
- */
+/** CRUD operations for Agent entities. */
 
 import { and, eq, inArray } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
@@ -19,7 +12,6 @@ import { invalidateAgentCache } from './cached'
 
 const logger = getLogger('CRUD')
 
-/** Arguments of `crud/agents.py::create_agent` (:20), as one object. */
 export interface AgentCreate {
   name: string
   systemPrompt: string
@@ -36,22 +28,8 @@ export interface AgentCreate {
   worldName?: string | null
 }
 
-/**
- * Create an agent row.
- *
- * Pure CRUD, as in Python: nothing here reads a config folder or builds a
- * prompt. `AgentFactory.create_from_config` is the layer that does, and it ends
- * by calling this.
- *
- * The three booleans and `priority` carry Python's `default=`/argument defaults
- * (`agents.py:30-32`) rather than being left NULL. SQLAlchemy applies those
- * ORM-side defaults on insert and they emit no DDL, so a column omitted here
- * would store NULL and read back as `null` — which `interrupt_every_turn` is
- * checked for truthiness anyway, but `priority` feeds an ordering comparison
- * where NULL and 0 sort differently.
- *
- * `created_at` is explicit for the same reason (`models.py:72`).
- */
+// The booleans, `priority` and `created_at` carry no SQL DEFAULT, and NULL and
+// 0 sort differently in the ordering `priority` feeds.
 export function createAgent(db: Db, agent: AgentCreate): Agent {
   return db
     .insert(agents)
@@ -74,15 +52,7 @@ export function createAgent(db: Db, agent: AgentCreate): Agent {
     .get()
 }
 
-/**
- * Fields `crud/agents.py::update_agent` (:198) accepts.
- *
- * Note the semantics differ from {@link updateLocation}'s patch object, and the
- * difference is Python's, not an inconsistency introduced here: `update_agent`
- * tests `if x is not None`, so a null means *leave the column alone*, while
- * `update_location` uses `model_dump(exclude_unset=True)`, where a null means
- * *write NULL*. `null` and `undefined` are therefore both "skip" here.
- */
+// Unlike `LocationUpdate`, `null` and `undefined` both mean "skip" here.
 export interface AgentUpdate {
   systemPrompt?: string | null
   profilePic?: string | null
@@ -94,11 +64,6 @@ export interface AgentUpdate {
   transparent?: boolean | null
 }
 
-/**
- * Update an agent's columns. Returns null when the agent does not exist.
- *
- * Pure CRUD: reloading from a config folder is `AgentFactory.reload_from_config`.
- */
 export function updateAgent(db: Db, agentId: number, update: AgentUpdate): Agent | null {
   const existing = db.select().from(agents).where(eq(agents.id, agentId)).get()
   if (!existing) return null
@@ -108,15 +73,9 @@ export function updateAgent(db: Db, agentId: number, update: AgentUpdate): Agent
   if (update.systemPrompt != null) patch.systemPrompt = update.systemPrompt
   if (update.profilePic != null) {
     if (update.profilePic.startsWith('data:image/')) {
-      // TODO(phase-3): call the port of `AgentConfigService.save_base64_profile_pic`
-      // (`services/agent_config_service.py:145`, invoked from `crud/agents.py:247`)
-      // before nulling the column. `services/agent-config.ts` has no writer yet.
-      //
-      // The DB half is reproduced as-is — Python clears the column because the
-      // image is then served from `agents/<name>/profile.<ext>` — so that when
-      // the writer lands, only the call above has to be added. Until then the
-      // upload is accepted and the bytes go nowhere, which is why this logs at
-      // error rather than passing quietly.
+      // TODO(phase-3): write the image to `agents/<name>/profile.<ext>` before
+      // nulling the column — `services/agent-config.ts` has no writer yet, so
+      // the upload is accepted and the bytes go nowhere. Hence the error log.
       logger.error(
         `Discarded a base64 profile picture for agent '${existing.name}': the filesystem ` +
           'writer (AgentConfigService.save_base64_profile_pic) is not ported yet.',
@@ -133,56 +92,32 @@ export function updateAgent(db: Db, agentId: number, update: AgentUpdate): Agent
   if (update.priority != null) patch.priority = update.priority
   if (update.transparent != null) patch.transparent = update.transparent
 
-  // Drizzle rejects an empty SET clause, where SQLAlchemy would simply commit
-  // nothing. Python still returns the (unchanged) agent in that case.
+  // Drizzle rejects an empty SET clause.
   const updated =
     Object.keys(patch).length === 0
       ? existing
       : db.update(agents).set(patch).where(eq(agents.id, agentId)).returning().get()
 
-  // `agents.py:269-271`. The prompt cache keyed on the agent id is what the SDK
-  // layer reads at the start of every turn, so a system-prompt edit that is not
-  // followed by this stays invisible until the entry expires.
+  // The SDK layer reads the id-keyed prompt cache at the start of every turn, so
+  // a system-prompt edit not followed by this stays invisible until it expires.
   invalidateAgentCache(agentId)
 
   return updated
 }
 
-/** Get a specific agent by ID. */
 export function getAgent(db: Db, agentId: number): Agent | null {
   return db.select().from(agents).where(eq(agents.id, agentId)).get() ?? null
 }
 
-/**
- * Every agent row in the database, in no particular order.
- *
- * Unscoped on purpose: this is the agent-management surface's "show me
- * everything", so it deliberately mixes the system agents (NULL `world_name`)
- * with every world's cast. Callers that want one world want
- * {@link getAgentsByWorld} instead.
- */
+// Unscoped: system agents (NULL `world_name`) mixed with every world's cast.
 export function getAllAgents(db: Db): Agent[] {
   return db.select().from(agents).all()
 }
 
-/**
- * Delete an agent permanently. False when it did not exist.
- *
- * `room_agents` and `room_agent_sessions` cascade away with it;
- * `messages.agent_id` is `ON DELETE SET NULL`, so what the agent said survives
- * with the speaker recoverable only from `participant_name`. That asymmetry is
- * intentional in the schema — deleting a character must not punch holes in
- * every transcript it appeared in.
- *
- * The two cache sweeps are not in Python. They are the same one-directional
- * divergence `crud/worlds.ts::deleteWorld` makes: SQLite reuses rowids, so a
- * cached `agent_config:{id}` outliving its row can be handed to a *different*
- * agent that later inherits the id — which means a character prompted with
- * someone else's system prompt. The membership sweep covers the second half of
- * the same problem, where `getAgentsCached` keeps returning the deleted agent
- * as a room member for up to a minute and the orchestrator keeps giving it
- * turns.
- */
+// `room_agents` and `room_agent_sessions` cascade; `messages.agent_id` is
+// `ON DELETE SET NULL`. Both cache sweeps are required: SQLite reuses rowids, so
+// a cached `agent_config:{id}` can reach a *different* agent that inherits the
+// id, and without the membership sweep the orchestrator keeps giving it turns.
 export function deleteAgent(db: Db, agentId: number): boolean {
   const memberships = db
     .select({ roomId: roomAgents.roomId })
@@ -200,21 +135,10 @@ export function deleteAgent(db: Db, agentId: number): boolean {
 }
 
 /**
- * Get an agent by name, tolerating whitespace/underscore variations.
- *
- * Agent names reach this function from three unrelated places — folder names on
- * disk, prompts written by the model, and rows already in the DB — and those
- * disagree about whether "Action Manager" is spelled with a space or an
- * underscore. Python probes the three spellings in a fixed order and returns
- * the first hit; the order is load-bearing because a world could legitimately
- * contain both "Foo Bar" and "Foo_Bar", and the exact-match candidate has to
- * win.
- *
- * `worldName` is only applied as a filter when supplied. Passing `undefined`
- * therefore searches system agents and world characters alike, mirroring
- * Python's `if world_name is not None` guard. Note that a NULL `world_name`
- * (a system agent) can only be reached by omitting the argument — SQL `= NULL`
- * never matches, and Python has the same hole.
+ * Get an agent by name, tolerating whitespace/underscore variations. The three
+ * spellings are probed in a fixed order, and the order is load-bearing: a world
+ * can hold both "Foo Bar" and "Foo_Bar". `worldName` filters only when
+ * supplied, and a NULL one is reachable *only* by omitting the argument.
  */
 export function getAgentByName(db: Db, name: string, worldName?: string | null): Agent | null {
   const lookup = (candidate: string): Agent | null => {
@@ -226,8 +150,7 @@ export function getAgentByName(db: Db, name: string, worldName?: string | null):
     return db.select().from(agents).where(where).get() ?? null
   }
 
-  // Variants equal to the original are dropped rather than re-queried, which is
-  // what Python's `if name_with_underscores != name` guards express.
+  // Variants equal to the original are dropped rather than re-queried.
   const candidates = [name, name.replaceAll(' ', '_'), name.replaceAll('_', ' ')].filter(
     (candidate, i) => i === 0 || candidate !== name,
   )
@@ -239,23 +162,13 @@ export function getAgentByName(db: Db, name: string, worldName?: string | null):
   return null
 }
 
-/**
- * Every agent belonging to one world's cast.
- *
- * System agents are excluded by construction: their `world_name` is NULL and
- * SQL equality never matches NULL.
- */
+// System agents are excluded by construction: `world_name` is NULL for them.
 export function getAgentsByWorld(db: Db, worldName: string): Agent[] {
   return db.select().from(agents).where(eq(agents.worldName, worldName)).all()
 }
 
-/**
- * `Path.with_suffix('.md')`.
- *
- * Replaces an existing extension rather than appending, and treats a leading
- * dot as part of the name (`.hidden` → `.hidden.md`), which is what
- * `pathlib` does and what `agents.py:184` relies on for single-file configs.
- */
+// Replaces an existing extension rather than appending; a leading dot is part
+// of the name (`.hidden` → `.hidden.md`).
 function withMarkdownSuffix(path: string): string {
   const dir = dirname(path)
   const base = basename(path)
@@ -265,34 +178,16 @@ function withMarkdownSuffix(path: string): string {
 }
 
 export interface SyncAgentsOptions {
-  /**
-   * Root that relative `config_file` values resolve against.
-   * Defaults to the discovered project root.
-   */
+  /** Root relative `config_file` values resolve against; defaults to the project root. */
   projectRoot?: string
 }
 
 /**
- * Delete agent rows whose config no longer exists on disk. Returns how many.
- *
- * An agent folder removed from `worlds/<world>/agents/` leaves its database row
- * behind, and that row still gets loaded into rooms and prompted. This is the
- * reconciliation pass; the filesystem wins.
- *
- * **Divergence from Python, deliberate.** `agents.py:181` builds
- * `Path(agent.config_file)` and tests it as-is, which resolves against the
- * process's *current working directory*. Stored values are project-root
- * relative (`agents/group_gameplay/Action_Manager`,
- * `worlds/<world>/agents/<name>` — see `agent_factory.py:131`), and the Python
- * server is launched from `backend/`, so every probe misses and the function
- * deletes the entire cast of the world it was asked to sync. Reproducing that
- * would be reproducing data loss, so paths are resolved against the project
- * root here, matching how `AgentConfigService` reads the very same value
- * (`agent_config_service.py:90`).
- *
- * A row with no `config_file` at all is left alone — Python's `if
- * agent.config_file:` guard — because that is an agent nothing on disk claims
- * ownership of.
+ * Delete agent rows whose config no longer exists on disk; the filesystem wins.
+ * Stored `config_file` values are project-root relative and must be resolved
+ * against the project root, never the cwd — against the cwd every probe misses
+ * and the world's entire cast is deleted. A row with no `config_file` is left
+ * alone: nothing on disk claims it.
  */
 export function syncAgentsWithFilesystem(
   db: Db,
@@ -317,9 +212,7 @@ export function syncAgentsWithFilesystem(
 
   if (stale.length === 0) return 0
 
-  // One statement, one transaction — Python accumulates the deletes and commits
-  // them together, so a failure part-way leaves the cast intact rather than
-  // half-removed.
+  // One statement, so a failure leaves the cast intact rather than half-removed.
   db.delete(agents)
     .where(
       inArray(

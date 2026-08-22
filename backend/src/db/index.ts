@@ -5,40 +5,22 @@ import * as schema from './schema'
 export type Db = BunSQLiteDatabase<typeof schema> & { $client: Database }
 
 export interface OpenDbOptions {
-  /** Path to the SQLite file. */
   path: string
   /** Open without write access — used by read-only parity checks. */
   readonly?: boolean
 }
 
-/**
- * Open the ClaudeWorld SQLite database.
- *
- * `bun:sqlite` is synchronous, which removes the aiosqlite/greenlet layer the
- * Python side needs and with it the whole `retry_on_db_lock` /
- * `serialized_write` apparatus: those exist because many async tasks could
- * interleave mid-statement against one connection. Here a statement runs to
- * completion before any other code does, so a single connection is already the
- * serialization the Python code had to build by hand.
- *
- * WAL and `foreign_keys=ON` are both load-bearing rather than tuning. Python
- * sets `PRAGMA foreign_keys=ON` on every connect (SQLite defaults it *off*),
- * and the schema leans on it: deleting a world is expected to cascade to its
- * rooms, locations and player state. Without the pragma those deletes silently
- * orphan rows instead.
- */
-/**
- * Wrap an already-open `bun:sqlite` handle as a Drizzle database.
- *
- * `openAndInitDb` returns the raw handle because migrations are applied with
- * plain SQL against it. Everything above the migration layer wants the typed
- * query builder, so the two are bridged in one place instead of each caller
- * remembering the `{ schema }` argument.
- */
+// `openAndInitDb` returns a raw handle because migrations are plain SQL.
 export function wrapDb(sqlite: Database): Db {
   return drizzle(sqlite, { schema }) as Db
 }
 
+/**
+ * Open the ClaudeWorld SQLite database. `bun:sqlite` is synchronous, so one
+ * connection is already all the write serialization needed. `foreign_keys=ON`
+ * is load-bearing rather than tuning: SQLite defaults it *off*, and deleting a
+ * world must cascade to its rooms, locations and player state.
+ */
 export function openDb({ path, readonly = false }: OpenDbOptions): Db {
   const sqlite = new Database(path, { readonly, create: false, strict: true })
 
@@ -46,8 +28,7 @@ export function openDb({ path, readonly = false }: OpenDbOptions): Db {
   if (!readonly) {
     sqlite.exec('PRAGMA journal_mode = WAL')
     // Without a busy timeout a concurrent writer surfaces as an immediate
-    // SQLITE_BUSY. The Python side retried such failures with backoff; letting
-    // SQLite wait is the same policy expressed once, in the engine.
+    // SQLITE_BUSY; letting SQLite wait states the retry policy once.
     sqlite.exec('PRAGMA busy_timeout = 5000')
   }
 

@@ -4,18 +4,13 @@ import { ITEM_TOOLS } from './item'
 import { LOCATION_TOOLS } from './location'
 
 /**
- * Action Manager tools. Port of `sdk/tools/gameplay.py`.
- *
- * Structured the way Python is: this module owns the *core* gameplay tools and
- * merges in the item and location sets to produce `ACTION_MANAGER_TOOLS`, the
- * single object the registry and the group-config override path read.
- *
- * Two of these have no handler on either side and are ported as declarations
- * only — see `item.ts` for the item four, and `setFlagTool` below.
+ * Action Manager tools. This module owns the *core* gameplay tools and merges
+ * in the item and location sets to produce `ACTION_MANAGER_TOOLS`, the single
+ * object the registry and the group-config override path read. A few tools have
+ * no handler and are declarations only — see `item.ts` and `setFlagTool`.
  */
 
-// Re-exported so the location queries keep their Phase 0 import path; they are
-// *defined* in `location.ts`, mirroring Python's `location.py`.
+// Re-exported for the import path; these are *defined* in `location.ts`.
 export {
   listCharactersTool,
   listLocationsTool,
@@ -24,10 +19,6 @@ export {
   LOCATION_TOOLS,
 } from './location'
 export { ITEM_TOOLS } from './item'
-
-// ============================================================================
-// Character tools
-// ============================================================================
 
 export const removeCharacterTool = {
   name: 'remove_character',
@@ -51,19 +42,14 @@ The character will be archived and no longer exist in the world.
 Reasons: 'death', '실종', 'magic'`,
   inputSchema: {
     character_name: requiredText('Character name').describe('Name of character to delete'),
-    // Python lowercases and defaults an empty string back to "death"; the
-    // handler maps anything it does not recognise onto DEATH anyway, so the
-    // normalisation is cosmetic and lives with the value that is echoed back.
+    // The handler maps anything it does not recognise onto DEATH, so no
+    // normalisation is needed here.
     reason: z.string().default('death').describe("Reason for deletion: 'death', '실종', or 'magic'"),
     narrative: z.string().default('').describe('Optional narrative description of the deletion'),
   },
   response: '{deletion_result}',
   enabled: true,
 } satisfies ToolDefinition
-
-// ============================================================================
-// Mechanics tools
-// ============================================================================
 
 export const injectMemoryTool = {
   name: 'inject_memory',
@@ -80,16 +66,10 @@ The character will remember this as if it actually happened or regard as commons
   enabled: true,
 } satisfies ToolDefinition
 
-/**
- * Accept a list the model may have serialised as a JSON string.
- *
- * `change_stat` is the tool this bites on hardest: Claude passes `'[]'` or
- * `'[{"stat_name": "HP", "delta": -10}]'` often enough that Python grew a
- * dedicated `mode="before"` validator for each of the two list fields, with an
- * explicit "returns [] on a decode failure" rule. Failing the call instead
- * would lose the whole mechanical resolution of a turn, so a malformed list is
- * dropped rather than raised, exactly as it is in `gameplay.py`.
- */
+// Accept a list the model may have serialised as a JSON string — `change_stat`
+// gets `'[]'` or `'[{"stat_name": "HP", ...}]'` often enough to matter. A
+// malformed list is dropped rather than raised: failing the call would lose the
+// whole mechanical resolution of the turn.
 const recordList = z.preprocess((value): unknown => {
   if (value === null || value === undefined) return []
   if (typeof value === 'string') {
@@ -156,13 +136,9 @@ export const advanceTimeTool = {
   enabled: true,
 } satisfies ToolDefinition
 
-/**
- * Declared in Python, never implemented — there is no `set_flag` handler in
- * `sdk/handlers/`. Ported as a declaration for the same reason as the four
- * unimplemented item tools: the registry and `group_config.yaml` address tools
- * by name, and a name that exists on one backend and not the other is a
- * divergence in itself. No server offers it.
- */
+// Declared but never implemented: there is no `set_flag` handler and no server
+// offers it. The declaration exists because `group_config.yaml` addresses tools
+// by name.
 export const setFlagTool = {
   name: 'set_flag',
   description: `Set a player flag for game state tracking.
@@ -201,10 +177,6 @@ Available history entries: {history_subtitles}
   readOnly: true,
   enabled: true,
 } satisfies ToolDefinition
-
-// ============================================================================
-// Narration tools
-// ============================================================================
 
 export const narrationTool = {
   name: 'narration',
@@ -279,14 +251,7 @@ No parameters required - just call to get a random result.`,
   enabled: true,
 } satisfies ToolDefinition
 
-// ============================================================================
-// Dice
-// ============================================================================
-
-/**
- * Weighted outcomes for `roll_the_dice`, as percentages summing to 100.
- * Ported verbatim from `handlers/mechanics_tools.py`.
- */
+/** Weighted outcomes for `roll_the_dice`, as percentages summing to 100. */
 export const DICE_OUTCOMES: ReadonlyArray<readonly [outcome: string, weight: number]> = [
   ['very_lucky', 1],
   ['lucky', 5],
@@ -296,11 +261,9 @@ export const DICE_OUTCOMES: ReadonlyArray<readonly [outcome: string, weight: num
 ] as const
 
 /**
- * The line the model is shown under each outcome.
- *
- * Load-bearing, not decoration: `nothing_happened` on its own reads to the model
- * as "the tool failed to decide", and the Action Manager then re-rolls or
- * narrates around it. The sentence is what tells it the roll *was* the answer.
+ * The line the model is shown under each outcome. Load-bearing, not decoration:
+ * `nothing_happened` alone reads as "the tool failed to decide" and the Action
+ * Manager re-rolls; the sentence tells it the roll *was* the answer.
  */
 export const DICE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   very_lucky:
@@ -327,10 +290,6 @@ export function formatDiceRoll(outcome: string): string {
   return `**Dice Roll Result:** \`${outcome}\`\n\n${DICE_DESCRIPTIONS[outcome] ?? ''}`
 }
 
-// ============================================================================
-// Registries
-// ============================================================================
-
 export const CORE_GAMEPLAY_TOOLS = {
   remove_character: removeCharacterTool,
   delete_character: deleteCharacterTool,
@@ -344,7 +303,6 @@ export const CORE_GAMEPLAY_TOOLS = {
   recall_history: recallHistoryTool,
 } satisfies Record<string, ToolDefinition>
 
-/** Core + item + location, the shape `sdk/tools/gameplay.py` exports. */
 export const ACTION_MANAGER_TOOLS = {
   ...CORE_GAMEPLAY_TOOLS,
   ...ITEM_TOOLS,

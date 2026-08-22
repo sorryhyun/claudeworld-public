@@ -2,24 +2,13 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { AgentSession, parseSessionKey, sessionKeyOf, type SessionKey } from './session'
 
 /**
- * One warm Claude session per (room, agent), reused across turns.
- *
- * Port of `sdk/client/client_pool.py`. The pool exists for latency: opening a
- * session spawns a CLI subprocess and hands it a system prompt, several
- * in-process MCP servers, hooks and sub-agent definitions. A gameplay turn fans
- * out to every NPC at the player's location plus the Action Manager, so paying
- * that cost per turn would multiply it by the size of the cast.
- *
- * Two rules are inherited deliberately from Python:
- *
- * - **No idle eviction.** Sessions live until something explicitly removes them.
- *   A player idling in a tavern should not have to re-warm the room's NPCs.
- * - **Interrupt keeps the session; an error kills it.** A player interrupting
- *   their own turn is routine and must not cost the warm subprocess. An error
- *   leaves the CLI in an unknown state, so the session is discarded and the next
- *   turn reopens with `resume`.
+ * One warm Claude session per (room, agent), reused across turns — opening one
+ * spawns a CLI subprocess, and a gameplay turn fans out to the whole cast. Two
+ * lifecycle rules: **no idle eviction**, so sessions live until something removes
+ * them; and **interrupt keeps the session, an error kills it**, since an error
+ * leaves the CLI in an unknown state and the next turn must `resume` a fresh one.
  */
-/** What `GET /auth/health/pool` reports. See {@link SessionPool.stats}. */
+/** What `GET /auth/health/pool` reports. */
 export interface SessionPoolStats {
   poolSize: number
   poolKeys: string[]
@@ -34,16 +23,10 @@ export class SessionPool {
   /** Serializes concurrent opens for the same key (double-checked locking). */
   private readonly opening = new Map<string, Promise<AgentSession>>()
 
-  /**
-   * @param maxConcurrentConnections Caps simultaneous CLI spawns. Python used a
-   *   semaphore of 10 for the same reason: a location with a large cast would
-   *   otherwise try to spawn one subprocess per NPC at once.
-   * @param onEvict Fired for every session this pool drops, by session key.
-   *   The MCP turn registry hangs off this: a binding is reachable through the
-   *   same `room_X_agent_Y` key a session is, so the two have to die together
-   *   or the endpoint would keep answering for an agent that no longer has a
-   *   subprocess. Optional, so the pool stays constructible on its own.
-   */
+  /** `maxConcurrentConnections` caps simultaneous CLI spawns, which a large cast
+   * would otherwise make one-per-NPC. The MCP turn registry hangs off `onEvict` —
+   * a binding shares the session's key, so the two must die together or the
+   * endpoint keeps answering for an agent with no subprocess. */
   constructor(
     private readonly maxConcurrentConnections = 10,
     private readonly onEvict?: (id: string) => void,
@@ -60,14 +43,8 @@ export class SessionPool {
     return [...this.sessions.keys()]
   }
 
-  /**
-   * Get the warm session for this key, or open one.
-   *
-   * Reopens when either the fingerprint or the resume target has changed. Both
-   * are baked in at `query()` time and cannot be mutated afterwards, so reuse
-   * with stale values would silently run the turn under the wrong system prompt
-   * or the wrong conversation.
-   */
+  /** Reopens when the fingerprint or the resume target changed: both are baked in
+   * at `query()` time, so stale reuse runs the turn under the wrong prompt. */
   async acquire(key: SessionKey, options: Options, fingerprint: string): Promise<AgentSession> {
     const id = sessionKeyOf(key)
     const resume = options.resume
@@ -89,9 +66,8 @@ export class SessionPool {
   private isReusable(session: AgentSession, fingerprint: string, resume: string | undefined): boolean {
     if (session.isDead || session.busy) return false
     if (session.fingerprint !== fingerprint) return false
-    // A virgin stream carries only the conversation it resumed; once it has run
-    // a turn, the id it reports is the authority and the caller's `resume` value
-    // is just a stale copy of it.
+    // A virgin stream carries only the conversation it resumed; once it has run a
+    // turn, the id it reports is the authority and `resume` is a stale copy.
     return session.turnsProcessed === 0
       ? resume === session.openedWithResume
       : resume === undefined || resume === session.sessionId
@@ -127,21 +103,8 @@ export class SessionPool {
     this.connectWaiters.shift()?.()
   }
 
-  /**
-   * A snapshot for `GET /auth/health/pool`.
-   *
-   * The shape is Python's `pool_stats`, field for field, because that endpoint
-   * exists to be read by a human comparing two running backends. Two fields do
-   * not translate cleanly and are documented rather than faked:
-   *
-   * - `pendingCleanupTasks` is always 0. Python's pool detaches disconnects
-   *   into `asyncio.Task`s it then has to track; `evict()` here awaits the
-   *   teardown, so there is never a cleanup in flight to count.
-   * - `activeClients` counts *busy* sessions. Python counts entries in
-   *   `AgentManager.active_clients`, which is populated for the duration of a
-   *   turn and deleted after it — the same set, tracked on the session itself
-   *   rather than in a parallel dict.
-   */
+  // `pendingCleanupTasks` is always 0 — `evict` awaits teardown — and
+  // `activeClients` counts *busy* sessions.
   stats(): SessionPoolStats {
     return {
       poolSize: this.sessions.size,
@@ -153,14 +116,7 @@ export class SessionPool {
     }
   }
 
-  /**
-   * Agent ids with a live session in this room.
-   *
-   * Port of `get_chatting_agents`, which walked `AgentManager.active_clients`
-   * and matched on `task_id.room_id`. The polling endpoint reports these as the
-   * agents currently "in" the room, so it is deliberately *presence*, not
-   * busyness: an NPC whose session is warm but idle is still part of the scene.
-   */
+  // Deliberately *presence*, not busyness: a warm but idle NPC is still in scene.
   agentsInRoom(roomId: number): number[] {
     return this.keys
       .map(parseSessionKey)
@@ -168,30 +124,23 @@ export class SessionPool {
       .map((key) => key.agentId)
   }
 
-  /**
-   * Every live session belonging to one agent, across all its rooms.
-   *
-   * Port of `ClientPool.get_keys_for_agent`. Parsing rather than substring
-   * matching matters here: agent 3 owns `room_12_agent_3`, and a naive search
-   * for `3` would also claim `room_3_agent_12`.
-   */
+  // Parsed, not substring-matched: a search for agent `3` would also claim
+  // `room_3_agent_12`.
   keysForAgent(agentId: number): string[] {
     return this.keys.filter((key) => parseSessionKey(key)?.agentId === agentId)
   }
 
-  /** Close every session belonging to an agent — the agent is being deleted. */
   async evictAgent(agentId: number): Promise<void> {
     await Promise.all(this.keysForAgent(agentId).map((k) => this.evict(k)))
   }
 
-  /** Drop and close one session. Safe to call for an absent key. */
+  /** Safe to call for an absent key. */
   async evict(id: string): Promise<void> {
     const session = this.sessions.get(id)
     if (!session) return
     this.sessions.delete(id)
-    // Before the close, not after: closing awaits the subprocess, and a tool
-    // call already in flight must not resolve a binding for a session that is
-    // on its way out.
+    // Before the close, not after: closing awaits the subprocess, and an in-flight
+    // tool call must not resolve a binding for a session on its way out.
     this.onEvict?.(id)
     await session.close()
   }
@@ -200,19 +149,14 @@ export class SessionPool {
     await this.evict(sessionKeyOf(key))
   }
 
-  /** Close every session belonging to a room — world reset, room deletion. */
   async evictRoom(roomId: number): Promise<void> {
     const prefix = `room_${roomId}_agent_`
     await Promise.all(this.keys.filter((k) => k.startsWith(prefix)).map((k) => this.evict(k)))
   }
 
-  /**
-   * Interrupt every in-flight turn in a room, leaving the sessions warm.
-   *
-   * Returns the ids the CLI reported as still queued. An empty list is not proof
-   * of quiet — messages enqueued without a uuid are never listed — so callers
-   * should treat it as best-effort rather than a guarantee.
-   */
+  /** Leaves the sessions warm. Returns the ids the CLI reported as still queued;
+   * an empty list is not proof of quiet, since messages enqueued without a uuid
+   * are never listed. */
   async interruptRoom(roomId: number): Promise<string[]> {
     const prefix = `room_${roomId}_agent_`
     const receipts = await Promise.all(

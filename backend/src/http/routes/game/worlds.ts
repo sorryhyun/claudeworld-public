@@ -1,26 +1,10 @@
 /**
- * World management routes — port of `backend/routers/game/worlds.py`.
+ * World management routes. The filesystem is the source of truth; the database
+ * rows are a cache this module keeps in step ({@link syncWorldFromFs}).
  *
- * Create, list, import, enter, reset and delete a world. The filesystem is the
- * source of truth for every one of them: `worlds/<name>/` is written first and
- * the database rows are a cache that this module keeps in step
- * ({@link syncWorldFromFs}).
- *
- * ## Two things worth knowing before editing
- *
- * **`/importable` must stay registered before `/:world_id`.** Both match
- * `GET /worlds/importable`, and Hono runs matching handlers in registration
- * order. Swapping them turns the import picker into a 422 (`world_id` is
- * declared `int`), which is exactly the failure FastAPI's own ordering rule
- * avoids.
- *
- * **The collection routes answer on `/worlds` and `/worlds/` alike.** Python's
- * canonical path is `/worlds/` — `@router.get("/")` under `prefix="/worlds"` —
- * and Starlette 307-redirects `/worlds` onto it, which `fetch` follows
- * transparently; `frontend/src/services/gameService.ts` only ever sends the
- * unslashed form. Hono's router is strict about the trailing slash and does not
- * redirect, so both spellings are registered rather than leaving one of them a
- * 404 that Python answers with a 200.
+ * `/importable` must stay registered before `/:world_id` — Hono matches in
+ * registration order — and the collection routes are registered both with and
+ * without the trailing slash, which Hono does not redirect.
  */
 
 import { eq } from 'drizzle-orm'
@@ -77,22 +61,10 @@ import {
 
 const logger = getLogger('GameRouter.Worlds')
 
-// =============================================================================
-// FS↔DB SYNC HELPERS (formerly WorldFacade)
-// =============================================================================
-
 /**
- * Copy the filesystem's view of a world onto its database row.
- *
- * Only four fields move, and only in one direction: the filesystem wins. The
- * onboarding tools write `world.yaml` directly, so the row is stale from the
- * moment the interview names a genre — this is what makes the world panel show
- * it. Returns whether anything changed, which callers use to decide whether to
- * re-read the row.
- *
- * `routers/game/polling.py` carries its own copy of this logic instead of
- * calling the helper, because it needs the new phase *before* the write in
- * order to route the poll; that duplication is preserved there.
+ * Copy the filesystem's view of a world onto its row; returns whether anything
+ * changed. `routes/game/polling.ts` keeps its own copy on purpose: it needs the
+ * new phase *before* the write in order to route the poll.
  */
 export function syncWorldFromFs(state: AppState, world: World): boolean {
   const config = state.services.worlds.loadWorldConfig(world.name)
@@ -127,13 +99,7 @@ export function syncWorldFromFs(state: AppState, world: World): boolean {
   return true
 }
 
-/**
- * A full `World` response: the row plus the two fields that only exist on disk.
- *
- * Port of `_build_world_response`. Both overlays *replace* rather than merge —
- * the `worlds.stat_definitions` column is a write-only cache and this path
- * never reads it.
- */
+// Both overlays replace rather than merge — `stat_definitions` is write-only.
 function buildWorldResponse(state: AppState, world: World): WorldResponse {
   return toWorld(world, {
     lore: state.services.worlds.loadLore(world.name),
@@ -141,28 +107,14 @@ function buildWorldResponse(state: AppState, world: World): WorldResponse {
   })
 }
 
-// =============================================================================
-// Router
-// =============================================================================
-
 export function createWorldRoutes(state: AppState): Hono<AppEnv> {
   const routes = new Hono<AppEnv>()
 
-  // ---------------------------------------------------------------------------
-  // World management
-  // ---------------------------------------------------------------------------
-
   /**
-   * Create a world and stage its onboarding room.
-   *
-   * Order matters and is Python's: the filesystem tree first (it is the source
-   * of truth, and its "already exists" is a 400 the user can act on), then the
-   * database rows, then the `_state.json` mapping that links the two, then the
-   * Onboarding Manager and the system message that will trigger it.
-   *
-   * The trigger message is written but *not* acted on here — the frontend calls
-   * `/start-onboarding` once it is listening, so the agent's first thinking
-   * stream is not produced before anything can display it.
+   * Create a world and stage its onboarding room. Order matters: filesystem
+   * tree, rows, `_state.json` mapping, then the Onboarding Manager and its
+   * trigger message. That message is written but not acted on here — the
+   * frontend calls `/start-onboarding` once it is listening.
    */
   const createWorldHandler = async (c: Context<AppEnv>) => {
     const identity = identityOf(c)
@@ -172,9 +124,6 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
       throw new HttpError(400, `World '${body.name}' already exists`)
     }
 
-    // `WorldService.createWorld` already throws `HttpError(400, "World '<x>'
-    // already exists")`, which is the exact response Python's
-    // `except ValueError` produced, so there is nothing to translate here.
     state.services.worlds.createWorld(body.name, identity.userId, body.user_name, body.language)
 
     const world = createWorldRow(
@@ -195,9 +144,8 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
     if (onboardingAgent && world.onboardingRoomId) {
       addAgentToRoom(state.db, world.onboardingRoomId, onboardingAgent.id)
 
-      // Written as a *user*-role system message on purpose: the Onboarding
-      // Manager's group sets `can_see_system_messages`, so this is what the
-      // agent reads as its first instruction when `/start-onboarding` fires.
+      // `user` role on purpose: the Onboarding Manager's group sets
+      // `can_see_system_messages`, making this its first instruction.
       createMessage(state.db, world.onboardingRoomId, {
         content: getOnboardingMessage(toLangKey(body.language)),
         role: 'user',
@@ -207,11 +155,7 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
 
       logger.info(`Onboarding room ready for world '${body.name}' (trigger via /start-onboarding)`)
     } else if (!onboardingAgent) {
-      // Python skips silently here too (`worlds.py:192`), and the cost of that
-      // is a turn failing later with "has no Onboarding Manager" instead of the
-      // room setup complaining now. The `if` is kept for parity; the warning is
-      // not, because the seeding that fills this row runs at startup and its
-      // absence means the `agents/` tree was not found.
+      // Seeding runs at startup, so a missing row means no `agents/` tree.
       logger.warning(
         `No 'Onboarding_Manager' agent row — world '${body.name}' has an empty onboarding room ` +
           'and its first turn will fail. Check that the agents/ directory is present and restart.',
@@ -225,15 +169,8 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
   routes.post('/worlds', createWorldHandler)
   routes.post('/worlds/', createWorldHandler)
 
-  /**
-   * Send the Onboarding Manager its opening prompt.
-   *
-   * **No ownership check, deliberately.** `worlds.py:217` takes an `identity`
-   * dependency and never reads it, so any authenticated caller can start
-   * onboarding on any world that is still in the onboarding phase. Reproduced
-   * rather than tightened: the parity harness diffs statuses, and the guest role
-   * is not a security boundary here (see `http/access-control.ts`).
-   */
+  // No ownership check, deliberately: any authenticated caller can start
+  // onboarding on any world still in that phase (see `http/access-control.ts`).
   routes.post('/worlds/:world_id/start-onboarding', (c) => {
     const worldId = intPathParam(c, 'world_id')
 
@@ -246,9 +183,7 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
 
     const action = getOnboardingMessage(toLangKey(world.language))
 
-    // Python's `spawn_background`, not `BackgroundTasks` — this one is meant to
-    // start immediately, and the handler makes no further reads that a turn's
-    // writes could race.
+    // Safe to start immediately: no further reads a turn's writes could race.
     spawnTurn(state, worldId, (w) => w.onboardingRoomId, action, `start_onboarding:world=${worldId}`)
 
     return c.json({ status: 'started' })
@@ -260,14 +195,8 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
   routes.get('/worlds', listWorldsHandler)
   routes.get('/worlds/', listWorldsHandler)
 
-  /**
-   * Worlds present in `worlds/` but absent from this user's database rows.
-   *
-   * The filesystem scan is unfiltered by owner — `WorldService.list_worlds()`
-   * takes no argument here — so a world created by another account, or by a
-   * hand-copied folder, shows up as importable. That is how a world moves
-   * between installs.
-   */
+  // Worlds on disk but absent from this user's rows. The scan is unfiltered by
+  // owner, which is how a world moves between accounts and installs.
   routes.get('/worlds/importable', (c) => {
     const identity = identityOf(c)
     const owned = new Set(getWorldsByOwner(state.db, identity.userId).map((w) => w.name))
@@ -301,15 +230,8 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
     return c.json(toWorldSummary(world))
   })
 
-  /**
-   * World details, with `lore.md` and `stats.yaml` overlaid.
-   *
-   * **Gap: no agent pre-connect.** Python spawns a background task here that
-   * opens SDK sessions for the Action Manager and up to five NPCs at the
-   * player's location, purely to take that latency off the first action. There
-   * is no `pre_connect` on `SessionPool` yet, so the optimisation is absent.
-   * Nothing about the response changes; the first action is simply slower.
-   */
+  // Gap: `SessionPool` has no `preConnect`, so nothing warms the Action
+  // Manager's session here and the first action is slower.
   routes.get('/worlds/:world_id', (c) => {
     const worldId = intPathParam(c, 'world_id')
     let world = requireWorld(state, c, worldId)
@@ -321,11 +243,9 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
     return c.json(buildWorldResponse(state, world))
   })
 
-  /** Delete a world, database first and filesystem second. */
   routes.delete('/worlds/:world_id', (c) => {
     const worldId = intPathParam(c, 'world_id')
-    // The one place the 403 detail is not "Not your world"; see
-    // `http/access-control.ts` on why the inconsistency is preserved.
+    // The one place the 403 detail is not "Not your world".
     const world = requireWorld(state, c, worldId, 'Not authorized to delete this world')
 
     deleteWorldRow(state.db, worldId)
@@ -335,33 +255,21 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
     return c.json({ status: 'deleted' })
   })
 
-  /** Every non-system agent standing somewhere in the world. */
   routes.get('/worlds/:world_id/characters', (c) => {
     const worldId = intPathParam(c, 'world_id')
     requireWorld(state, c, worldId)
     return c.json({ characters: getAllCharactersInWorld(state.db, worldId) })
   })
 
-  /** `history.md`, verbatim. Read-only; the agents are what write it. */
+  /** `history.md`, verbatim. Read-only; the agents write it. */
   routes.get('/worlds/:world_id/history', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const world = requireWorld(state, c, worldId)
     return c.json({ history: state.services.worlds.loadHistory(world.name) })
   })
 
-  /**
-   * Compress `history.md` into `consolidated_history.md`.
-   *
-   * Turns are batched and handed to the History_Summarizer, which writes one
-   * titled section per batch; `history.md` is then cleared. The batching and
-   * the summarizer call both live in the service — this handler is only the
-   * ownership check and Python's error mapping.
-   *
-   * That mapping is two-branched and worth keeping: a `ValueError` is a 400
-   * (the caller asked for something the world cannot do), anything else is a
-   * 500 carrying the reason, which is what `gameService.compressWorldHistory`
-   * surfaces in its toast.
-   */
+  // Compress `history.md` into `consolidated_history.md`. The 400/500 split is
+  // load-bearing: `gameService.compressWorldHistory` shows the 500's reason.
   routes.post('/worlds/:world_id/history/compress', async (c) => {
     const worldId = intPathParam(c, 'world_id')
     const world = requireWorld(state, c, worldId)
@@ -377,27 +285,13 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
     }
   })
 
-  /**
-   * Enter an active world: apply the pending phase, reset, and open the scene.
-   *
-   * The reset is not a courtesy — entering a world is how a finished onboarding
-   * becomes a playable game, and `_perform_world_reset` is what turns the
-   * seed generator's output into a first turn (fresh rooms, player state from
-   * `_initial.json`, an arrival message for the Action Manager to answer).
-   *
-   * **Gap: no Action Manager pre-connect**, for the same reason as
-   * `GET /worlds/{id}` above — `SessionPool` has no `pre_connect`, and
-   * `RoomOrchestrator.preConnectLocation` only works while a turn is in flight,
-   * which is precisely not the case here. The opening turn is slower to start;
-   * nothing about the response changes.
-   */
+  // The reset is what turns the seed generator's output into a first turn.
   routes.post('/worlds/:world_id/enter', (c) => {
     const worldId = intPathParam(c, 'world_id')
     const found = requireWorld(state, c, worldId)
 
     // The onboarding `complete` tool parks the transition in `pending_phase` so
-    // the player, not the agent, decides when the world opens. This is where
-    // the player says yes.
+    // the player, not the agent, decides when the world opens.
     state.services.worlds.applyPendingPhase(found.name)
     syncWorldFromFs(state, found)
 
@@ -423,13 +317,8 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
     })
   })
 
-  /**
-   * Reset an active world to the state `_initial.json` captured.
-   *
-   * `confirm` is validated *before* the world is looked up, which is Python's
-   * order: an unconfirmed reset of a world that does not exist is a 400, not a
-   * 404. It reads backwards but it is observable, so it is kept.
-   */
+  // `confirm` is validated before the world is looked up, so an unconfirmed
+  // reset of a nonexistent world is a 400, not a 404.
   routes.post('/worlds/:world_id/reset', async (c) => {
     const worldId = intPathParam(c, 'world_id')
     const request = await parseBody(c, WorldResetRequest)
@@ -469,10 +358,6 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
   return routes
 }
 
-// =============================================================================
-// Reset
-// =============================================================================
-
 interface ResetOutcome {
   startingLocation: LocationWithRoom
   /** The arrival line, both written to the room and replayed as the first action. */
@@ -482,23 +367,12 @@ interface ResetOutcome {
 /**
  * Put a world back to the moment onboarding finished. Shared by enter and reset.
  *
- * Port of `_perform_world_reset`. The steps are in Python's order and the order
- * is load-bearing in three places:
- *
- * 1. **Stale filesystem entries are cleaned before the database is synced
- *    against the filesystem** — otherwise `_index.yaml` still lists locations
- *    whose directories are gone, and the sync keeps their rows alive.
- * 2. **Fresh rooms are minted before the starting location is resolved.** A new
- *    room is what clears a location's conversation context; resolving the
- *    starting location first would hand back a row still pointing at the old
- *    room, and the opening scene would replay the last session's transcript.
- * 3. **`_state.json` is rewritten after the rooms are re-mapped**, so the
- *    surviving mapping is the new room id rather than the one just abandoned.
- *
- * `errorContext` is the prefix Python's `except Exception` puts on a 500
- * ("Failed to enter world" / "Failed to reset world"); the two `ValueError`
- * cases are thrown as 400s directly, since that is what both callers turn them
- * into.
+ * The step order is load-bearing three times: stale `_index.yaml` entries are
+ * cleaned before the DB is synced against the filesystem, or the sync keeps
+ * rows for deleted directories alive; fresh rooms are minted before the
+ * starting location is resolved, since a new room is what clears a location's
+ * conversation context; and `_state.json` is rewritten after the re-mapping, so
+ * the surviving mapping is the new room id.
  */
 function performWorldReset(state: AppState, world: World, errorContext: string): ResetOutcome {
   try {
@@ -538,8 +412,7 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
   const staleAgents = syncAgentsWithFilesystem(db, world.name, { projectRoot: state.projectRoot })
   if (staleAgents > 0) logger.info(`Cleaned up ${staleAgents} stale agents during reset`)
 
-  // Fresh room per location. The old rooms are deliberately left behind with
-  // their transcripts intact — see `createNewRoomForLocation`.
+  // Fresh room per location; the old ones keep their transcripts.
   for (const [roomKey, mapping] of Object.entries(services.rooms.getAllRoomMappings(world.name))) {
     if (!roomKey.startsWith('location:')) continue
 
@@ -547,20 +420,16 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
     const locationName = roomKey.slice('location:'.length)
 
     if (oldRoomId) {
-      // Python awaits `client_pool.cleanup_room`. Nothing downstream depends on
-      // the eviction having finished — a session for a room id nothing points at
-      // any more is unreachable either way — so this is fire-and-forget rather
-      // than making the whole reset async.
+      // Fire-and-forget: a session for an unreferenced room id is unreachable
+      // anyway, and awaiting would make the whole reset async.
       void state.pool.evictRoom(oldRoomId)
     }
 
     const location = getLocationByName(db, world.id, locationName)
     if (location) {
       const newRoom = createNewRoomForLocation(db, location)
-      // Characters are dropped from the mapping, not carried over: the gameplay
-      // agents are added to the room by `createNewRoomForLocation`, and the cast
-      // is re-seeded by the world's own definition rather than by whoever
-      // happened to be standing there when the last session ended.
+      // Characters are dropped: the cast is re-seeded from the world
+      // definition, not from whoever stood here last session.
       services.rooms.setRoomMapping(world.name, roomKey, newRoom.id, [])
       logger.info(`Created fresh room for ${roomKey} (old=${oldRoomId}, new=${newRoom.id})`)
     } else {
@@ -613,8 +482,6 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
     effects: [],
     recentActions: [],
     gameTime: initialGameTime,
-    // Absent from Python's `FSPlayerState(...)` call, so both fall back to the
-    // dataclass defaults — an empty map each.
     equipment: {},
     flags: {},
   })
@@ -629,7 +496,7 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
   transient.rooms = preserved
   transient.suggestions = []
   transient.currentRoom = startingRoomKey
-  // A stale arrival context would make the opening scene narrate a journey the
+  // A stale arrival context makes the opening scene narrate a journey the
   // player never took.
   delete transient.ui.arrival_context
   services.rooms.saveState(world.name, transient)
@@ -675,15 +542,7 @@ function performWorldResetInner(state: AppState, world: World): ResetOutcome {
   return { startingLocation, arrivalContent }
 }
 
-/**
- * Blank the three kinds of narrative memory a played world accumulates:
- * per-location `events.md`, the world's `history.md`, and each agent's
- * `recent_events.md`.
- *
- * All three are best-effort in Python (the whole block sits inside the caller's
- * try/except) and all three are regenerated by play, so a missing directory is
- * not an error.
- */
+// All of this is regenerated by play, so a missing directory is not an error.
 function clearWorldNarrativeFiles(state: AppState, worldName: string): void {
   const worldPath = state.services.worlds.getWorldPath(worldName)
 
@@ -718,32 +577,15 @@ function clearWorldNarrativeFiles(state: AppState, worldName: string): void {
   }
 }
 
-// =============================================================================
-// Background turns
-// =============================================================================
-
-/**
- * Run one turn in the background.
- *
- * Python opens a *new database session* for every one of these, because its
- * request session is closed by the time the task runs. `bun:sqlite` is a single
- * synchronous handle with no session lifetime, so `state.db` is used directly;
- * the re-read of the world row is kept because the row can genuinely have moved
- * on (a phase sync, a `last_played_at` bump) between the response and the turn.
- */
+// The world row is re-read because it can move on before the turn starts.
 async function runTurn(state: AppState, worldId: number, roomId: number, action: string): Promise<void> {
   const world = getWorld(state.db, worldId)
   if (!world) return
   await state.orchestrator.handlePlayerAction({ world, roomId, action })
 }
 
-/**
- * {@link runTurn} against a room chosen off the freshly-read world row.
- *
- * The room is resolved inside the task rather than captured, because
- * `/start-onboarding` answers before the turn begins and the onboarding room is
- * read off whatever the row says at that later point.
- */
+// The room is resolved inside the task, not captured: `/start-onboarding`
+// answers before the turn begins.
 function spawnTurn(
   state: AppState,
   worldId: number,

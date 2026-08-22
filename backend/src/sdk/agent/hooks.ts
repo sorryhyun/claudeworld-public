@@ -1,30 +1,15 @@
 import type { HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
 
 /**
- * SDK hooks. Port of `sdk/agent/hooks.py`.
- *
- * None of these change what the model may do — every one returns an empty
- * result, meaning "proceed". They exist to observe: three record timings, and
- * one captures tool input the turn needs to report back.
- *
- * The Python versions returned `{"continue_": True}`; the TS field is spelled
- * `continue`, and omitting it entirely means the same thing. They are returned
- * as `{}` here so the no-op is obvious.
+ * SDK hooks. None change what the model may do — every one returns `{}`,
+ * meaning "proceed". They observe: timings, and the tool input a turn reports.
  */
 
 /**
- * The CLI's sub-agent dispatch tool, by name.
- *
- * `Agent` is what CLI 2.1.238 calls it (`sdk-tools.d.ts` declares `AgentInput`
- * with the `subagent_type` field, and no `TaskInput` at all); `Task` is the
- * name the early-0.3 CLI used, which every comment in this repository and the
- * Python backend still say. Both are matched because the rename is exactly the
- * kind of silent drift the pin is meant to catch and the telemetry is not worth
- * losing to it: `bun run spike` asserts which one actually fires.
- *
- * This is not cosmetic. Matching only `Task` is why `subagent_invoked` and
- * every sub-agent duration were missing from telemetry — the hook ran, saw
- * `Agent`, and returned.
+ * The CLI's sub-agent dispatch tool. 2.1.238 calls it `Agent`; older CLIs said
+ * `Task`. Both are matched — matching only `Task` is why `subagent_invoked` and
+ * every sub-agent duration silently vanished. `bun run spike` asserts which
+ * one actually fires.
  */
 export const SUBAGENT_DISPATCH_TOOLS = ['Agent', 'Task'] as const
 
@@ -43,14 +28,8 @@ interface SubagentStart {
   subagentType: string
 }
 
-/**
- * Sub-agent start times, keyed by the CLI's `agent_id`.
- *
- * Python also kept a `${roomId}:${subagentType}` composite key as a fallback
- * and scanned it when the id was missing, which mismatched whenever a room ran
- * two sub-agents of the same type at once. Since this is telemetry, an
- * unmatched stop is recorded as unmatched rather than guessed at.
- */
+// Keyed by the CLI's `agent_id`. This is telemetry, so an unmatched stop is
+// recorded as unmatched rather than guessed at.
 export class SubagentTimings {
   private readonly starts = new Map<string, SubagentStart>()
 
@@ -80,14 +59,7 @@ export class SubagentTimings {
 export interface HookContext {
   agentName: string
   roomId: number
-  /**
-   * Collector for `mcp__guidelines__anthropic` calls made during the turn.
-   *
-   * Python passed a bare list into the options builder, closed over it in the
-   * hook, and read it back after the stream ended — invisible coupling through
-   * a mutable default argument. Here the collector is an explicit object the
-   * turn owns, so its lifetime is one turn by construction.
-   */
+  /** Owned by the turn, so its lifetime is one turn by construction. */
   anthropicCalls?: { push(situation: string): void }
   onEvent?: (event: HookTelemetry) => void
 }
@@ -112,7 +84,7 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
       kind: 'prompt_submitted',
       agentName: context.agentName,
       roomId: context.roomId,
-      // Characters, not tokens — Python's field name said so explicitly.
+      // Characters, not tokens.
       promptChars: typeof input.prompt === 'string' ? input.prompt.length : 0,
     })
     return {}
@@ -126,9 +98,7 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
     return {}
   }
 
-  // Every tool call, not just Task. Python logged this through the perf logger;
-  // keeping it on the telemetry channel means a caller that wants to know which
-  // tools an agent actually reached for does not have to parse a log file.
+  // Every tool call, not just dispatches.
   const observeTool: HookCallback = async (input) => {
     if (input.hook_event_name !== 'PreToolUse') return {}
     context.onEvent?.({
@@ -164,15 +134,9 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
     return {}
   }
 
-  /**
-   * The authoritative start of a sub-agent, keyed by the CLI's own id.
-   *
-   * `PreToolUse` on the dispatch is the *request*; this is the run. They are
-   * keyed differently — the dispatch has a `tool_use_id`, the run has an
-   * `agent_id` — and `SubagentStop` is given the latter, which is why pairing a
-   * stop against the dispatch's id produced `unknown` / `matched: false` on
-   * every completed sub-agent in the pilot.
-   */
+  // The authoritative start. `PreToolUse` on the dispatch is the *request* and
+  // carries a `tool_use_id`; the run carries an `agent_id`, which is what
+  // `SubagentStop` is given — pairing against the dispatch id never matches.
   const subagentStart: HookCallback = async (input) => {
     if (input.hook_event_name !== 'SubagentStart') return {}
     timings.record(input.agent_id, {
@@ -193,8 +157,8 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
       kind: 'subagent_completed',
       agentName: context.agentName,
       roomId: context.roomId,
-      // The stop carries the type outright, so an unpaired duration no longer
-      // costs us the identity of what finished.
+      // The stop carries the type, so an unpaired duration still names what
+      // finished.
       subagentType: input.agent_type || start?.subagentType || 'unknown',
       durationMs: start ? Date.now() - start.startedAt : 0,
       matched: start !== null,
@@ -211,8 +175,7 @@ export function buildHooks(context: HookContext, timings: SubagentTimings): Opti
     SubagentStart: [{ hooks: [subagentStart] }],
     SubagentStop: [{ hooks: [subagentStop] }],
   }
-  // Registered only when there is somewhere to put the result. Python always
-  // created the key and sometimes left it an empty array.
+  // Registered only when there is somewhere to put the result.
   if (context.anthropicCalls) {
     hooks.PostToolUse = [{ matcher: 'mcp__guidelines__anthropic', hooks: [captureAnthropic] }]
   }

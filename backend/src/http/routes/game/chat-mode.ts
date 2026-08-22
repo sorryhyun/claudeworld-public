@@ -1,26 +1,14 @@
 /**
- * Chat mode — port of `backend/routers/game/chat_mode.py`.
+ * Chat mode: a side conversation with the NPCs at the player's location, with
+ * no Action Manager, no narration, no turn counter and no stat changes. Not a
+ * router — `/chat` and `/end` arrive as slash commands inside a normal action
+ * body, and `actions.ts` dispatches here. The status is always 200, failures
+ * included; the frontend renders those as a system line.
  *
- * Not a router. `/chat` and `/end` arrive as *slash commands inside a normal
- * action body*, so `actions.ts` parses them and dispatches here; these three
- * handlers return the same `{status, message}` dicts Python's do, and the HTTP
- * status is always 200 — including for the failure cases, which the frontend
- * renders as a system line rather than an error toast.
- *
- * ## What chat mode is
- *
- * A side conversation with the NPCs at the player's location, with no Action
- * Manager, no narration, no turn counter and no stat changes. It shares the
- * location's room and its `messages` table; the entire separation mechanism is
- * `messages.chat_session_id`, which is set on every message written while chat
- * mode is on and NULL on every gameplay message.
- *
- * Leaving chat mode is the interesting half. The conversation has to re-enter
- * the game's causality, so `/end` hands the transcript to a Chat_Summarizer
- * agent and feeds its summary back into the gameplay tape as a synthetic player
- * action. That is what {@link summarizeAndContinue} does, and it is why `/end`
- * answers `processing` rather than `chat_mode_ended` when there was anything to
- * summarize.
+ * The separation mechanism is `messages.chat_session_id`, set on chat-mode
+ * messages and NULL on gameplay ones. `/end` hands the transcript to a
+ * Chat_Summarizer and feeds its summary back into the tape as a synthetic
+ * player action, which is why it can answer `processing`.
  */
 
 import { eq } from 'drizzle-orm'
@@ -50,18 +38,9 @@ export interface ChatModeResult {
   message: string
 }
 
-// =============================================================================
-// /chat
-// =============================================================================
-
-/**
- * Enter chat mode.
- *
- * The start marker is the id of the room's newest message, or `0` for an empty
- * room. The frontend reads it back out of the poll response as the point to
- * resume the gameplay transcript from once chat mode ends, so it must be
- * captured *before* the "[Chat mode started...]" system message is written.
- */
+// The start marker — the id of the room's newest message, or `0` — is where the
+// frontend resumes the gameplay transcript, so it must be captured *before* the
+// "[Chat mode started...]" message is written.
 export function handleChatCommand(
   state: AppState,
   worldId: number,
@@ -83,9 +62,8 @@ export function handleChatCommand(
     return { status: 'error', message: 'Failed to enter chat mode.' }
   }
 
-  // Tagged with the session id like every other chat-mode message: it is hidden
-  // from the poll (system messages are filtered out) but it *is* part of the
-  // conversation the summarizer reads, which is why it is stored at all.
+  // Tagged with the session id: hidden from the poll, but part of the
+  // conversation the summarizer reads.
   createMessage(state.db, roomId, {
     content:
       '[Chat mode started. You can now freely converse with NPCs. Type /end to return to gameplay.]',
@@ -110,10 +88,6 @@ export function handleChatCommand(
   }
 }
 
-// =============================================================================
-// A message while chat mode is on
-// =============================================================================
-
 export interface ChatModeActionInput {
   worldId: number
   playerState: PlayerState
@@ -124,13 +98,8 @@ export interface ChatModeActionInput {
   imageMediaType?: string | null
 }
 
-/**
- * Handle a player message in chat mode: store it, then let the NPCs answer.
- *
- * Note what is *not* here compared to the gameplay path in `actions.ts` — no
- * `add_action_to_history`, no `increment_turn`, no game-time snapshot. Chat mode
- * does not advance the game, which is the whole reason it exists.
- */
+// Store the message, then let the NPCs answer. No action history, no turn
+// increment, no game-time snapshot: chat mode does not advance the game.
 export async function handleChatModeAction(
   state: AppState,
   input: ChatModeActionInput,
@@ -169,18 +138,10 @@ export async function handleChatModeAction(
   return { status: 'processing', message: 'Message received, NPCs are responding...' }
 }
 
-// =============================================================================
-// /end
-// =============================================================================
-
 /**
- * Exit chat mode, summarizing the conversation unless there was none.
- *
- * The "was there an interaction" check runs *before* the exit, because
- * `exitChatMode` clears `chat_session_id` and the check needs it. A session
- * containing only the "[Chat mode started...]" system line exits silently — no
- * summary, no gameplay turn, no visible trace — so that a mistyped `/chat`
- * followed by `/end` does not cost the player a narration.
+ * Exit chat mode, summarizing unless there was no conversation. The interaction
+ * check runs *before* the exit, which clears the `chat_session_id` it needs. A
+ * session holding only the "[Chat mode started...]" line exits silently.
  */
 export function handleEndCommand(
   state: AppState,
@@ -211,8 +172,8 @@ export function handleEndCommand(
     return { status: 'chat_mode_ended', message: 'Exited chat mode.' }
   }
 
-  // No `chat_session_id` on this one: the session is over, and tagging it would
-  // pull the closing line into the transcript the summarizer is already reading.
+  // No `chat_session_id`: tagging it would pull the closing line into the
+  // transcript the summarizer is already reading.
   createMessage(state.db, roomId, {
     content: '[Chat mode ended. Returning to gameplay...]',
     role: 'user',
@@ -238,18 +199,8 @@ export function handleEndCommand(
   return { status: 'processing', message: 'Returning to gameplay...' }
 }
 
-// =============================================================================
-// Chat_Summarizer
-// =============================================================================
-
-/**
- * The Chat_Summarizer agent row.
- *
- * Looked up by *pattern* across the gameplay group rather than by exact name,
- * because the folder on disk may be `Chat_Summarizer`, `chat summarizer` or
- * `ChatSummarizer` depending on who created it — `isChatSummarizer` owns that
- * spelling tolerance.
- */
+// By pattern, not exact name: the folder may be `Chat_Summarizer`,
+// `chat summarizer` or `ChatSummarizer`.
 function getChatSummarizerAgent(db: Db): Agent | null {
   const found = db
     .select()
@@ -262,7 +213,6 @@ function getChatSummarizerAgent(db: Db): Agent | null {
   return found ?? null
 }
 
-/** The summarizer's options, shared by the warm path and the real invocation. */
 function chatSummarizerOptions(state: AppState, summarizer: Agent, roomId: number): AgentOptionsInput {
   const config = summarizer.configFile ? parseAgentConfig(summarizer.configFile) : null
   const systemPrompt = config
@@ -271,9 +221,8 @@ function chatSummarizerOptions(state: AppState, summarizer: Agent, roomId: numbe
 
   return {
     systemPrompt,
-    // No tools at all — Python passes `[]` as the tool list here. The
-    // summarizer's only job is to produce prose, and giving it the gameplay
-    // tools would let a summary mutate the world it is describing.
+    // No tools: the summarizer only produces prose, and the gameplay tools would
+    // let a summary mutate the world it is describing.
     mcpServers: {},
     toolNames: [],
     resume: getRoomAgentSession(state.db, roomId, summarizer.id) ?? undefined,
@@ -281,14 +230,8 @@ function chatSummarizerOptions(state: AppState, summarizer: Agent, roomId: numbe
   }
 }
 
-/**
- * Open the summarizer's SDK session while the player is still chatting.
- *
- * Pure latency work: `/end` is the one command that makes the player wait on a
- * cold subprocess start, and entering chat mode is a free moment to pay for it.
- * Every failure is swallowed — a session that could not be warmed is opened on
- * demand instead.
- */
+// Pure latency work: `/end` otherwise waits on a cold subprocess start.
+// Failures are swallowed — the session is then opened on demand.
 async function warmChatSummarizer(state: AppState, roomId: number): Promise<void> {
   try {
     const summarizer = getChatSummarizerAgent(state.db)
@@ -309,7 +252,6 @@ async function warmChatSummarizer(state: AppState, roomId: number): Promise<void
   }
 }
 
-/** Run the summarizer over a transcript. `null` when it is unavailable. */
 async function generateAiSummary(
   state: AppState,
   roomId: number,
@@ -348,8 +290,7 @@ Write in past tense, third person (e.g., "The player discussed...", "They agreed
       if (event.type === 'content_delta') {
         responseText += event.delta
       } else if (event.type === 'stream_end') {
-        // The session id has to be written back even here, or the next `/end`
-        // resumes a session this turn has already moved past.
+        // Written back here too, or the next `/end` resumes a stale session.
         if (event.sessionId && event.sessionId !== options.resume) {
           updateRoomAgentSession(state.db, roomId, summarizer.id, event.sessionId)
         }
@@ -373,23 +314,12 @@ interface SummarizeInput {
 }
 
 /**
- * Summarize the finished chat session and feed it back into gameplay.
- *
- * Three ordering details are Python's and are load-bearing:
- *
- * - **The room's gameplay agents are re-added first.** A location created
- *   before the gameplay agents were seeded has a room with no Action Manager,
- *   and the turn at the end of this function would then have nothing to run.
- * - **The "sub-agent busy" indicator is set only after the transcript is known
- *   to be non-empty.** Setting it earlier would show the player a spinner for a
- *   summarizer that is about to decide it has nothing to do.
- * - **The indicator is cleared before the gameplay turn starts**, not after, so
- *   the Action Manager's own row replaces it rather than stacking beneath it.
- *
- * When the summarizer is unavailable the last six exchanges are pasted in
- * verbatim instead. That fallback is deliberately crude: the Action Manager
- * needs *something* describing what just happened, and raw dialogue is a worse
- * prompt than a summary but a far better one than silence.
+ * Summarize the finished chat session and feed it back into gameplay. Three
+ * orderings are load-bearing: gameplay agents are re-added first (a location
+ * seeded before they existed has no Action Manager for the turn below); the
+ * "sub-agent busy" indicator is set only once the transcript is known non-empty;
+ * and it is cleared *before* the gameplay turn. With no summarizer available the
+ * last six exchanges are pasted in verbatim.
  */
 async function summarizeAndContinue(state: AppState, input: SummarizeInput): Promise<void> {
   const { roomId, worldId } = input

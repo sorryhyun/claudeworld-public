@@ -1,27 +1,19 @@
 /**
- * Safe concurrent writes to the filesystem-primary config tree.
- *
- * Ported from `backend/infrastructure/locking.py`, whose job is to keep two
- * agents writing `recent_events.md` at the same moment from corrupting it, and
- * to keep a reader from ever observing a half-written file.
- *
- * The Python module is mostly a platform-compatibility layer — `fcntl.flock` on
- * POSIX, `msvcrt.locking` on Windows, a `threading.Lock` when neither exists —
- * and that layer is not what provides the guarantee. These do:
+ * Safe concurrent writes to the filesystem-primary config tree: two agents
+ * writing `recent_events.md` at once must not corrupt it, and a reader must
+ * never observe a half-written file. Locking is not what provides that. These
+ * two properties are:
  *
  * - **Truncating writes are atomic.** Content goes to a temp file in the same
- *   directory which then *replaces* the target. A reader sees the old file or
- *   the new one, never an empty one. Locking cannot provide this, because
- *   opening a file for writing truncates it before any lock can be taken.
- * - **Appends are atomic.** `O_APPEND` makes the seek-and-write one operation
- *   in the kernel, so two appenders interleave between lines, never within one.
+ *   directory which then *replaces* the target, so a reader sees the old file or
+ *   the new one, never an empty one. A lock cannot provide this, because opening
+ *   a file for writing truncates it before any lock can be taken.
+ * - **Appends are atomic.** `O_APPEND` makes the seek-and-write one kernel
+ *   operation, so two appenders interleave between lines, never within one.
  *
  * `proper-lockfile` covers what is left: read-modify-write sequences, where a
  * caller must exclude other *processes* across several operations. It is
- * advisory and directory-based (`<path>.lock`), not `flock`, so it does not
- * interlock with the Python backend's `fcntl` locks. That is acceptable only
- * because the two backends never run at once — they would contend for the same
- * port and the same SQLite file long before they contended for an agent file.
+ * advisory and directory-based (`<path>.lock`), not `flock`.
  */
 
 import { constants } from 'node:fs'
@@ -53,12 +45,10 @@ function ensureParentDir(filePath: string): void {
 }
 
 /**
- * Write `content` to `filePath` atomically.
- *
- * The temp file gets a `.tmp` suffix rather than the target's extension: the
- * directories here are scanned with globs like `*.md` and `*.yaml`, and a temp
- * file left behind by a crash must not match one. It is unlinked on failure, so
- * a throwing write leaves the original untouched.
+ * Write `content` to `filePath` atomically. The temp file takes a `.tmp` suffix
+ * rather than the target's extension, because these directories are scanned
+ * with `*.md`/`*.yaml` globs and a temp file left by a crash must not match. It
+ * is unlinked on failure, so a throwing write leaves the original untouched.
  */
 export function atomicWrite(filePath: string, content: string): void {
   ensureParentDir(filePath)
@@ -108,13 +98,8 @@ export function atomicWrite(filePath: string, content: string): void {
   }
 }
 
-/**
- * Append one line, adding the trailing newline if the caller omitted it.
- *
- * Returns whether it succeeded; callers in the tool-handler path treat a failed
- * memory write as a soft failure rather than an aborted turn, which is why this
- * reports rather than throws.
- */
+/** Adds the trailing newline if omitted. Reports failure rather than throwing:
+ * the tool-handler path treats a failed memory write as soft. */
 export function safeAppendLine(filePath: string, line: string): boolean {
   try {
     ensureParentDir(filePath)
@@ -126,14 +111,9 @@ export function safeAppendLine(filePath: string, line: string): boolean {
   }
 }
 
-/**
- * Read a file, distinguishing "missing" from "empty".
- *
- * A failed read is never reported as empty content: a missing file returns
- * null, an unreadable one throws, and `''` means the file really is empty. The
- * distinction matters because agent config files are optional — an absent
- * `characteristics.md` is normal, an unreadable one is a bug worth surfacing.
- */
+/** Distinguishes "missing" (null) from "empty" (`''`); unreadable throws. Agent
+ * config files are optional, so an absent one is normal and a broken one is a
+ * bug worth surfacing. */
 export function safeReadFile(filePath: string): string | null {
   if (!existsSync(filePath)) return null
   return readFileSync(filePath, 'utf-8')
@@ -143,23 +123,18 @@ export interface FileLockOptions {
   /** Total time to keep retrying before giving up. Default 5s. */
   timeoutMs?: number
   /**
-   * Treat a lock that cannot be acquired as a warning and run anyway.
-   *
-   * Matches Python's behaviour on filesystems that refuse `flock` (older NFS,
-   * some FUSE mounts): a missing lock is better than a failed read.
+   * Treat a lock that cannot be acquired as a warning and run anyway — on
+   * filesystems that refuse locking (older NFS, some FUSE mounts) a missing
+   * lock is better than a failed read.
    */
   proceedUnlocked?: boolean
 }
 
 /**
- * Run `fn` holding an exclusive advisory lock on `filePath`.
- *
- * For read-modify-write sequences only — a plain append or a whole-file
- * rewrite is already atomic via {@link safeAppendLine} / {@link atomicWrite}
- * and needs no lock.
- *
- * The file is created if absent, because `proper-lockfile` resolves the target
- * before locking and a lock on a path that does not exist yet would fail.
+ * Run `fn` holding an exclusive advisory lock on `filePath`. For
+ * read-modify-write sequences only — a plain append or whole-file rewrite is
+ * already atomic and needs no lock. The file is created if absent, because
+ * `proper-lockfile` resolves the target before locking.
  */
 export async function withFileLock<T>(
   filePath: string,

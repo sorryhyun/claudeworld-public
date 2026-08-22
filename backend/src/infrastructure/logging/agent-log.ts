@@ -1,21 +1,11 @@
 /**
  * Human-readable transcripts of what each agent was actually sent and returned.
+ * Off by default; turned on by `debug.enabled` in `debug.yaml` or by
+ * `DEBUG_AGENTS=true`, and written to `<backendDir>/<output_file>`.
  *
- * Ported from `backend/infrastructure/logging/agent_logger.py` and
- * `formatters.py`. Off by default; turned on by `debug.enabled` in
- * `backend/infrastructure/logging/debug.yaml` or by `DEBUG_AGENTS=true`, and
- * written to `<backendDir>/<output_file>` (`backend/debug.txt`) so both
- * backends append to the same file and a mixed session reads in order.
- *
- * Every switch in `debug.yaml` is honoured, including the ones that are
- * currently `true` for everyone — the file is the user's control surface, and
- * silently ignoring half of it would be worse than the small amount of
- * branching here.
- *
- * One divergence: Python recovers tool descriptions by reaching into each MCP
- * server instance and invoking its `ListToolsRequest` handler. The declarations
- * already exist as plain data in `src/sdk/tools/`, so callers pass them in
- * instead. Same output, no dependency on SDK internals.
+ * Every switch in `debug.yaml` is honoured, including the ones currently `true`
+ * for everyone: the file is the user's control surface, and silently ignoring
+ * half of it would be worse than the branching here.
  */
 
 import { appendFileSync } from 'node:fs'
@@ -29,10 +19,6 @@ import type { ToolDefinition } from '../../sdk/tools/definitions'
 import { getLogger } from './logger'
 
 const logger = getLogger('DebugLogger')
-
-// ============================================================================
-// debug.yaml access
-// ============================================================================
 
 function section(config: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = config[key]
@@ -82,8 +68,7 @@ export function readDebugSettings(): DebugSettings {
 
   return {
     enabled: flag(debug, 'enabled', false),
-    // `output_file` is documented as "relative to backend directory", and the
-    // Python code resolves it against `backend/` — not the project root.
+    // `output_file` is relative to the backend directory, not the project root.
     outputPath: join(getSettings().paths.backendDir, str(debug, 'output_file', 'debug.txt')),
     logInput: {
       systemPrompt: flag(section(logging, 'input'), 'system_prompt', true),
@@ -117,27 +102,20 @@ function append(path: string, text: string): void {
   }
 }
 
-// ============================================================================
-// Input log
-// ============================================================================
-
 export interface AgentInputLog {
   agentName: string
   taskId: string
   /** The message actually pushed to the session, conversation history included. */
   messageToSend: string
-  /** The options the turn will run with — the real ones, not a reconstruction. */
   options: Options
   /** Tool declarations per MCP server name, as offered to this agent. */
   toolsByServer?: Record<string, readonly ToolDefinition[]>
 }
 
 /**
- * Append one agent's complete input to the debug log.
- *
- * Python gates the whole function on `logging.input.system_prompt`, so turning
- * that one switch off suppresses the tool and message sections too. Reproduced:
- * it is the only way `debug.yaml` can currently silence input logging wholesale.
+ * Append one agent's complete input to the debug log. The whole function is
+ * gated on `logging.input.system_prompt`, so that one switch also suppresses
+ * the tool and message sections — the only way to silence input logging.
  */
 export function writeAgentInputLog(entry: AgentInputLog): void {
   const settings = readDebugSettings()
@@ -201,10 +179,6 @@ export function writeAgentInputLog(entry: AgentInputLog): void {
   logger.info(`📝 Debug log written to ${settings.outputPath}`)
 }
 
-// ============================================================================
-// Output log
-// ============================================================================
-
 export interface AgentResponseLog {
   agentName: string
   taskId: string
@@ -239,17 +213,10 @@ export function writeAgentResponseLog(entry: AgentResponseLog): void {
   logger.info('📝 Agent response appended to debug log')
 }
 
-// ============================================================================
-// Message formatting (formatters.py)
-// ============================================================================
-
 /**
- * Render an SDK message as indented JSON for eyeballing.
- *
- * Python walks `__dict__` because its SDK messages are dataclasses; the TS SDK
- * hands over plain objects, so a `JSON.stringify` replacer does the same job.
- * Both truncate long strings and drop `signature` fields by default — thinking
- * signatures are hundreds of opaque characters that bury everything around them.
+ * Render an SDK message as indented JSON for eyeballing. Long strings are
+ * truncated and `signature` fields dropped by default — thinking signatures are
+ * hundreds of opaque characters that bury everything around them.
  */
 export function formatMessageForDebug(message: unknown): string {
   const { truncateStrings, maxStringLength, includeSignatures } = readDebugSettings().formatting
@@ -262,8 +229,8 @@ export function formatMessageForDebug(message: unknown): string {
     }
     if (typeof value === 'bigint') return value.toString()
     if (typeof value === 'object' && value !== null) {
-      // Python's recursion would hit RecursionError on a cycle; JSON.stringify
-      // throws. Neither is useful in a debug path, so cycles are elided.
+      // A cycle would make JSON.stringify throw, which is useless in a debug
+      // path, so cycles are elided instead.
       if (seen.has(value)) return '[circular]'
       seen.add(value)
     }
