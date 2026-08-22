@@ -5,15 +5,10 @@
  * originals unchanged**, costing the size reduction, never the message.
  */
 
-import sharp from 'sharp'
-
 import { getSettings } from '../config/settings'
 import { getLogger } from '../infrastructure/logging/logger'
 
 const logger = getLogger('ImageUtils')
-
-/** 0-6; 6 is the slowest and smallest. */
-const WEBP_EFFORT = 6
 
 export interface CompressedImage {
   /** The re-encoded payload, or the original on any failure. */
@@ -35,15 +30,17 @@ export async function compressImageBase64(
   }
 
   try {
-    // `Buffer.from(…, 'base64')` never throws; garbage is caught one line down
-    // by sharp refusing the buffer.
+    // `Buffer.from(…, 'base64')` never throws; garbage is caught by the
+    // terminal below, which rejects with an `ERR_IMAGE_*` code.
     const imageBytes = Buffer.from(base64Data, 'base64')
 
-    const compressedBytes = await sharp(imageBytes)
-      .webp({ quality: webpQuality, effort: WEBP_EFFORT })
-      .toBuffer()
+    // `Bun.Image` records the pipeline synchronously and runs decode → encode
+    // on a worker thread when the terminal is awaited. libwebp is statically
+    // linked, so there is no native module and no encoder `effort` knob —
+    // output lands within a few percent of sharp's default effort.
+    const data = await new Bun.Image(imageBytes).webp({ quality: webpQuality }).toBase64()
 
-    return { data: compressedBytes.toString('base64'), mediaType: 'image/webp' }
+    return { data, mediaType: 'image/webp' }
   } catch (error) {
     // The app must not break over an attachment.
     logger.warning(`Image compression failed: ${String(error)}`)

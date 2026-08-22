@@ -41,7 +41,7 @@ These make the migration invisible to users and keep rollback cheap:
 | Agent SDK | `claude-agent-sdk` 0.2.131 | `@anthropic-ai/claude-agent-sdk` **≥0.3.233** | Match or exceed yaar's pin. ≥0.3.144 required for `extractFromBunfs()` (single-exe support). |
 | Auth | bcrypt + PyJWT | `Bun.password.verify` + **jose** | Confirmed in Phase 1: existing `$2b$` hashes verify, and tokens round-trip between the two backends in both directions. |
 | Scheduler | APScheduler | **croner** (or plain `setInterval`) | Only autonomous-round cadence is needed; APScheduler is overkill to replicate. |
-| Images | Pillow | **sharp** | WebP conversion path in `utils/images.py`. |
+| Images | Pillow | **`Bun.Image`** | WebP conversion path in `utils/images.py`. Landed on `sharp` in Phase 3; moved to Bun's built-in pipeline once it shipped, dropping the last native module. |
 | Rate limiting | slowapi | **tiny fixed-window middleware** | Settled in Phase 1. slowapi is used for exactly one route; a dependency would be more moving parts than the thing it limits. `src/http/middleware/rate-limit.ts`, same algorithm and same 429 body. |
 | Hot reload of agent files | watchfiles | `fs.watch` (chokidar if edge cases appear) | |
 | File locking | custom `infrastructure/locking.py` | **proper-lockfile** | Phase 1 note: the actual guarantee is atomic rename plus `O_APPEND`, not the lock. `proper-lockfile` covers read-modify-write only and, being directory-based, does not interlock with Python's `fcntl` locks. |
@@ -243,9 +243,9 @@ fixture is checked in under `src/tests/fixtures/worlds/`.
 - No agent pre-connect in `GET /worlds/{id}` and `POST /worlds/{id}/enter`.
   `RoomOrchestrator.preConnectLocation` needs a turn in flight, which is precisely not the case
   there. Latency only; the responses are identical.
-- ~~`try_compress_image` is a pass-through until `sharp` arrives with the Phase 3 message
-  routes.~~ **Closed in Phase 3** — `src/lib/images.ts` on `sharp`, same quality/effort settings
-  and the same return-the-originals-on-failure contract.
+- ~~`try_compress_image` is a pass-through until an encoder arrives with the Phase 3 message
+  routes.~~ **Closed in Phase 3** — `src/lib/images.ts`, same quality setting and the same
+  return-the-originals-on-failure contract. (`sharp` then; `Bun.Image` now.)
 - `equip_item`, `unequip_item`, `use_item`, `list_equipment` and `set_flag` are declared with no
   handler — exactly as in Python, where no factory produces them. `domain/player-rules.ts` already
   has every rule they need, so implementing them is a decision, not a port.
@@ -264,7 +264,7 @@ same two-second cadence, and images are really compressed rather than passed thr
 - [x] Background scheduler — `src/infrastructure/scheduler.ts` plus `runAutonomousRound` in
       `orchestration/turn.ts` and `RoomOrchestrator.handleAutonomousRound`. Constructed in
       `createAppState`, started in `main.ts`, stopped first in `AppState.shutdown()`.
-- [x] Image upload / WebP conversion — `sharp` behind `src/lib/images.ts`, replacing the
+- [x] Image upload / WebP conversion — behind `src/lib/images.ts`, replacing the
       Phase 2 pass-through.
 - [x] i18n. Effectively already done: `i18n/korean.py` is `src/lib/korean.ts` and
       `i18n/serializers.py` is folded into `src/schemas/common.ts`. See the finding below for
@@ -343,8 +343,8 @@ same two-second cadence, and images are really compressed rather than passed thr
 | A tool server bound to one world writes the right `player.yaml` but mirrors it onto the wrong row | Silent cross-world corruption of `player_states` | `PersistenceManager` and `PlayerFacade` are per-world *factories*, bound in `buildServers` — found in Phase 2 |
 | `API_PREFIXES` matches by segment here, by `str.startswith` in Python | `/mcp-tools` falls through to the SPA and answers `index.html` with a 200 instead of JSON — and only when a built frontend is on disk | List `/mcp-tools` separately from `/mcp` in `static.ts`; pinned in `http-static.test.ts` — found in Phase 3 |
 | `setInterval` with an async callback is not APScheduler's `max_instances=1` | A tick slower than the interval stacks overlapping runs onto the same rooms | `BackgroundScheduler.tick()` guards on the in-flight promise and *drops* the overlapping tick — found in Phase 3 |
-| `sharp` has no synchronous encode API, where Pillow blocks the thread | An `await` dropped between a turn's writes lets a concurrent action interleave its message row | Compression is hoisted above the write block in `routes/game/actions.ts`, restoring Python's atomic sequence — found in Phase 3 |
-| `sharp` ships native `.node` binaries | `bun build --compile` cannot bundle them | Phase 5: treat them as external assets beside the executable, like the CLI |
+| Neither `sharp` nor `Bun.Image` has a synchronous encode API, where Pillow blocks the thread | An `await` dropped between a turn's writes lets a concurrent action interleave its message row | Compression is hoisted above the write block in `routes/game/actions.ts`, restoring Python's atomic sequence — found in Phase 3 |
+| ~~`sharp` ships native `.node` binaries~~ | ~~`bun build --compile` cannot bundle them~~ | **Moot.** `src/lib/images.ts` is on `Bun.Image`, whose codecs are linked into the runtime. No backend *runtime* dependency loads a native module now (`bun-plugin-tailwind` still ships `.node` binaries, but only the dev-mode bundler touches it), so only the CLI is left to place beside the executable |
 
 ## Open Decisions
 
