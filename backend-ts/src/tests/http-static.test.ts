@@ -67,6 +67,17 @@ describe('isApiPath', () => {
     expect(isApiPath('/worldsmith')).toBe(false)
   })
 
+  test('claims /mcp-tools, which /mcp does not cover here', () => {
+    // The trap this exists for: Python's list matches with `str.startswith`,
+    // so `/mcp` alone covers `/mcp-tools` there. Segment-aware matching means
+    // it does not here, and the symptom is silent — the router is mounted and
+    // unauthenticated, so the request sails past auth and gets `index.html`
+    // back with a 200 instead of its JSON.
+    expect(isApiPath('/mcp-tools')).toBe(true)
+    expect(isApiPath('/mcp-tools/agents')).toBe(true)
+    expect(isApiPath('/mcp')).toBe(true)
+  })
+
   test('leaves SPA routes alone', () => {
     expect(isApiPath('/')).toBe(false)
     expect(isApiPath('/game/abc')).toBe(false)

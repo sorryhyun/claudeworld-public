@@ -131,13 +131,13 @@ export interface ChatModeActionInput {
  * `add_action_to_history`, no `increment_turn`, no game-time snapshot. Chat mode
  * does not advance the game, which is the whole reason it exists.
  */
-export function handleChatModeAction(
+export async function handleChatModeAction(
   state: AppState,
   input: ChatModeActionInput,
-): ChatModeResult {
+): Promise<ChatModeResult> {
   const chatSessionId = input.playerState.chatSessionId
 
-  const image = tryCompressImage(
+  const image = await tryCompressImage(
     input.imageData,
     input.imageMediaType,
     `chat mode in world ${input.worldId}`,

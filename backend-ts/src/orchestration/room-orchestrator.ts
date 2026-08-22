@@ -4,6 +4,7 @@ import type { SessionPool } from '../sdk/client/session-pool'
 import type { ExecutionResult } from './tape/models'
 import {
   preConnectLocation,
+  runAutonomousRound,
   runChatRoomTurn,
   runChatTurn,
   runGameplayTurn,
@@ -68,6 +69,15 @@ export interface TurnOutcome {
   completed: boolean
   result?: ExecutionResult
   error?: unknown
+  /**
+   * The turn was never started, because the room was already running one.
+   *
+   * Only {@link RoomOrchestrator.handleAutonomousRound} sets this: a user's
+   * message supersedes whatever the room is doing, but a background round must
+   * yield to it rather than pile on. Python's scheduler path expresses the same
+   * thing by returning early when `room.id in active_room_tasks`.
+   */
+  skipped?: boolean
 }
 
 interface ActiveTurn {
@@ -89,11 +99,14 @@ export interface TurnImplementations {
   chat: typeof runChatTurn
   /** Plain chat rooms — no world, no location, follow-up rounds. */
   chatRoom: typeof runChatRoomTurn
+  /** One follow-up round with no user message, driven by the scheduler. */
+  autonomousRound: typeof runAutonomousRound
 }
 
 export interface RoomOrchestratorDeps extends Omit<TurnDeps, 'isSuperseded'> {
   pool: SessionPool
-  turns?: TurnImplementations
+  /** Partial: a test overriding one turn shape keeps the real ones for the rest. */
+  turns?: Partial<TurnImplementations>
 }
 
 export interface PlayerActionInput {
@@ -132,10 +145,12 @@ export class RoomOrchestrator {
   private readonly turns: TurnImplementations
 
   constructor(private readonly deps: RoomOrchestratorDeps) {
-    this.turns = deps.turns ?? {
+    this.turns = {
       gameplay: runGameplayTurn,
       chat: runChatTurn,
       chatRoom: runChatRoomTurn,
+      autonomousRound: runAutonomousRound,
+      ...deps.turns,
     }
     this.turnDeps = {
       ...deps,
@@ -197,6 +212,30 @@ export class RoomOrchestrator {
         mentionedAgentIds: input.mentionedAgentIds,
         signal,
       }),
+    )
+  }
+
+  /**
+   * Run one autonomous follow-up round — the background scheduler's entry point.
+   *
+   * Tracked exactly like every other turn, which is the point: it takes the
+   * room's single in-flight slot, so a user message arriving mid-round finds a
+   * busy room and interrupts it through the normal path, and the *next* tick
+   * finds the user's turn in flight and yields.
+   *
+   * Returns `{ completed: false, skipped: true }` without touching the room when
+   * a turn is already running. Python returns `True` there — "keep scheduling
+   * this room" — which is the same decision phrased as a continuation flag.
+   */
+  async handleAutonomousRound(roomId: number): Promise<TurnOutcome> {
+    if (this.active.has(roomId)) {
+      logger.debug(`[Autonomous] Room ${roomId} is already processing, skipping`)
+      return { completed: false, skipped: true }
+    }
+
+    logger.info(`[Autonomous] Round | Room: ${roomId}`)
+    return this.runTracked(roomId, null, (signal) =>
+      this.turns.autonomousRound(this.turnDeps, { roomId, signal }),
     )
   }
 
@@ -352,6 +391,33 @@ export class RoomOrchestrator {
   /** Agent ids with a live session in this room — Python's `get_chatting_agents`. */
   getChattingAgents(roomId: number): number[] {
     return this.deps.pool.agentsInRoom(roomId)
+  }
+
+  /**
+   * Drop supersede stamps for rooms nobody has spoken in for an hour.
+   *
+   * Port of the surviving half of `ChatOrchestrator.cleanup_stale_entries`,
+   * called by the scheduler's five-minute sweep. Python also swept completed
+   * entries out of `active_room_tasks`; there is nothing to sweep here, because
+   * {@link runTracked} removes its own entry in a `finally` rather than leaving
+   * a settled task in the map.
+   *
+   * Returns how many stamps were removed, matching Python's count.
+   */
+  cleanupStaleEntries(maxAgeSeconds = 3600): number {
+    const cutoff = Date.now() - maxAgeSeconds * 1000
+    let removed = 0
+
+    for (const [roomId, at] of [...this.lastUserMessageAt]) {
+      // A room with a turn in flight keeps its stamp whatever its age: the
+      // supersede check is still live for the responses that turn will start.
+      if (at > cutoff || this.active.has(roomId)) continue
+      this.lastUserMessageAt.delete(roomId)
+      removed++
+    }
+
+    if (removed > 0) logger.info(`Cleaned up ${removed} stale orchestrator entr(ies)`)
+    return removed
   }
 
   async shutdown(): Promise<void> {

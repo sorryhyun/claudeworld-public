@@ -95,7 +95,7 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
         })
       }
       return c.json(
-        handleChatModeAction(state, {
+        await handleChatModeAction(state, {
           worldId,
           playerState,
           roomId: targetRoomId,
@@ -109,6 +109,19 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
 
     // ---- Regular TRPG flow -------------------------------------------------
 
+    // Compressed *before* the first write, not next to the `createMessage` it
+    // feeds. Pillow encodes on the calling thread, so Python runs its three
+    // writes — history, turn, message — with no suspension point between them;
+    // sharp resolves a promise, and an `await` sitting mid-sequence would let a
+    // second action for the same world slip its message row in between this
+    // one's turn bump and its message. Hoisting the only `await` above the
+    // writes restores that block.
+    const image = await tryCompressImage(
+      action.image_data,
+      action.image_media_type,
+      `world ${worldId}`,
+    )
+
     // Recorded as "Processing..." and never updated: nothing writes the real
     // outcome back. The history exists to remind the Action Manager what the
     // player has been *attempting*, which the action text alone carries.
@@ -119,8 +132,6 @@ export function createActionRoutes(state: AppState): Hono<AppEnv> {
     })
 
     const newTurn = incrementTurn(state.db, worldId)
-
-    const image = tryCompressImage(action.image_data, action.image_media_type, `world ${worldId}`)
 
     // Onboarding has no clock, so no snapshot — `player.yaml` may not even carry
     // a `game_time` yet at that point.

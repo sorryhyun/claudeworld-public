@@ -83,6 +83,23 @@ export function startServer(): { port: number; stop: () => Promise<void> } {
   // routers work through Drizzle, so it is wrapped once here rather than in
   // every module that needs it.
   const state = createAppState({ db: wrapDb(sqlite) })
+
+  // Python does this in the `lifespan` startup, right before it accepts
+  // requests (`app_factory.py:99-100`). Without it the `agents` table stays
+  // empty on a database that has only ever seen this backend, and the first
+  // symptom is a *turn* failing — `createWorld` finds no `Onboarding_Manager`
+  // row, so it adds nobody to the onboarding room, and `runGameplayTurn` then
+  // throws "is in the onboarding phase but has no Onboarding Manager".
+  const seeded = Object.keys(state.agentFactory.seedFromConfigs(state.db))
+  if (seeded.length) {
+    logger.info(`🌱 Seeded ${seeded.length} agent(s) from config files: ${seeded.join(', ')}`)
+  }
+
+  // Also from Python's `lifespan`, and after the seeding for the same reason it
+  // is there: the first tick can fire two seconds later, and a round wants the
+  // `agents` table already populated.
+  state.scheduler.start()
+
   const frontendDir = resolveFrontendDir()
   const app = createApp(state, { frontendDir })
   const port = Number(process.env.PORT ?? 8000)

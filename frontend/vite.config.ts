@@ -25,6 +25,10 @@ const API_PREFIXES = [
   'readme',
   'debug',
   'mcp',
+  // Separate from `mcp` because these keys are anchored regexes: `^/mcp(/|$)`
+  // does not match `/mcp-tools`. `API_PREFIXES` in `static.ts` matches by plain
+  // prefix, so one entry covers both there.
+  'mcp-tools',
 ]
 
 /**

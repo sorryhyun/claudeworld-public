@@ -206,6 +206,16 @@ export function createWorldRoutes(state: AppState): Hono<AppEnv> {
       })
 
       logger.info(`Onboarding room ready for world '${body.name}' (trigger via /start-onboarding)`)
+    } else if (!onboardingAgent) {
+      // Python skips silently here too (`worlds.py:192`), and the cost of that
+      // is a turn failing later with "has no Onboarding Manager" instead of the
+      // room setup complaining now. The `if` is kept for parity; the warning is
+      // not, because the seeding that fills this row runs at startup and its
+      // absence means the `agents/` tree was not found.
+      logger.warning(
+        `No 'Onboarding_Manager' agent row — world '${body.name}' has an empty onboarding room ` +
+          'and its first turn will fail. Check that the agents/ directory is present and restart.',
+      )
     }
 
     logger.info(`Created world '${body.name}' for user '${identity.userId}'`)

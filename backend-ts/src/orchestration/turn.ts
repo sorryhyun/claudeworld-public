@@ -2,6 +2,7 @@ import { and, count, eq } from 'drizzle-orm'
 
 import { getSettings } from '../config/settings'
 
+import { getAgentsCached } from '../crud/cached'
 import { getAgentsInRoom, getRoom, markRoomAsFinished } from '../crud/rooms'
 import { getCharactersAtLocation, getLocation } from '../crud/locations'
 import { createMessage, getMessagesAfterAgentResponse } from '../crud/messages'
@@ -359,6 +360,96 @@ export async function runChatRoomTurn(
   }
 
   return total
+}
+
+export interface RunAutonomousRoundInput {
+  roomId: number
+  signal?: AbortSignal
+}
+
+/**
+ * Run *one* follow-up round in a plain chat room, with no user message — port of
+ * `ChatOrchestrator.process_autonomous_round`.
+ *
+ * This is what the background scheduler drives every couple of seconds so that
+ * agents keep talking to each other while nobody is watching. It is deliberately
+ * the same tape {@link runChatRoomTurn} uses for its follow-ups — round 0 of
+ * {@link ChatRoomTapes.followUp} — rather than a second scheduler: the only
+ * difference between "the user said something and the agents followed up" and
+ * "the agents talked among themselves" is where the first line came from.
+ *
+ * Unlike {@link runChatRoomTurn} there is no loop. One tick, one round; the next
+ * tick two seconds later is the loop, and it re-reads pause, finished and
+ * `max_interactions` from the database on the way in — which is what makes the
+ * conversation stoppable from the UI between rounds.
+ *
+ * Stopping conditions, all of them Python's:
+ *
+ * - **fewer than 2 agents** — nobody to talk to, so nothing is scheduled.
+ * - **`max_interactions` reached** — counted against the assistant messages
+ *   already in the room, exactly as {@link roomGuards} counts it mid-tape, and
+ *   surfaced as `reachedLimit` so the caller can tell it apart from a quiet round.
+ * - **every agent skipped** — the conversation has run its course, and the room
+ *   is marked finished so the scheduler stops selecting it.
+ */
+export async function runAutonomousRound(
+  deps: TurnDeps,
+  input: RunAutonomousRoundInput,
+): Promise<ExecutionResult> {
+  const { db } = deps
+  const { roomId } = input
+
+  // Cached, like Python's `crud.get_agents_cached`: this runs on a 2-second
+  // timer for every active room, and the roster changes far more slowly.
+  const roster = getAgentsCached(db, roomId)
+  if (roster.length < 2) {
+    logger.debug(`[Autonomous] Room ${roomId} has fewer than 2 agents, skipping`)
+    return emptyResult()
+  }
+
+  const guards = roomGuards(db, roomId)
+  if (guards.isInteractionLimitReached()) {
+    logger.debug(`[Autonomous] Room ${roomId} reached its max_interactions ceiling`)
+    return { ...emptyResult(), reachedLimit: true }
+  }
+
+  const [interruptAgents, plainAgents] = separateInterruptAgents(roster)
+  const tape = createChatRoomTapes(plainAgents, interruptAgents).followUp(0)
+  // Null when every agent in the room is an interrupt agent: they only ever
+  // react to someone else's line, so there is no round to open with.
+  if (tape === null) return emptyResult()
+
+  const executor = new TapeExecutor({
+    ...guards,
+    respond: makeResponder(deps, {
+      // No world: a chat room belongs to none. See `ResponderContext.world`.
+      world: null,
+      roomId,
+      locationName: null,
+      byId: new Map(roster.map((agent) => [agent.id, agent])),
+      chatSessionId: null,
+      timings: new SubagentTimings(),
+      runner: new TurnRunner(deps.pool),
+    }),
+  })
+
+  const result = await executor.execute(tape, {
+    // The agents are answering each other; there is no user turn to answer.
+    userMessage: '',
+    signal: input.signal,
+    maxTotalMessages: MAX_TOTAL_MESSAGES_CHAT_ROOM,
+  })
+
+  if (result.allSkipped) {
+    logger.info(`[Autonomous] All agents skipped in room ${roomId}. Marking as finished.`)
+    markRoomAsFinished(db, roomId)
+  } else {
+    logger.info(
+      `[Autonomous] Round complete | Room: ${roomId} | Responses: ${result.totalResponses}`,
+    )
+  }
+
+  return result
 }
 
 /**

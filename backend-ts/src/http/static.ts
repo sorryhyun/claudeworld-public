@@ -36,10 +36,15 @@ const logger = getLogger('StaticFiles')
  * Top-level paths owned by the API rather than by the SPA.
  *
  * Mirrors `API_PREFIXES` in `app_factory.py`, including the routers that only
- * exist in the Python tree (`/messages`, `/debug`) and the FastAPI docs paths
- * that have no counterpart here yet: a request the Python backend answers with
- * a JSON 404 must not start answering with HTML just because this backend has
- * not grown that router.
+ * exist in the Python tree (`/messages`) and the FastAPI docs paths that have
+ * no counterpart here yet: a request the Python backend answers with a JSON 404
+ * must not start answering with HTML just because this backend has not grown
+ * that router.
+ *
+ * Matching here is *segment-aware* ({@link isApiPath}), unlike Python's bare
+ * `str.startswith` — so `/mcp` does not cover `/mcp-tools` and the two are
+ * listed separately, as they are in `frontend/vite.config.ts`. Python gets away
+ * with one entry; this list cannot.
  */
 export const API_PREFIXES: readonly string[] = [
   '/auth',
@@ -51,6 +56,7 @@ export const API_PREFIXES: readonly string[] = [
   '/readme',
   '/debug',
   '/mcp',
+  '/mcp-tools',
   '/docs',
   '/openapi.json',
   '/redoc',

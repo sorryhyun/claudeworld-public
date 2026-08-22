@@ -24,6 +24,7 @@ import type { AppEnv } from '../../http/types'
 import { generateJwtToken } from '../../auth/jwt'
 import { resetSettings } from '../../config/settings'
 import { getCache } from '../../infrastructure/cache'
+import { BackgroundScheduler } from '../../infrastructure/scheduler'
 import { EventBroadcaster } from '../../infrastructure/sse'
 import { SSETicketManager } from '../../infrastructure/sse-ticket'
 import { openDb, type Db } from '../../db'
@@ -147,6 +148,17 @@ export async function createGameApp(
     // deletion path throws a TypeError instead of doing the cleanup.
     keysForAgent: (): string[] => [],
     evict: (): Promise<void> => Promise.resolve(),
+    // `GET /auth/health/pool` reads this. Fixed numbers rather than a real
+    // pool: what the route can get wrong is the camelCase-to-snake_case
+    // rename, and distinct values per field are what catch a crossed pair.
+    stats: () => ({
+      poolSize: 3,
+      poolKeys: ['room_1_agent_1', 'room_1_agent_2', 'room_2_agent_1'],
+      pendingCleanupTasks: 0,
+      activeClients: 1,
+      connectionSemaphoreAvailable: 7,
+      maxConcurrentConnections: 10,
+    }),
   } as unknown as SessionPool
 
   const serverDeps = {
@@ -227,6 +239,11 @@ export async function createGameApp(
       new AgentConfigService(root),
     ),
     reset: new WorldResetService(worldsDir),
+    // Constructed but never started, exactly as `createAppState` leaves it. A
+    // route test must not have a timer firing autonomous rounds at its rooms,
+    // but the field has to exist or `createApp` is being handed a shape the
+    // real one does not have.
+    scheduler: new BackgroundScheduler({ db, orchestrator, maxConcurrentRooms: 5 }),
     projectRoot: root,
     shutdown: () => Promise.resolve(),
   }

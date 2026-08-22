@@ -90,8 +90,8 @@ backend-ts/
 │   ├── db/                # Drizzle schema, migrations, introspection, drift diff
 │   ├── domain/            # Enums, errors, player rules, serializers, slash commands
 │   ├── http/              # Hono app, middleware (auth, rate limit), routes/, state.ts
-│   ├── infrastructure/    # cache.ts, locking.ts, background.ts, logging/
-│   ├── lib/               # Shared helpers (async queue, Korean particle agreement)
+│   ├── infrastructure/    # cache.ts, locking.ts, background.ts, scheduler.ts, sse*, logging/
+│   ├── lib/               # Shared helpers (async queue, Korean particles, WebP compression)
 │   ├── orchestration/     # Room orchestrator, turn, context builders, tape/
 │   ├── schemas/           # Zod request/response models
 │   ├── sdk/               # Claude Agent SDK integration (see below)
@@ -171,6 +171,16 @@ orchestration/tape/    chat-room-tape.ts (the chat-room scheduler)
   `/worlds/importable` has. Python gets this from mounting `agent_management` before `agents`.
 - **The profile-pic route is unauthenticated** (an `<img src>` cannot send a header), so the agent
   name validation in `profile-pic.ts` is a security control, not a nicety.
+- **Chat rooms keep talking with nobody watching.** `infrastructure/scheduler.ts` gives every
+  *active* chat room one follow-up round every two seconds — not paused, not finished, active in
+  the last five minutes, `world_id IS NULL`, at least two agents, capped at `MAX_CONCURRENT_ROOMS`.
+  Two details are load-bearing. It goes through `RoomOrchestrator.handleAutonomousRound`, so a
+  background round takes the room's single in-flight slot and yields to a user message rather than
+  piling on. And a tick arriving while the previous one is still running is **dropped, not
+  queued** — APScheduler's `max_instances=1` + `coalesce=True`, which a bare `setInterval` with an
+  async callback does the opposite of. Constructed in `createAppState`, started only by `main.ts`
+  (so tests and `bun run smoke` never get a timer firing turns at them), stopped first in
+  `AppState.shutdown()`.
 
 **Known gap:** `thinking_text` and `response_text` on `/rooms/{id}/chatting-agents` are always
 empty, and the SSE stream does not replay catch-up events on connect. Both need a per-room registry
@@ -496,16 +506,25 @@ migration's rollback story depends on it staying green until cutover. Treat it a
 - The SQLite schema is shared and byte-compatible in both directions — one `claudeworld.db` opens
   under either backend, and a fresh TypeScript install stamps the Alembic head so Python can adopt it.
 - The REST contract is frozen: the React app ships unchanged across the cutover.
-- Still Python-only: the `debug`, `readme` and `mcp_tools` routers, the background scheduler
-  (autonomous rounds), the agent-file watcher, i18n, and image/WebP conversion.
+- **Nothing is Python-only any more.** Phase 3 closed the last gaps: `mcp_tools`, `debug` and
+  `readme` are ported, the background scheduler runs autonomous rounds, and `sharp` replaced the
+  image pass-through. `i18n/korean.py` and `i18n/serializers.py` were already ported;
+  `i18n/timezone.py` is dead code in Python and was deliberately left behind. There is no
+  agent-file watcher to port — `watchfiles` is in `pyproject.toml` for `uvicorn --reload` and
+  nothing imports it.
 
 `rooms`, `room_agents`, `messages`, `sse`, `agents` and `agent_management` are **ported** — see
 [Chat rooms](#chat-rooms). Verified against a running Python backend over the same database file:
 the read endpoints, the created-agent system prompt and every error body are byte-identical.
 
+**`routers/mcp_tools.py` is broken in Python** — four of its five endpoints raise a 500 (wrong
+signatures, and a `ChatOrchestrator.orchestrate_responses` that does not exist). Nothing calls the
+router, so nobody noticed. The TypeScript port implements the *intended* behaviour rather than
+reproducing the crash, which makes it the one Python bug the parity harness cannot diff.
+
 [docs/ts-migration-plan.md](docs/ts-migration-plan.md) tracks phase status, the parity contract,
-the known gotchas table, and the open decisions — including five live Python bugs that were
-reproduced rather than fixed so the parity harness can diff the two backends honestly.
+the known gotchas table, and the open decisions — including six live Python bugs, five of which
+were reproduced rather than fixed so the parity harness can diff the two backends honestly.
 
 ## History
 
