@@ -185,6 +185,21 @@ Seven specialized agents collaborate in two phases: **Onboarding** (interview �
 generation) and **Gameplay** (a 2-cell tape where NPCs react first, then the Action Manager
 coordinates sub-agents and handles narration).
 
+**Onboarding builds incrementally, not in one batch at the end.** `draft_world` is
+re-callable and merges the fields it is given, so the Onboarding Manager drafts early and
+re-drafts as the interview moves, dispatching a designer the turn the player names a place,
+a person or an object; `world_status` is the read-only tool it uses to see what already
+exists before creating a second copy. Only `persist_world` and `complete` are terminal.
+
+**The lore file has three owners.** `src/sdk/handlers/lore-sections.ts` splits `lore.md`
+into a body (the Onboarding Manager's, replaced wholesale by `draft_world` and
+`persist_world`), a `## World Lore Additions` region written by the design sub-agents
+through `add_world_lore`, and `## World Notes`. Every writer goes split → edit → compose,
+and the read-modify-write in `handlers/lore-tools.ts` is synchronous on purpose: designers
+run concurrently, and an `await` between the read and the write is where one contribution
+silently overwrites another. `WorldService.saveLore` replaces the file wholesale — there is
+no append path — which is what forces the discipline.
+
 **Gameplay tape flow:**
 
 1. **Cell 1 (NPC Reactions)** — NPCs at the player's location react concurrently (hidden),
@@ -336,8 +351,10 @@ Tool declarations are Zod-schema modules in `src/sdk/tools/`:
 - **`action.ts`** — common action tools (skip, memorize, recall)
 - **`guideline.ts`** — guideline tools (read, anthropic)
 - **`gameplay.ts`** — Action Manager tools (narration, suggest_options, travel, …)
-- **`onboarding.ts`** — onboarding phase tools (draft_world, persist_world, complete)
-- **`item.ts` / `location.ts` / `character-design.ts` / `subagent.ts`** — sub-agent persist tools
+- **`onboarding.ts`** — onboarding phase tools (world_status, draft_world, persist_world,
+  complete)
+- **`item.ts` / `location.ts` / `character-design.ts` / `subagent.ts`** — sub-agent persist
+  tools, plus `add_world_lore`, which every holder of the `subagents` server may call
 
 Implementations live in `src/sdk/handlers/`, grouped into five MCP servers selected by a
 `ServerRole` and assembled by `handlers/servers.ts`.

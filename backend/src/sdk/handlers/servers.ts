@@ -15,6 +15,7 @@ import { createGuidelinesTools } from './guidelines-tools'
 import { createHistoryTools } from './history-tools'
 import { createItemTools } from './item-tools'
 import { createLocationTools, createPersistLocationTool } from './location-tools'
+import { createLoreContributionTools } from './lore-tools'
 import { createMechanicsTools } from './mechanics-tools'
 import { createNarrativeTools, type NarrativeDeps } from './narrative-tools'
 import { createOnboardingTools } from './onboarding-tools'
@@ -83,11 +84,16 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
   [SERVER_NAMES.onboarding]:
     'This is world creation, and it is a conversation with the player as much as it is ' +
     'a build. `read_lore_guidelines` first — it carries the structure the rest of this ' +
-    'namespace expects. `draft_world` is cheap and revisable, so shape the world there ' +
-    'while the player is still reacting to it; `persist_world` writes to disk and is the ' +
-    'point after which changes are edits. `complete` ends onboarding and hands the world ' +
-    'to the Action Manager: call it only when the world, its starting location and the ' +
-    'player character all exist.',
+    'namespace expects. `draft_world` is cheap and re-callable: call it as soon as the ' +
+    'genre and theme are clear, then call it again — with only the fields that moved — ' +
+    'each time the conversation changes them. Build the world *during* the interview ' +
+    'rather than after it: the moment the player names a place, a person or an object, ' +
+    'dispatch the designer for it and tell the player what appeared. `world_status` is ' +
+    'how you find out what already exists before you create it again, and it costs ' +
+    'nothing. `persist_world` writes the full lore and the stat system; it replaces the ' +
+    'draft body but leaves the sections your designers wrote alone. `complete` ends ' +
+    'onboarding and hands the world to the Action Manager: call it only when the world, ' +
+    'its starting location and the player character all exist.',
 
   [SERVER_NAMES.subagents]:
     'These are the callbacks a design sub-agent reports its finished work through. ' +
@@ -95,7 +101,12 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
     'tool for it is discarded when the sub-agent ends. Persist once, at the end, with ' +
     'the complete design rather than in fragments as you go: `persist_item` takes every ' +
     'item in one call, and re-persisting an id that already exists is skipped, not ' +
-    'overwritten, so a retry cannot repair a partial write.',
+    'overwritten, so a retry cannot repair a partial write. `add_world_lore` is the ' +
+    'exception to "report and stop": it writes into the world\'s own lore, so use it ' +
+    'when your design establishes something later turns must honour — a faction, a ' +
+    'custom, a debt, the reason a door is bricked up — and leave it alone when the ' +
+    'design is self-contained. One section per idea, titled; the same title again ' +
+    'rewrites that section rather than adding a second.',
 }
 
 export type ServerRole =
@@ -212,6 +223,9 @@ function subagentTools(binding: TurnBinding, deps: ServerDeps): SdkTool[] {
         status: deps.status,
         persistence,
       }),
+      // Not a persist callback: the writer here is whoever holds the server,
+      // designer and dispatching parent alike.
+      ...createLoreContributionTools(ctx, { worlds: deps.worlds }),
     )
   }
 
@@ -304,6 +318,7 @@ export function buildToolSets(binding: TurnBinding, deps: ServerDeps): ToolSets 
             players: deps.players,
             locations: deps.locations,
             agentFiles: deps.agentFiles,
+            items: deps.items,
           }),
         )
       }

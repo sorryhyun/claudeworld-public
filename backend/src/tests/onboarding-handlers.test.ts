@@ -33,6 +33,7 @@ import { MtimeCache, WorldService } from '@/services/world-service'
 import { createCharacterDesignTools } from '@/sdk/handlers/character-design-tools'
 import { createPersistCharacterTool } from '@/sdk/handlers/character-tools'
 import { createPersistLocationTool } from '@/sdk/handlers/location-tools'
+import { createLoreContributionTools } from '@/sdk/handlers/lore-tools'
 import { createOnboardingTools } from '@/sdk/handlers/onboarding-tools'
 import {
   buildToolSets,
@@ -174,6 +175,7 @@ function onboardingDeps() {
     locations: deps.locations,
     reset: deps.reset!,
     agentFiles: deps.agentFiles,
+    items: deps.items,
   }
 }
 
@@ -203,6 +205,158 @@ describe('draft_world', () => {
         theme: 't',
         lore_summary: 'too short',
       }),
+    ).rejects.toThrow()
+  })
+
+  test('a second call merges rather than blanking the fields it omits', () => {
+    // The whole point of the incremental flow: the manager re-drafts as the
+    // interview moves, and a refinement of the theme must not lose the genre.
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const draft = findTool(tools, 'draft_world')
+
+    return (async () => {
+      await callTool(draft, {
+        genre: 'dark fantasy',
+        theme: 'survival',
+        lore_summary: 'A'.repeat(60),
+      })
+      await callTool(draft, { theme: 'survival and redemption' })
+
+      const config = deps.worlds!.loadWorldConfig(WORLD)!
+      expect(config.genre).toBe('dark fantasy')
+      expect(config.theme).toBe('survival and redemption')
+      // No new summary was given, so the body is untouched.
+      expect(deps.worlds!.loadLore(WORLD)).toContain('A'.repeat(60))
+    })()
+  })
+
+  test('a call with nothing in it is an error, not a silent no-op', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const result = await callTool(findTool(tools, 'draft_world'), {})
+    expect(isError(result)).toBe(true)
+    expect(resultText(result)).toContain('at least one of')
+  })
+
+  test('a redraft preserves the sections designers wrote into the lore', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const lore = createLoreContributionTools(ctxFor(), { worlds: deps.worlds! })
+
+    await callTool(findTool(tools, 'draft_world'), {
+      genre: 'g',
+      theme: 't',
+      lore_summary: 'A'.repeat(60),
+    })
+    await callTool(findTool(lore, 'add_world_lore'), {
+      title: 'Tide Wardens',
+      content: 'C'.repeat(60),
+    })
+    await callTool(findTool(tools, 'draft_world'), { lore_summary: 'B'.repeat(60) })
+
+    const text = deps.worlds!.loadLore(WORLD)
+    expect(text).toContain('B'.repeat(60))
+    expect(text).not.toContain('A'.repeat(60))
+    expect(text).toContain('### Tide Wardens')
+  })
+})
+
+describe('world_status', () => {
+  test('reports an empty world as empty, naming what would fill it', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const text = resultText(await callTool(findTool(tools, 'world_status')))
+
+    expect(text).toContain('Genre: (not set)')
+    expect(text).toContain('Stat system: not defined yet')
+    expect(text).toContain('Locations: none yet')
+    expect(text).toContain('Characters: none yet')
+    expect(text).toContain('Lore sections from designers: none yet')
+  })
+
+  test('reflects work done earlier in the same turn', async () => {
+    // Read at call time, not at build time: a designer dispatched mid-turn has
+    // to be visible to the next status call, or incremental building is blind.
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const lore = createLoreContributionTools(ctxFor(), { worlds: deps.worlds! })
+
+    await callTool(findTool(tools, 'draft_world'), {
+      genre: 'dark fantasy',
+      theme: 'survival',
+      lore_summary: 'A'.repeat(60),
+    })
+    deps.locations.createLocation(WORLD, 'town_square', 'Town Square', 'Cobbles.', [0, 0])
+    await callTool(findTool(lore, 'add_world_lore'), {
+      title: 'Tide Wardens',
+      content: 'C'.repeat(60),
+    })
+
+    const text = resultText(await callTool(findTool(tools, 'world_status')))
+    expect(text).toContain('Genre: dark fantasy')
+    expect(text).toContain('town_square (Town Square)')
+    expect(text).toContain('Lore sections from designers (1): Tide Wardens')
+  })
+})
+
+describe('add_world_lore', () => {
+  test('files a titled section that survives persist_world', async () => {
+    const lore = createLoreContributionTools(ctxFor({ agentName: 'Location_Designer' }), {
+      worlds: deps.worlds!,
+    })
+    const onboarding = createOnboardingTools(ctxFor(), onboardingDeps())
+
+    const text = resultText(
+      await callTool(findTool(lore, 'add_world_lore'), {
+        title: 'The Ashen Compact',
+        content: 'C'.repeat(60),
+      }),
+    )
+    expect(text).toContain("'The Ashen Compact' added")
+
+    await callTool(findTool(onboarding, 'persist_world'), {
+      lore: 'L'.repeat(150),
+      stat_system: { stats: [{ name: 'hp', display: 'HP', default: 100 }] },
+    })
+
+    const written = deps.worlds!.loadLore(WORLD)
+    expect(written).toContain('## World Lore Additions')
+    expect(written).toContain('### The Ashen Compact')
+    expect(written).toContain('L'.repeat(150))
+  })
+
+  test('two designers writing concurrently both land', async () => {
+    // The handler's read-modify-write has no `await` inside it, which is what
+    // makes interleaved calls merge instead of clobbering one another.
+    const lore = createLoreContributionTools(ctxFor(), { worlds: deps.worlds! })
+    const add = findTool(lore, 'add_world_lore')
+
+    await Promise.all([
+      callTool(add, { title: 'A', content: 'Alpha '.repeat(10) }),
+      callTool(add, { title: 'B', content: 'Beta '.repeat(10) }),
+    ])
+
+    const written = deps.worlds!.loadLore(WORLD)
+    expect(written).toContain('### A')
+    expect(written).toContain('### B')
+  })
+
+  test('the same title rewrites its section rather than adding a second', async () => {
+    const lore = createLoreContributionTools(ctxFor(), { worlds: deps.worlds! })
+    const add = findTool(lore, 'add_world_lore')
+
+    await callTool(add, { title: 'The Ashen Compact', content: 'Old '.repeat(15) })
+    const text = resultText(
+      await callTool(add, { title: 'The Ashen Compact', content: 'New '.repeat(15) }),
+    )
+
+    expect(text).toContain('rewritten')
+    const written = deps.worlds!.loadLore(WORLD)
+    expect(written.match(/### The Ashen Compact/g)).toHaveLength(1)
+    expect(written).toContain('New')
+    expect(written).not.toContain('Old')
+  })
+
+  test('rejects content under the 40-character floor', () => {
+    const lore = createLoreContributionTools(ctxFor(), { worlds: deps.worlds! })
+    expect(
+      callTool(findTool(lore, 'add_world_lore'), { title: 'T', content: 'short' }),
     ).rejects.toThrow()
   })
 })
@@ -712,6 +866,7 @@ describe('buildServers', () => {
       'mcp__subagents__persist_item',
       'mcp__subagents__persist_character_design',
       'mcp__subagents__persist_location_design',
+      'mcp__subagents__add_world_lore',
     ]) {
       expect(built.toolNames).toContain(name)
     }
@@ -780,18 +935,35 @@ describe('buildServers', () => {
       'mcp__onboarding__persist_world',
       'mcp__onboarding__complete',
       'mcp__onboarding__read_lore_guidelines',
+      'mcp__onboarding__world_status',
+      // The designers the manager dispatches mid-interview report back here,
+      // and may extend the lore they were designing against.
+      'mcp__subagents__persist_location_design',
+      'mcp__subagents__add_world_lore',
     ]) {
       expect(built.toolNames).toContain(name)
     }
   })
 
-  test('subagent gets only the persist callbacks', () => {
+  test('subagent gets only the persist callbacks and the lore write', () => {
     const built = servers('subagent')
     expect(Object.keys(built.mcpServers).sort()).toEqual(
       [SERVER_NAMES.guidelines, SERVER_NAMES.subagents].sort(),
     )
     expect(built.toolNames).toContain('mcp__subagents__persist_item')
+    expect(built.toolNames).toContain('mcp__subagents__add_world_lore')
     expect(built.toolNames).not.toContain('mcp__action_manager__narration')
+  })
+
+  test('add_world_lore is gated on the world service like the rest of the lore surface', () => {
+    // `subagent-definitions.ts` grants the tool only when the turn serves it, so
+    // the two gates have to agree about what "served" means.
+    const bare = buildServers(
+      ctxFor(),
+      { players: deps.players, rooms: deps.rooms, locations: deps.locations },
+      { role: 'subagent' },
+    )
+    expect(bare.toolNames).not.toContain('mcp__subagents__add_world_lore')
   })
 
   test('character_design gets the two deep-creation tools', () => {

@@ -147,3 +147,26 @@ Agent workflow:
 - Characters created here are placed at initial location when onboarding completes
 - consolidated_memory.md persists across sessions and supports recall tool
 - Agents can recall memories by subtitle using the `recall` tool during gameplay
+
+---
+
+## Extending the World Lore
+
+Alongside the persist tool, this designer may write named sections into the world's shared lore with `mcp__subagents__add_world_lore`. The world being designed for is also a world it is allowed to extend.
+
+**Use it when the design establishes something the rest of the world must honour afterwards.**
+
+- The character's history fixes events the rest of the world would remember.
+- Their allegiances name a faction, order or house the world did not have yet.
+- Their consolidated memories reference a war, a disaster or a custom that ought to exist beyond them.
+
+Example: a veteran whose company was disbanded in disgrace justifies a section on that campaign — not a section repeating the character's backstory.
+
+**Skip it when the design stands on its own.** Most designs do. A section that only restates what the persist tool already stored is noise.
+
+**Rules**
+- One idea per section, under a short specific title (`The Ashen Compact`, not `Lore`).
+- Written in the world's voice, consistent with the existing genre, theme and lore — read what is there before adding to it.
+- The same title again **rewrites** that section; use that to revise, never to add a near-duplicate.
+- Do not restate the design itself. The persist tool stores it; this is for what the design implies about the world.
+- Sections written here survive the Onboarding Manager's full lore write.

@@ -11,15 +11,23 @@ import {
   draftWorldTool,
   persistWorldTool,
   readLoreGuidelinesTool,
+  worldStatusTool,
 } from '@/sdk/tools/onboarding'
 import { resolveTool } from '@/sdk/tools/registry'
 import { getLogger } from '@/infrastructure/logging/logger'
 import type { AgentFilesystemService } from '@/services/agent-filesystem-service'
+import type { ItemService } from '@/services/item-service'
+import { composeLore, listAdditionTitles, splitLore } from './lore-sections'
 import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**
- * World initialisation. The three writing tools run in a fixed order, each
- * leaving the world in a state the next depends on (see `tools/onboarding.ts`).
+ * World initialisation. `draft_world` is re-callable and merges, so the manager
+ * can shape the world while the interview is still running and dispatch
+ * designers between turns rather than in one batch at the end; `world_status`
+ * is what it reads to avoid building the same place twice. Both writers go
+ * through `lore-sections.ts`, because the lore file is no longer the manager's
+ * alone — the designers write into it too (see `lore-tools.ts`).
+ *
  * Beyond flipping the phase, `complete` captures the initial-state snapshot the
  * reset feature restores to — it has to be taken after the item designer has
  * run, or "reset this world" hands the player an inventory they never had.
@@ -34,6 +42,8 @@ export interface OnboardingDeps {
   reset: WorldResetService
   /** Needed to place onboarding-created NPCs; without it `complete` still works. */
   agentFiles?: AgentFilesystemService
+  /** Only `world_status` reads it, and it degrades to "not reported" without it. */
+  items?: ItemService
 }
 
 /** The lore guidelines text, from `lore_guidelines.yaml`'s active version. */
@@ -45,9 +55,6 @@ function loadLoreGuidelines(): string {
   const template = (version as Record<string, unknown>).template
   return typeof template === 'string' ? template : ''
 }
-
-/** Marker `persist_world` preserves across a lore rewrite. */
-const WORLD_NOTES_MARKER = '\n\n---\n## World Notes'
 
 export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): SdkTool[] {
   const worldName = requireWorldName(ctx)
@@ -68,6 +75,20 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
     )
   }
 
+  const statusDef = resolveTool(worldStatusTool.name, ctx.groupName)
+  if (statusDef) {
+    tools.push(
+      tool(
+        worldStatusTool.name,
+        statusDef.description,
+        worldStatusTool.inputSchema,
+        // Read at call time, not at build time: the point of this tool is to
+        // report what the designers dispatched earlier in the turn have written.
+        async () => toolSuccess(buildWorldStatus(deps, worldName)),
+      ),
+    )
+  }
+
   // Gated like the others: an unconditional tool cannot be turned off from a
   // group config.
   const draftDef = resolveTool(draftWorldTool.name, ctx.groupName)
@@ -78,18 +99,36 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
         draftDef.description,
         draftWorldTool.inputSchema,
         async (args) => {
+          if (args.genre === null && args.theme === null && args.lore_summary === null) {
+            return toolError(
+              'draft_world needs at least one of genre, theme or lore_summary. ' +
+                'Call world_status to see what the draft currently holds.',
+            )
+          }
+
           try {
+            // Merge, not replace: a later call refining the theme must not blank
+            // the genre the player settled two turns ago.
             const config = deps.worlds.ensureWorldExists(worldName)
-            config.genre = args.genre
-            config.theme = args.theme
+            config.genre = args.genre ?? config.genre
+            config.theme = args.theme ?? config.theme
             deps.worlds.saveWorldConfig(worldName, config)
 
-            // Overwritten wholesale by `persist_world` later; this exists only so
-            // the sub-agents running in the background have a world to design for.
-            deps.worlds.saveLore(worldName, `# World Lore\n\n${args.lore_summary}`)
+            // The body is overwritten wholesale by `persist_world` later; it
+            // exists only so designers running in the background have a world to
+            // design for. Their own contributions live in a separate region and
+            // survive both this write and that one.
+            if (args.lore_summary !== null) {
+              const sections = splitLore(deps.worlds.loadLore(worldName))
+              deps.worlds.saveLore(
+                worldName,
+                composeLore({ ...sections, body: `# World Lore\n\n${args.lore_summary}` }),
+              )
+            }
 
             return toolSuccess(
-              `World draft created. Genre: ${args.genre}, Theme: ${args.theme}. ` +
+              `World draft updated. Genre: ${config.genre ?? 'unset'}, ` +
+                `Theme: ${config.theme ?? 'unset'}. ` +
                 `Sub-agents can now start with this context.`,
             )
           } catch (error) {
@@ -130,24 +169,21 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
               deps.players.savePlayerState(worldName, state)
             }
 
-            // The draft is replaced, but anything already filed under
-            // "## World Notes" survives — the notes are written by other agents
-            // and are not the Onboarding Manager's to discard.
-            const existingLore = deps.worlds.loadLore(worldName)
-            const notesIndex = existingLore.indexOf(WORLD_NOTES_MARKER)
-            let newLore =
-              notesIndex === -1
-                ? `# World Lore\n\n${args.lore}`
-                : `# World Lore\n\n${args.lore}${existingLore.slice(notesIndex)}`
-
+            // The draft body is replaced; the designers' lore sections and any
+            // existing world notes are not the Onboarding Manager's to discard.
+            const sections = splitLore(deps.worlds.loadLore(worldName))
+            let notes = sections.notes
             if (args.world_notes) {
               // The model emits literal backslash-n inside a YAML-ish string
               // often enough to be worth un-escaping by hand.
-              const notes = args.world_notes.replaceAll('\\n', '\n')
-              newLore = `${newLore}\n\n---\n## World Notes\n${notes}`
+              const added = args.world_notes.replaceAll('\\n', '\n')
+              notes = notes ? `${notes}\n\n${added}` : added
             }
 
-            deps.worlds.saveLore(worldName, newLore)
+            deps.worlds.saveLore(
+              worldName,
+              composeLore({ ...sections, body: `# World Lore\n\n${args.lore}`, notes }),
+            )
 
             return toolSuccess(
               `World persisted successfully. Stats: ${stats.length}, ` +
@@ -240,6 +276,76 @@ export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): S
   }
 
   return tools
+}
+
+/**
+ * A plain-text inventory of the world so far. Deliberately not a JSON dump: the
+ * caller is a model deciding what to build next, and a missing section has to
+ * read as "nothing here yet" rather than as an empty array it might skim past.
+ * Every lookup is filesystem-first, so it also reflects a designer that finished
+ * moments ago in the same turn.
+ */
+function buildWorldStatus(deps: OnboardingDeps, worldName: string): string {
+  const lines: string[] = [`World: ${worldName}`]
+
+  const config = deps.worlds.loadWorldConfig(worldName)
+  lines.push(`Phase: ${config?.pendingPhase ?? config?.phase ?? 'onboarding'}`)
+  lines.push(`Genre: ${config?.genre ?? '(not set)'}`)
+  lines.push(`Theme: ${config?.theme ?? '(not set)'}`)
+  lines.push(`Player name: ${config?.userName ?? '(not set — complete sets it)'}`)
+
+  const sections = splitLore(deps.worlds.loadLore(worldName))
+  lines.push(`Lore body: ${sections.body.length} characters`)
+  const titles = listAdditionTitles(sections.additions)
+  lines.push(
+    titles.length > 0
+      ? `Lore sections from designers (${titles.length}): ${titles.join(', ')}`
+      : 'Lore sections from designers: none yet',
+  )
+
+  // `persist_world` is the only writer of stats.json, so an empty catalog is
+  // also the answer to "have I persisted the world yet".
+  const stats = deps.players.loadStatDefinitions(worldName).stats ?? []
+  lines.push(
+    stats.length > 0
+      ? `Stat system (${stats.length}): ${stats.map((stat) => stat.name).join(', ')}`
+      : 'Stat system: not defined yet — persist_world writes it',
+  )
+
+  const state = deps.players.loadPlayerState(worldName)
+  const locations = deps.locations.loadAllLocations(worldName)
+  const locationNames = Object.keys(locations)
+  lines.push(
+    locationNames.length > 0
+      ? `Locations (${locationNames.length}): ${locationNames
+          .map((name) => {
+            const display = locations[name]?.displayName ?? name
+            const here = state?.currentLocation === name ? ' [starting]' : ''
+            return `${name} (${display})${here}`
+          })
+          .join(', ')}`
+      : 'Locations: none yet — dispatch location_designer',
+  )
+
+  if (deps.agentFiles) {
+    const characters = deps.agentFiles.listWorldAgents(worldName)
+    lines.push(
+      characters.length > 0
+        ? `Characters (${characters.length}): ${characters.join(', ')}`
+        : 'Characters: none yet — dispatch character_designer',
+    )
+  }
+
+  if (deps.items) {
+    const items = deps.items.getAllItemsInWorld(worldName)
+    lines.push(
+      items.length > 0
+        ? `Item templates (${items.length}): ${items.map((item) => item.itemId).join(', ')}`
+        : 'Item templates: none yet — dispatch item_designer',
+    )
+  }
+
+  return lines.join('\n')
 }
 
 /**

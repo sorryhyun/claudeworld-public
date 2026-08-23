@@ -229,6 +229,7 @@ describe('isReadOnlyTool', () => {
     'read_lore_guidelines',
     'recall',
     'recall_history',
+    'world_status',
   ]
 
   test('is exactly the query tools', () => {

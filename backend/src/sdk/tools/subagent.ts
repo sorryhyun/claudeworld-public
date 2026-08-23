@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { requiredText, type ToolDefinition } from './definitions'
+import { requiredText, requiredTextOfLength, type ToolDefinition } from './definitions'
 
 /**
  * Persist tools for the sub-agents dispatched by the `Agent` tool. A sub-agent
@@ -220,10 +220,37 @@ Creates the item template in filesystem (items/[item_id].json).
   enabled: true,
 } satisfies ToolDefinition
 
+export const addWorldLoreTool = {
+  name: 'add_world_lore',
+  description: `Write a named section into the world's shared lore.
+Every designer may call this: the world you are designing *for* is also a world
+you are allowed to extend. Use it when your design establishes something the
+rest of the world should know — a faction, a custom, a piece of history, the
+reason a place is abandoned — not to restate the design itself, which your
+persist tool already stores.
+
+The section is filed under its title. Calling this again with the same title
+**rewrites** that section, so a revision is one call, not a second entry.
+Sections written here survive the Onboarding Manager's \`persist_world\`.`,
+  inputSchema: {
+    title: requiredText('Title').describe(
+      "Short section title, unique within the world (e.g. 'The Ashen Compact', " +
+        "'Why the North Gate Is Sealed'). Reusing a title rewrites that section.",
+    ),
+    content: requiredTextOfLength('Content', 40, 4000).describe(
+      'The lore text, 1-3 paragraphs (40-4000 chars). Written in the world\'s ' +
+        'own voice, consistent with the existing genre, theme and lore.',
+    ),
+  },
+  response: '{lore_result}',
+  enabled: true,
+} satisfies ToolDefinition
+
 export const SUBAGENT_TOOLS = {
   persist_character_design: persistCharacterDesignTool,
   persist_location_design: persistLocationDesignTool,
   persist_item: persistItemTool,
+  add_world_lore: addWorldLoreTool,
 } satisfies Record<string, ToolDefinition>
 
 /** Which qualified tool each sub-agent type calls back into. */
@@ -232,3 +259,10 @@ export const SUBAGENT_TOOL_NAMES = {
   character_designer: 'mcp__subagents__persist_character_design',
   location_designer: 'mcp__subagents__persist_location_design',
 } as const
+
+/** Offered *alongside* the persist tool above, to every designer that gets one.
+ * Separate from {@link SUBAGENT_TOOL_NAMES} because that map is the "which
+ * sub-agent reports through which callback" join, and this tool belongs to all
+ * of them. Gated on `ServerDeps.worlds` like the rest of the lore surface, so
+ * `subagent-definitions.ts` grants it only when the turn actually serves it. */
+export const LORE_CONTRIBUTION_TOOL = 'mcp__subagents__add_world_lore'

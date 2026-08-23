@@ -141,3 +141,25 @@ Before finishing a character:
 - The character only exists in the game after you call this tool
 - Never just describe a character without persisting—if they're worth designing, they're worth saving
 
+---
+
+## Extending the World Lore
+
+Alongside the persist tool, this designer may write named sections into the world's shared lore with `mcp__subagents__add_world_lore`. The world being designed for is also a world it is allowed to extend.
+
+**Use it when the design establishes something the rest of the world must honour afterwards.**
+
+- The character belongs to a faction, order, guild or family the world did not have yet → write the group, not the person.
+- Their role implies a custom, a law or a social rule others also live under.
+- Their backstory fixes a piece of history other characters would remember.
+
+Example: an innkeeper who launders debts for the harbour guild justifies a section on the guild's hold over the docks — not a section repeating the innkeeper's appearance.
+
+**Skip it when the design stands on its own.** Most designs do. A section that only restates what the persist tool already stored is noise.
+
+**Rules**
+- One idea per section, under a short specific title (`The Ashen Compact`, not `Lore`).
+- Written in the world's voice, consistent with the existing genre, theme and lore — read what is there before adding to it.
+- The same title again **rewrites** that section; use that to revise, never to add a near-duplicate.
+- Do not restate the design itself. The persist tool stores it; this is for what the design implies about the world.
+- Sections written here survive the Onboarding Manager's full lore write.

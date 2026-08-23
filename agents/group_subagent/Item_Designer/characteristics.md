@@ -363,3 +363,26 @@ Before persisting an item:
 ```
 
 You can create multiple items in a single call--useful for starting gear sets or shop inventories.
+
+---
+
+## Extending the World Lore
+
+Alongside the persist tool, this designer may write named sections into the world's shared lore with `mcp__subagents__add_world_lore`. The world being designed for is also a world it is allowed to extend.
+
+**Use it when the design establishes something the rest of the world must honour afterwards.**
+
+- The item implies a craft, a trade, a material or a technology the world did not have named yet.
+- Its origin fixes a piece of history, or the reason a faction wants it.
+- It carries a rule others are bound by — who may hold it, what it costs to use, what it marks its bearer as.
+
+Example: a credential stamped by a defunct ministry justifies a section on that ministry and why its seals still open doors — not a section repeating the item's stats.
+
+**Skip it when the design stands on its own.** Most designs do. A section that only restates what the persist tool already stored is noise.
+
+**Rules**
+- One idea per section, under a short specific title (`The Ashen Compact`, not `Lore`).
+- Written in the world's voice, consistent with the existing genre, theme and lore — read what is there before adding to it.
+- The same title again **rewrites** that section; use that to revise, never to add a near-duplicate.
+- Do not restate the design itself. The persist tool stores it; this is for what the design implies about the world.
+- Sections written here survive the Onboarding Manager's full lore write.

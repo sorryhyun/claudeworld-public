@@ -13,7 +13,7 @@ import { join } from 'node:path'
 
 import { getSettings } from '@/config/settings'
 import { getLogger } from '@/infrastructure/logging/logger'
-import { SUBAGENT_TOOL_NAMES } from '@/sdk/tools/subagent'
+import { LORE_CONTRIBUTION_TOOL, SUBAGENT_TOOL_NAMES } from '@/sdk/tools/subagent'
 
 const logger = getLogger('SubagentDefinitions')
 
@@ -98,6 +98,7 @@ function buildSubagentPrompt(
   identity: string,
   characteristics: string,
   persistToolName: string | undefined,
+  loreToolName: string | undefined,
 ): string {
   const displayName = SUBAGENT_DISPLAY_NAMES[type]
 
@@ -121,6 +122,20 @@ You MUST use the \`${persistToolName}\` tool to persist your results. Do not ret
 Provide your results as a clear, structured text response. Your output will be returned to the parent agent via the Task tool result.`
   }
 
+  // Stated separately from the persist instruction on purpose: the persist call
+  // is mandatory, this one is a judgement the designer makes about its own work.
+  if (loreToolName) {
+    prompt += `
+
+## Extending the World
+You may also write into the world's shared lore with \`${loreToolName}\`, under a
+title of your choosing. Use it when your design establishes something the rest of
+the world must honour afterwards — a faction, a custom, a history, the reason a
+place is the way it is — and skip it when the design stands on its own. Do not
+restate the design itself there; your persist tool already stores it. Calling it
+again with the same title rewrites that section rather than adding a second.`
+  }
+
   return prompt
 }
 
@@ -131,23 +146,38 @@ export function persistToolFor(type: SubagentType): string | undefined {
     : undefined
 }
 
-/** A missing folder is not an error: the prompt falls back to generic text. */
-export function buildSubagentDefinition(type: SubagentType): AgentDefinition {
+/** A missing folder is not an error: the prompt falls back to generic text.
+ *
+ * `withLoreTool` is the turn's answer to "is `add_world_lore` served" — the same
+ * gate the persist tools go through. A designer restricted to a tool the turn
+ * does not serve is dispatched with a tool that never answers, so the grant and
+ * the prompt paragraph move together. Restricting `tools` at all is why this has
+ * to be explicit: a designer with a persist tool no longer inherits the parent's
+ * set, so it cannot reach the lore tool unless it is named here. */
+export function buildSubagentDefinition(
+  type: SubagentType,
+  withLoreTool = true,
+): AgentDefinition {
   const dir = subagentDir(type)
   const identity = readIdentityFile(dir, 'in_a_nutshell.md')
   const characteristics = readIdentityFile(dir, 'characteristics.md')
   const description = readIdentityFile(dir, 'description.md')
   const persistToolName = persistToolFor(type)
+  // A designer with no persist tool inherits the parent's whole set, the lore
+  // tool included; naming it would *narrow* that rather than widen it.
+  const loreToolName = persistToolName && withLoreTool ? LORE_CONTRIBUTION_TOOL : undefined
 
   const definition: AgentDefinition = {
     description: description || `Sub-agent for ${type.replaceAll('_', ' ')}`,
-    prompt: buildSubagentPrompt(type, identity, characteristics, persistToolName),
+    prompt: buildSubagentPrompt(type, identity, characteristics, persistToolName, loreToolName),
     // 'inherit', not an explicit id: a sub-agent must follow the `USE_SONNET`
     // flip with its parent, or an Opus turn silently spawns Sonnet designers.
     model: 'inherit',
   }
 
-  if (persistToolName) definition.tools = [persistToolName]
+  if (persistToolName) {
+    definition.tools = loreToolName ? [persistToolName, loreToolName] : [persistToolName]
+  }
 
   return definition
 }
@@ -193,16 +223,20 @@ export function buildSubagentDefinitionsForRole(
   })
   if (types.length === 0) return undefined
 
+  // Gated on `ServerDeps.worlds` in `buildToolSets`, so a turn without a world
+  // service serves the persist tools and not this one.
+  const withLoreTool = served.has(LORE_CONTRIBUTION_TOOL)
+
   // The surviving list is part of the key: two turns of one role can be served
-  // different tool sets.
-  const cacheKey = `${role}|${types.join(',')}`
+  // different tool sets. So is the lore grant, for the same reason.
+  const cacheKey = `${role}|${types.join(',')}|${withLoreTool ? 'lore' : 'nolore'}`
   const mtimes = identityMtimes(types)
 
   const cached = cache.get(cacheKey)
   if (cached && sameMtimes(cached.mtimes, mtimes)) return cached.definitions
 
   const definitions = Object.fromEntries(
-    types.map((type) => [type, buildSubagentDefinition(type)]),
+    types.map((type) => [type, buildSubagentDefinition(type, withLoreTool)]),
   )
   cache.set(cacheKey, { mtimes, definitions })
   logger.debug(
