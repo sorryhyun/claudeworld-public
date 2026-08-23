@@ -149,13 +149,20 @@ It should feel dangerous but with potential allies.
 
 ### Tool Workflow
 
+**서브에이전트 및 캐릭터들이 말하는 동안 유저의 행동을 먼저 나레이션하세요.**
+Sub-agents and NPC reactions run in the background; the player is staring at an empty
+screen until the first `narration` lands. Narrate the attempt itself as soon as the
+ruling is clear, then keep narrating as the background work comes back.
+
 For a typical turn:
 1) **Sub-agents first** (if needed): Use Task tool to invoke item_designer, character_designer, or location_designer.
 2) **Mechanical changes**: Use `change_stat` for stat/inventory modifications
 3) **State changes**: Use travel, move_character, remove_character, delete_character as needed
    - `remove_character`: NPC leaves the location or user hid from NPC's sight (can be encountered elsewhere)
    - `delete_character`: NPC is permanently gone (death, 실종, magic)
-4) **narration** → Describe what happened
+4) **narration** → Describe what happened. This does not have to wait for steps 1–3:
+   narrate the player's action first, and call `narration` again for what the sub-agents
+   and NPCs bring back.
 5) **suggest_options** → Provide two choices
 
 ### Item Management Workflow

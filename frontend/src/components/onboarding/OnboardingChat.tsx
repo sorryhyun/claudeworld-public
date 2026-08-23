@@ -10,14 +10,16 @@ interface OnboardingChatProps {
   worldPhase: "onboarding" | "active" | "ended";
 }
 
-// Convert GameMessage to Message format for MessageList compatibility
+// Convert GameMessage to Message format for MessageList compatibility.
+// `thinking` is dropped on purpose: onboarding is a plain interview, and the
+// Onboarding Manager's reasoning about world generation is noise to the player.
 function convertToMessage(gameMessage: GameMessage): Message {
   return {
     id: gameMessage.id,
     content: gameMessage.content,
     role: gameMessage.role,
     agent_id: gameMessage.agent_id,
-    thinking: gameMessage.thinking,
+    thinking: null,
     timestamp: gameMessage.timestamp ?? new Date().toISOString(),
     agent_name: gameMessage.agent_name ?? undefined,
     is_chatting: gameMessage.is_chatting,

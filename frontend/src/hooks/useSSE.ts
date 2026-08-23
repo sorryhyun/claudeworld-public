@@ -278,6 +278,22 @@ export function useSSE(roomId: number | null): UseSSEReturn {
           if (data.message) {
             setLastNewMessage(data.message);
             setNewMessageSeq((s) => s + 1);
+
+            // The `narration` tool persists its message mid-turn and the agent
+            // keeps working, so the buffer has to be dropped here: the saved
+            // message now carries that text, and leaving it would render it
+            // twice -- once saved, once in the live bubble -- and make a second
+            // `narration` call in the same turn append onto the stale prose.
+            const agentId = data.message.agent_id;
+            if (agentId != null) {
+              setStreamingAgents((prev) => {
+                const existing = prev.get(agentId);
+                if (!existing?.narration_text) return prev;
+                const next = new Map(prev);
+                next.set(agentId, { ...existing, narration_text: "" });
+                return next;
+              });
+            }
           }
         } catch {
           /* ignore */
