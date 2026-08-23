@@ -21,6 +21,7 @@
     "test:frontend": "bun run --filter '@claudeworld/frontend' test",
     "migration-check": "bun run --filter '@claudeworld/backend' migration-check",
     "smoke": "bun run --filter '@claudeworld/backend' smoke",
+    "clean": "rm -f claudeworld.db claudeworld.db-shm claudeworld.db-wal latency.log run.log traces.jsonl && rm -rf frontend/dist backend/dist dist",
     "build:exe": "bun run build && bun scripts/build/exe-bundle.ts --target linux",
     "build:exe:windows": "bun run build && bun scripts/build/exe-bundle.ts --target windows",
     "setup": "bun backend/src/scripts/setup-env.ts"

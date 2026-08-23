@@ -44,7 +44,7 @@ backend/       The server: HTTP, DB, SDK, orchestration            → backend/C
 frontend/      The React app                                       → frontend/CLAUDE.md
 worlds/        User-created world data (gitignored)
 docs/          Architecture notes and historical plans
-scripts/       Release installers and the deploy shell script
+scripts/       Release installers, the deploy shell script, Makefile helpers
 ```
 
 `agents/`, `config/` and `worlds/` are **data**, not code: they are read at
@@ -88,6 +88,34 @@ bun run build                                      # → frontend/dist
 
 See [`backend/CLAUDE.md`](backend/CLAUDE.md) for the backend's own tooling
 (`pilot`, `spike`, `smoke`, `migration-check`, `verify-schema`).
+
+### The Makefile runs on Windows too — keep it shell-free
+
+Every target except `make prod` works from a PowerShell prompt, from cmd and from
+Git Bash, as well as from a Unix shell. That is not free: GNU Make on Windows hands
+recipes to `sh.exe` when one is on PATH and to **`cmd.exe`** when none is, and cmd
+has no `mkdir -p`, no `rm`, no `pkill`, no `VAR=value cmd` prefix, and does not strip
+the quotes off `echo "text"`. So no recipe in the Makefile uses shell syntax at all:
+
+- **Messages go through `$(info ...)`,** which make prints itself with no shell
+  involved — spacing, quotes and emoji come out identical everywhere. Two
+  consequences: `$(info   x)` *trims* its argument, so anything indented or longer
+  than a line lives in a `define` block; and make expands a whole recipe before
+  running any of it, so all of a target's messages print **before** its first
+  command. Write them as an announcement, never as step-by-step narration.
+- **Values reach the backend as exported make variables** (`export PORT`,
+  `run-backend-perf: export PERF_LOG := true`), never as a bash-only
+  `VAR=value cmd` prefix.
+- **`$(CURDIR)`, not `$(PWD)`** — make defines the first itself; the second is
+  inherited from the shell and is empty when make was started from PowerShell.
+- **Anything that needs a real shell goes to Bun**, whose own shell is
+  cross-platform: `clean` is a root `package.json` script (`rm -rf` and friends),
+  `stop` is `scripts/dev/stop.ts` (`pkill -f` on POSIX, a `Win32_Process` command-line
+  filter on Windows), and the perf target's `tee` is `scripts/dev/tee.ts`.
+
+What is left per recipe line is one command plus `|`, `2>` and `||`, which cmd and sh
+spell the same way. `make prod` is the documented exception: it backgrounds a server
+with `&` and calls a `.sh` script, so it needs WSL or Git Bash.
 
 ## Single-Port Serving
 

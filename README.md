@@ -43,6 +43,11 @@ Then open http://localhost:8000 and log in with your password.
 
 ## Build from Source
 
+Works on macOS, Linux, WSL and Windows. On Windows the same `make` targets run from
+PowerShell, cmd or Git Bash — install GNU Make (`winget install ezwinports.make`) and
+[Bun](https://bun.sh), and make sure both are on PATH. `make prod` is the one target
+that still needs a POSIX shell.
+
 ### 1. Install Dependencies
 
 ```bash

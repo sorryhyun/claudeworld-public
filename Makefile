@@ -1,7 +1,28 @@
 .PHONY: help install setup dev serve exe exe-windows run-backend run-backend-perf run-backend-trace dev-perf dev-trace run-tunnel-backend prod stop clean
 
-# Use bash for all commands
+# Every target here has to run from a PowerShell prompt as well as from bash.
+#
+# GNU Make on Windows hands each recipe line to `sh.exe` when one is on PATH (so
+# a Git Bash prompt behaves like Linux) and to `cmd.exe` when none is -- which
+# is what PowerShell gets. cmd shares almost nothing with sh: no `mkdir -p`, no
+# `rm`, no `pkill`, no `VAR=value cmd` prefix, and `echo "text"` keeps its
+# quotes. Rather than fork this file per platform, no recipe below uses shell
+# syntax at all:
+#
+#   * everything printed to a human goes through `$(info ...)`, which make
+#     writes itself without a shell, so spacing, quotes and emoji come out
+#     identical everywhere;
+#   * everything the backend needs to be told travels as an exported make
+#     variable instead of a bash-only `VAR=value cmd` prefix;
+#   * the two targets that shuffle files or processes (`clean`, `stop`) call
+#     Bun, which brings its own cross-platform shell.
+#
+# What is left per line is a single command plus the `|`, `2>` and `||`
+# operators cmd and sh happen to spell the same way. `make prod` is the one
+# exception -- see the note there.
+ifneq ($(OS),Windows_NT)
 SHELL := /bin/bash
+endif
 
 # Whether the backend serves frontend/dist on its own port. On by default, so
 # `make run-backend` after a build is a working single-port app. `make dev`
@@ -10,6 +31,7 @@ SHELL := /bin/bash
 # build must not shadow it with a stale bundle.
 SERVE_FRONTEND ?= true
 FRONTEND_DEV ?= false
+export SERVE_FRONTEND FRONTEND_DEV
 
 # Whether the backend opens a browser once it knows which port it got. Left
 # unset the backend follows FRONTEND_DEV, so `make dev` opens a tab and
@@ -17,6 +39,8 @@ FRONTEND_DEV ?= false
 # The backend has to be the one to launch it: with a negotiable port, this
 # file no longer knows the URL the tab should land on.
 OPEN_BROWSER ?=
+HOST ?= 127.0.0.1
+export OPEN_BROWSER HOST
 
 # The port every target prefers, and the URL built from it. One definition
 # rather than the sixteen literal 8000s this file used to carry -- they drifted
@@ -28,178 +52,197 @@ OPEN_BROWSER ?=
 # the API's own origin and issues relative URLs.
 PORT ?= 8000
 URL := http://localhost:$(PORT)
+export PORT
 
 # The single SQLite database the whole repo shares. The `sqlite+aiosqlite://`
 # spelling is a leftover of the SQLAlchemy era that `sqlitePathFromUrl` still
 # accepts; it is kept because existing `.env` files carry it. `DATABASE_URL`
 # must be set for every target -- the built-in default is Postgres, which this
 # backend cannot open.
-SQLITE_URL := sqlite+aiosqlite:///$(PWD)/claudeworld.db
+#
+# `$(CURDIR)`, not `$(PWD)`: make defines CURDIR itself, while PWD is inherited
+# from the shell and is simply empty when make was started from PowerShell.
+DATABASE_URL := sqlite+aiosqlite:///$(CURDIR)/claudeworld.db
+export DATABASE_URL
 
-# Every server target starts from this. One definition rather than one per
-# target, each drifting its own way.
-RUN_BACKEND = HOST=127.0.0.1 PORT=$(PORT) SERVE_FRONTEND=$(SERVE_FRONTEND) \
-	FRONTEND_DEV=$(FRONTEND_DEV) OPEN_BROWSER=$(OPEN_BROWSER) \
-	DATABASE_URL=$(SQLITE_URL)
+# `sudo npm -g` is how a Unix box installs a global CLI and is exactly wrong on
+# Windows, where npm writes to a per-user prefix and there is no sudo.
+ifeq ($(OS),Windows_NT)
+SUDO :=
+else
+SUDO := sudo
+endif
 
+define HELP_TEXT
+ClaudeWorld - Available commands:
+
+Development:
+  make dev               - Run backend + frontend, ONE process  [DEFAULT]
+                           One port: $(URL) (frontend has HMR).
+                           A taken port falls back to a free one, and a
+                           browser opens on whichever port was won.
+                           OPEN_BROWSER=false skips the browser.
+  make serve             - Same, but from a built frontend/dist (no HMR)
+                           One process, one port: $(URL)
+  make install           - Install all dependencies (backend + frontend)
+  make run-backend       - Run the API only, no frontend bundling
+  make dev-perf          - make dev with performance logging (./latency.log)
+  make dev-trace         - make dev with CLI tracing  (./traces.jsonl)
+                           Tracing needs a CLI patched for observability.
+
+Setup:
+  make setup             - Set up .env: prompts for your password (re-run to change it)
+
+Packaging:
+  make exe               - Build the standalone binary for this platform
+  make exe-windows       - Cross-compile dist/ClaudeWorld.exe
+                           One file; it unpacks agents/ and the prompt
+                           config beside itself and needs the claude CLI.
+
+Deployment (Cloudflare tunnels for remote access):
+  make prod              - Start tunnel + auto-update Vercel env + redeploy
+                           POSIX shell only (WSL, or Git Bash on Windows).
+  make run-tunnel-backend - Run Cloudflare tunnel for backend
+
+Maintenance:
+  make stop              - Stop all running servers
+  make clean             - Clean build artifacts and caches
+
+Windows: every target above except `make prod` runs from PowerShell, cmd or
+Git Bash. GNU Make (winget install ezwinports.make) and Bun both have to be
+on PATH.
+endef
+
+# Indentation has to survive, and `$(info   text)` trims its argument -- so
+# every message with leading spaces, and every message longer than a line,
+# lives in a variable. They are all printed before the recipe's first command
+# runs (make expands a whole recipe up front), so each one announces what is
+# about to happen rather than narrating it step by step.
+define DEV_BANNER
+Starting the backend with the frontend bundled in-process...
+
+ℹ️  One process serves everything: /auth/*, the full /worlds/* game surface
+   (onboarding, turns, travel, chat mode, state, polling) and the whole
+   /rooms/* + /agents/* chat surface including SSE streaming.
+
+A browser opens on the port the server wins -- OPEN_BROWSER=false skips it.
+For remote access, run 'make run-tunnel-backend' in a separate terminal
+Press Ctrl+C to stop.
+endef
+
+define PERF_BANNER
+Starting dev mode with PERFORMANCE LOGGING...
+
+   Performance metrics: ./latency.log
+   Terminal output:     ./run.log
+   Monitor with: tail -f latency.log run.log
+endef
+
+define TRACE_BANNER
+Starting dev mode with CLI TRACING...
+
+🔍 Requires a CLI patched with the observability patches.
+   Trace output: ./traces.jsonl   (tail -f traces.jsonl)
+endef
+
+define EXE_BANNER
+Building the standalone binary for this platform...
+
+👉 dist/claudeworld — copy it anywhere; it unpacks agents/ and the
+   prompt config beside itself on first launch.
+endef
+
+define INSTALL_BANNER
+Installing the Claude Code CLI globally, then the backend and frontend
+dependencies with bun, then checking .env (the setup wizard runs if it
+is missing anything).
+
+If the bun step fails, install Bun first: https://bun.sh
+endef
+
+define PROD_BANNER
+Starting production deployment. This will:
+  1. Start backend server
+  2. Start cloudflared tunnel
+  3. Auto-update VITE_API_BASE_URL on Vercel
+  4. Trigger Vercel redeploy
+
+Prerequisites: vercel CLI logged in (run 'vercel login' first)
+endef
+
+# `$(info)` alone is a recipe make considers empty, so it would report the
+# target as up to date; `cd .` is the shortest no-op both cmd and sh accept.
 help:
-	@echo "ClaudeWorld - Available commands:"
-	@echo ""
-	@echo "Development:"
-	@echo "  make dev               - Run backend + frontend, ONE process  [DEFAULT]"
-	@echo "                           One port: $(URL) (frontend has HMR)."
-	@echo "                           A taken port falls back to a free one, and a"
-	@echo "                           browser opens on whichever port was won."
-	@echo "                           OPEN_BROWSER=false skips the browser."
-	@echo "  make serve             - Same, but from a built frontend/dist (no HMR)"
-	@echo "                           One process, one port: $(URL)"
-	@echo "  make install           - Install all dependencies (backend + frontend)"
-	@echo "  make run-backend       - Run the API only, no frontend bundling"
-	@echo "  make dev-perf          - make dev with performance logging (./latency.log)"
-	@echo "  make dev-trace         - make dev with CLI tracing  (./traces.jsonl)"
-	@echo "                           Tracing needs a CLI patched for observability."
-	@echo ""
-	@echo "Setup:"
-	@echo "  make setup             - Set up .env: prompts for your password (re-run to change it)"
-	@echo ""
-	@echo "Packaging:"
-	@echo "  make exe               - Build the standalone binary for this platform"
-	@echo "  make exe-windows       - Cross-compile dist/ClaudeWorld.exe"
-	@echo "                           One file; it unpacks agents/ and the prompt"
-	@echo "                           config beside itself and needs the claude CLI."
-	@echo ""
-	@echo "Deployment (Cloudflare tunnels for remote access):"
-	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
-	@echo "  make run-tunnel-backend - Run Cloudflare tunnel for backend"
-	@echo ""
-	@echo "Maintenance:"
-	@echo "  make stop              - Stop all running servers"
-	@echo "  make clean             - Clean build artifacts and caches"
+	$(info $(HELP_TEXT))
+	@cd .
 
 install:
-	@echo "Installing Claude Code CLI globally..."
-	sudo npm install -g @anthropic-ai/claude-code || echo "Warning: Failed to install Claude Code CLI globally. You may need to run with sudo."
-	@echo "Installing dependencies (backend + frontend) with bun..."
-	@if command -v bun >/dev/null 2>&1; then \
-		bun install; \
-	else \
-		echo "Error: bun not found. Install it: curl -fsSL https://bun.sh/install | bash"; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "Checking .env configuration..."
-	@if bun run setup --check 2>/dev/null; then \
-		echo ""; \
-	else \
-		echo ""; \
-		echo "Running first-time setup wizard..."; \
-		bun run setup; \
-	fi
-	@echo "Done!"
+	$(info $(INSTALL_BANNER))
+	-$(SUDO) npm install -g @anthropic-ai/claude-code
+	@bun install
+	@bun run setup --check || bun run setup
 
 setup:
-	@echo "Running .env setup wizard..."
+	$(info Running .env setup wizard...)
 	@bun run setup
 
 run-backend:
-	@echo "Starting backend server (SQLite)..."
-	$(RUN_BACKEND) bun run dev:backend
+	$(info Starting backend server (SQLite)...)
+	@bun run dev:backend
 
+run-backend-perf: export PERF_LOG := true
 run-backend-perf:
-	@echo "Performance metrics will be written to ./latency.log"
-	@echo "Terminal output will be written to ./run.log"
-	$(RUN_BACKEND) PERF_LOG=true bun run dev:backend 2>&1 | tee $(PWD)/run.log
+	$(info Performance metrics will be written to ./latency.log)
+	$(info Terminal output will be written to ./run.log)
+	@bun run dev:backend 2>&1 | bun scripts/dev/tee.ts run.log
 
+run-backend-trace: export ENABLE_CLI_TRACING := true
 run-backend-trace:
-	@echo "Traces will be written to ./traces.jsonl"
-	$(RUN_BACKEND) ENABLE_CLI_TRACING=true bun run dev:backend 2>$(PWD)/traces.jsonl
+	$(info Traces will be written to ./traces.jsonl)
+	@bun run dev:backend 2>traces.jsonl
 
 run-tunnel-backend:
-	@echo "Starting Cloudflare tunnel for backend..."
-	cloudflared tunnel --url $(URL)
+	$(info Starting Cloudflare tunnel for backend...)
+	@cloudflared tunnel --url $(URL)
 
 dev:
-	@mkdir -p /tmp/claude-empty
-	@echo "Starting the backend with the frontend bundled in-process..."
-	@echo ""
-	@echo "ℹ️  One process serves everything: /auth/*, the full /worlds/* game surface"
-	@echo "   (onboarding, turns, travel, chat mode, state, polling) and the whole"
-	@echo "   /rooms/* + /agents/* chat surface including SSE streaming."
-	@echo ""
-	@echo "A browser opens on the port the server wins -- OPEN_BROWSER=false skips it."
-	@echo "For remote access, run 'make run-tunnel-backend' in a separate terminal"
-	@echo "Press Ctrl+C to stop."
-	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend
+	$(info $(DEV_BANNER))
+	@$(MAKE) --no-print-directory SERVE_FRONTEND=false FRONTEND_DEV=true run-backend
 
 dev-perf:
-	@mkdir -p /tmp/claude-empty
-	@echo "Starting dev mode with PERFORMANCE LOGGING..."
-	@echo ""
-	@echo "   Performance metrics: ./latency.log"
-	@echo "   Terminal output:     ./run.log"
-	@echo "   Monitor with: tail -f latency.log run.log"
-	@echo ""
-	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-perf
+	$(info $(PERF_BANNER))
+	@$(MAKE) --no-print-directory SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-perf
 
 dev-trace:
-	@mkdir -p /tmp/claude-empty
-	@echo "Starting dev mode with CLI TRACING..."
-	@echo ""
-	@echo "🔍 Requires a CLI patched with the observability patches."
-	@echo "   Trace output: ./traces.jsonl   (tail -f traces.jsonl)"
-	@echo ""
-	@$(MAKE) SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-trace
+	$(info $(TRACE_BANNER))
+	@$(MAKE) --no-print-directory SERVE_FRONTEND=false FRONTEND_DEV=true run-backend-trace
 
 serve:
-	@mkdir -p /tmp/claude-empty
-	@echo "Building frontend..."
-	bun run build
-	@echo ""
-	@echo "Starting the backend with the built frontend on ONE port..."
-	@echo "👉 Open $(URL) — frontend and API share the origin."
-	@echo "Press Ctrl+C to stop."
-	HOST=127.0.0.1 PORT=$(PORT) DATABASE_URL=$(SQLITE_URL) bun run --filter '@claudeworld/backend' start
+	$(info Building the frontend, then serving it and the API on ONE port...)
+	$(info 👉 Open $(URL) — frontend and API share the origin.)
+	$(info Press Ctrl+C to stop.)
+	@bun run serve
 
 exe:
-	@echo "Building the standalone binary for this platform..."
-	bun run build:exe
-	@echo ""
-	@echo "👉 dist/claudeworld — copy it anywhere; it unpacks agents/ and the"
-	@echo "   prompt config beside itself on first launch."
+	$(info $(EXE_BANNER))
+	@bun run build:exe
 
 exe-windows:
-	@echo "Cross-compiling the Windows executable..."
-	bun run build:exe:windows
-	@echo ""
-	@echo "👉 dist/ClaudeWorld.exe"
+	$(info Cross-compiling the Windows executable... 👉 dist/ClaudeWorld.exe)
+	@bun run build:exe:windows
 
+# The one target that needs a POSIX shell: it backgrounds the server with `&`
+# and then hands off to a shell script. On Windows, run it from Git Bash or WSL.
 prod:
-	@echo "Starting production deployment..."
-	@echo "This will:"
-	@echo "  1. Start backend server"
-	@echo "  2. Start cloudflared tunnel"
-	@echo "  3. Auto-update VITE_API_BASE_URL on Vercel"
-	@echo "  4. Trigger Vercel redeploy"
-	@echo ""
-	@echo "Prerequisites: vercel CLI logged in (run 'vercel login' first)"
-	@echo ""
-	@# Start backend in background
-	@$(RUN_BACKEND) bun run --filter '@claudeworld/backend' start &
+	$(info $(PROD_BANNER))
+	@bun run --filter '@claudeworld/backend' start &
 	@sleep 2
-	@# Run tunnel script (handles URL detection, Vercel update, and redeploy)
 	@./scripts/deploy/update_vercel_backend_url.sh
 
 stop:
-	@echo "Stopping servers..."
-	@pkill -f "bun.*src/main.ts" || true
-	@pkill -f "cloudflared" || true
-	@echo "Servers stopped."
+	$(info Stopping servers...)
+	@bun scripts/dev/stop.ts
 
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -f claudeworld.db claudeworld.db-shm claudeworld.db-wal
-	rm -f latency.log run.log traces.jsonl
-	rm -rf frontend/dist
-	rm -rf backend/dist
-	rm -rf dist
-	@echo "Clean complete!"
+	$(info Cleaning build artifacts (including the SQLite database)...)
+	@bun run clean
