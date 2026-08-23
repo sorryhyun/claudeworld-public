@@ -2,10 +2,10 @@
 // `active_system_prompt` key naming which one is live, so a prompt is swapped
 // by editing one line. The Action and Onboarding Managers opt out.
 
-import { DEFAULT_FALLBACK_PROMPT } from '../../config/settings'
-import { isActionManager, isOnboardingManager } from '../../domain/agent'
+import { DEFAULT_FALLBACK_PROMPT } from '@/config/settings'
+import { isActionManager, isOnboardingManager } from '@/domain/agent'
 import { getGuidelinesConfig } from './yaml-config'
-import { getLogger } from '../../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('Guidelines')
 

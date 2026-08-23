@@ -23,8 +23,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { createMessage } from '../crud/messages'
-import { createRoom } from '../crud/rooms'
+import { createMessage } from '@/crud/messages'
+import { createRoom } from '@/crud/rooms'
 import {
   createWorld,
   deleteWorld,
@@ -33,13 +33,13 @@ import {
   getWorldsByOwner,
   importWorldFromFilesystem,
   updateWorld,
-} from '../crud/worlds'
-import { openDb, type Db } from '../db'
-import { agents, locations, worlds } from '../db/schema'
-import { applyMigrations, loadMigrations } from '../db/migrate'
-import { PlayerService } from '../services/player-service'
-import { RoomMappingService } from '../services/room-mapping'
-import type { WorldConfig } from '../services/world-service'
+} from '@/crud/worlds'
+import { openDb, type Db } from '@/db'
+import { agents, locations, worlds } from '@/db/schema'
+import { applyMigrations, loadMigrations } from '@/db/migrate'
+import { PlayerService } from '@/services/player-service'
+import { RoomMappingService } from '@/services/room-mapping'
+import type { WorldConfig } from '@/services/world-service'
 
 const migrations = loadMigrations()
 

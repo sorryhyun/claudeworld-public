@@ -5,8 +5,8 @@
  * originals unchanged**, costing the size reduction, never the message.
  */
 
-import { getSettings } from '../config/settings'
-import { getLogger } from '../infrastructure/logging/logger'
+import { getSettings } from '@/config/settings'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('ImageUtils')
 

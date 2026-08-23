@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { AgentConfigService } from '../services/agent-config-service'
+import { AgentConfigService } from '@/services/agent-config-service'
 
 let projectRoot: string
 let service: AgentConfigService

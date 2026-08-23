@@ -10,7 +10,7 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { resetSettings } from '../config/settings'
+import { resetSettings } from '@/config/settings'
 import {
   adminToken,
   createGameApp,

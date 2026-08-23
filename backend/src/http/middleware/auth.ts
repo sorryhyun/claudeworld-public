@@ -7,8 +7,8 @@
 
 import { createMiddleware } from 'hono/factory'
 
-import { roleFromPayload, userIdFromPayload, validateJwtToken } from '../../auth/jwt'
-import type { AppEnv } from '../types'
+import { roleFromPayload, userIdFromPayload, validateJwtToken } from '@/auth/jwt'
+import type { AppEnv } from '@/http/types'
 
 /** Paths that never require a token. */
 const EXCLUDED_PATHS: ReadonlySet<string> = new Set([

@@ -20,8 +20,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { LocationStorage } from '../services/location-storage'
-import { WorldService } from '../services/world-service'
+import { LocationStorage } from '@/services/location-storage'
+import { WorldService } from '@/services/world-service'
 
 const WORLD = 'w'
 

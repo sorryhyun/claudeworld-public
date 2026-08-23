@@ -13,10 +13,10 @@ import {
   RoomOrchestrator,
   type RoomOrchestratorDeps,
   type TurnImplementations,
-} from '../orchestration/room-orchestrator'
-import type { ExecutionResult } from '../orchestration/tape/models'
-import type { SessionPool } from '../sdk/client/session-pool'
-import type { World } from '../db/schema'
+} from '@/orchestration/room-orchestrator'
+import type { ExecutionResult } from '@/orchestration/tape/models'
+import type { SessionPool } from '@/sdk/client/session-pool'
+import type { World } from '@/db/schema'
 
 // ============================================================================
 // Harness

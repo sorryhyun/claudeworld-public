@@ -1,9 +1,9 @@
 /** Room request/response schemas. */
 
 import { z } from 'zod'
-import type { RoomWithRelations } from '../crud/rooms'
-import type { Agent as AgentRow, Message as MessageRow, Room as RoomRow } from '../db/schema'
-import { WORLD_PHASES } from '../db/schema'
+import type { RoomWithRelations } from '@/crud/rooms'
+import type { Agent as AgentRow, Message as MessageRow, Room as RoomRow } from '@/db/schema'
+import { WORLD_PHASES } from '@/db/schema'
 import { Agent, toAgent } from './agents'
 import {
   isoDatetime,

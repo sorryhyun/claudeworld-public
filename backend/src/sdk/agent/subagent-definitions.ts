@@ -11,9 +11,9 @@ import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk'
 import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { getSettings } from '../../config/settings'
-import { getLogger } from '../../infrastructure/logging/logger'
-import { SUBAGENT_TOOL_NAMES } from '../tools/subagent'
+import { getSettings } from '@/config/settings'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { SUBAGENT_TOOL_NAMES } from '@/sdk/tools/subagent'
 
 const logger = getLogger('SubagentDefinitions')
 

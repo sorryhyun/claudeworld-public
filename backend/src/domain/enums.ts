@@ -2,7 +2,7 @@
 // `WorldPhase`/`Language`/`MessageRole` in `db/schema.ts`, `UserRole` in
 // `auth/roles.ts`.
 
-import { LANGUAGES, type Language } from '../db/schema'
+import { LANGUAGES, type Language } from '@/db/schema'
 
 /** Which context builder a turn runs through. `normal` is the pre-TRPG chat room,
  * still reachable for non-world rooms; `chat` is the `/chat` NPC conversation. */

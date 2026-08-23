@@ -12,8 +12,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { AgentFilesystemService } from '../services/agent-filesystem-service'
-import { WorldService } from '../services/world-service'
+import { AgentFilesystemService } from '@/services/agent-filesystem-service'
+import { WorldService } from '@/services/world-service'
 
 const WORLD = 'testworld'
 

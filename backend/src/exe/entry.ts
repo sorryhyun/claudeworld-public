@@ -16,9 +16,9 @@
  *      `main.ts` installs for itself under `bun run`.
  */
 
-import { BUNDLED_VERSION } from '../config/bundled'
-import { resolveProjectRoot } from '../config/paths'
-import { ensureEnvConfigured } from '../scripts/setup-env'
+import { BUNDLED_VERSION } from '@/config/bundled'
+import { resolveProjectRoot } from '@/config/paths'
+import { ensureEnvConfigured } from '@/scripts/setup-env'
 import { unpackSeed } from './assets'
 
 // `resolveProjectRoot` returns the executable's own directory here, so this is
@@ -47,7 +47,7 @@ if (!(await ensureEnvConfigured(projectRoot))) {
   process.exit(1)
 }
 
-const { startServer } = await import('../main')
+const { startServer } = await import('@/main')
 const { stop } = await startServer()
 
 const shutdown = (): void => {

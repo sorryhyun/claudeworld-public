@@ -12,18 +12,18 @@
 
 import { Hono } from 'hono'
 
-import { getSettings } from '../../config/settings'
-import { getAllAgents } from '../../crud/agents'
-import { createMessage, getMessagesSince, getRecentMessages } from '../../crud/messages'
+import { getSettings } from '@/config/settings'
+import { getAllAgents } from '@/crud/agents'
+import { createMessage, getMessagesSince, getRecentMessages } from '@/crud/messages'
 import {
   addAgentToRoom,
   createRoom,
   getAgentsInRoom,
   getOrCreateDirectRoom,
   getRoom,
-} from '../../crud/rooms'
-import type { Agent } from '../../db/schema'
-import { getLogger } from '../../infrastructure/logging/logger'
+} from '@/crud/rooms'
+import type { Agent } from '@/db/schema'
+import { getLogger } from '@/infrastructure/logging/logger'
 import {
   ChatRequest,
   RoomMessageRequest,
@@ -32,10 +32,10 @@ import {
   toConversationMessage,
   type ChatResponse,
   type RoomCreated,
-} from '../../schemas/mcp-tools'
-import { HttpError } from '../../domain/errors'
-import type { AppState } from '../state'
-import type { AppEnv } from '../types'
+} from '@/schemas/mcp-tools'
+import { HttpError } from '@/domain/errors'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import { intQueryParamOr, parseBody } from './game/shared'
 
 const logger = getLogger('McpToolsRouter')

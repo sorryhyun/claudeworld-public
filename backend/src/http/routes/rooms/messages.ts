@@ -11,16 +11,16 @@ import {
   getAgentsCached,
   getMessagesSinceCached,
   getRoomCached,
-} from '../../../crud/cached'
-import { createMessage, getMessages } from '../../../crud/messages'
-import { RoomNotFoundError } from '../../../domain/errors'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { MessageCreate, toMessage } from '../../../schemas/messages'
-import { assertRoomAccess } from '../../access-control'
-import { rateLimit } from '../../middleware/rate-limit'
-import { identityOf, type AppState } from '../../state'
-import type { AppEnv } from '../../types'
-import { intPathParam, intQueryParam, parseBody, startBackground, tryCompressImage } from '../game/shared'
+} from '@/crud/cached'
+import { createMessage, getMessages } from '@/crud/messages'
+import { RoomNotFoundError } from '@/domain/errors'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { MessageCreate, toMessage } from '@/schemas/messages'
+import { assertRoomAccess } from '@/http/access-control'
+import { rateLimit } from '@/http/middleware/rate-limit'
+import { identityOf, type AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
+import { intPathParam, intQueryParam, parseBody, startBackground, tryCompressImage } from '@/http/routes/game/shared'
 import { ensureRoomAccessFor } from './shared'
 
 const logger = getLogger('MessageRouter')

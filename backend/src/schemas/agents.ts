@@ -1,7 +1,7 @@
 /** Agent request/response schemas. */
 
 import { z } from 'zod'
-import type { Agent as AgentRow } from '../db/schema'
+import type { Agent as AgentRow } from '@/db/schema'
 import {
   isoDatetime,
   optionalString,

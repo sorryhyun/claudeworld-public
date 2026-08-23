@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describeDeclaredSchema, describeLiveSchema, diffSchemas, typeAffinity } from '../db/introspect'
+import { describeDeclaredSchema, describeLiveSchema, diffSchemas, typeAffinity } from '@/db/introspect'
 import {
   ALEMBIC_HEAD_REVISION,
   applyMigrations,
@@ -23,7 +23,7 @@ import {
   SchemaDriftError,
   sqlitePathFromUrl,
   verifySchema,
-} from '../db/migrate'
+} from '@/db/migrate'
 
 const migrations = loadMigrations()
 

@@ -12,8 +12,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
-import { resetSettings } from '../config/settings'
-import { compressImageBase64, tryCompressImage } from '../lib/images'
+import { resetSettings } from '@/config/settings'
+import { compressImageBase64, tryCompressImage } from '@/lib/images'
 import { decodePngToRgba, encodeRgbaPng, encodeRgbPng, readPngLayout } from './png-codec'
 
 // =============================================================================

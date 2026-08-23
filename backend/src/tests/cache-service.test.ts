@@ -19,8 +19,8 @@ import {
   roomAgentsKey,
   roomMessagesKey,
   roomObjectKey,
-} from '../infrastructure/cache'
-import { CacheService, getCacheService, resetCacheService } from '../services/cache-service'
+} from '@/infrastructure/cache'
+import { CacheService, getCacheService, resetCacheService } from '@/services/cache-service'
 
 function makeService(): { service: CacheService; cache: CacheManager } {
   const cache = new CacheManager()

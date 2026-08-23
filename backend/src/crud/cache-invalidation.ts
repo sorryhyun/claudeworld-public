@@ -12,8 +12,8 @@ import {
   roomAgentsKey,
   roomMessagesKey,
   roomObjectKey,
-} from '../infrastructure/cache'
-import { getLogger } from '../infrastructure/logging/logger'
+} from '@/infrastructure/cache'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('CachedCRUD')
 

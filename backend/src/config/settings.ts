@@ -13,7 +13,7 @@ import {
   resolveProjectRoot,
   type ProjectPaths,
 } from './paths'
-import { getLogger } from '../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('Settings')
 

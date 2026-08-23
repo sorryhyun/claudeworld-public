@@ -10,8 +10,8 @@ import { join } from 'node:path'
 
 import { LocationStorage } from './location-storage'
 import { WorldService } from './world-service'
-import { isLocationRoomKey, locationToRoomKey, roomKeyToLocation } from '../domain/room-keys'
-import { getLogger } from '../infrastructure/logging/logger'
+import { isLocationRoomKey, locationToRoomKey, roomKeyToLocation } from '@/domain/room-keys'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('RoomMapping')
 

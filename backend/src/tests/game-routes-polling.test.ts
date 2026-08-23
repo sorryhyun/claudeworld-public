@@ -10,9 +10,9 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { resetSettings } from '../config/settings'
-import { addAgentToRoom } from '../crud/rooms'
-import { invalidateRoomCache } from '../crud/cache-invalidation'
+import { resetSettings } from '@/config/settings'
+import { addAgentToRoom } from '@/crud/rooms'
+import { invalidateRoomCache } from '@/crud/cache-invalidation'
 import { createGameApp, rawExec, rawQuery, settle, type GameAppHarness } from './setup/game-app'
 
 const originalEnv = { ...process.env }

@@ -10,12 +10,12 @@
 
 import { Hono } from 'hono'
 
-import { KEEPALIVE_INTERVAL_MS } from '../../../infrastructure/sse'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { HttpError } from '../../../domain/errors'
-import { identityOf, type AppState } from '../../state'
-import type { AppEnv } from '../../types'
-import { intPathParam } from '../game/shared'
+import { KEEPALIVE_INTERVAL_MS } from '@/infrastructure/sse'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { HttpError } from '@/domain/errors'
+import { identityOf, type AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
+import { intPathParam } from '@/http/routes/game/shared'
 import { ensureRoomAccessFor } from './shared'
 
 const logger = getLogger('SSERouter')

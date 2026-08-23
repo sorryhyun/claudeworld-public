@@ -10,10 +10,10 @@
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { getSettings } from '../config/settings'
-import { safeAppendLine } from '../infrastructure/locking'
-import { getLogger } from '../infrastructure/logging/logger'
-import { parseAgentConfig, type AgentConfigData } from '../sdk/parsing/agent-config'
+import { getSettings } from '@/config/settings'
+import { safeAppendLine } from '@/infrastructure/locking'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { parseAgentConfig, type AgentConfigData } from '@/sdk/parsing/agent-config'
 import type { GameTime } from './player-service'
 
 const logger = getLogger('AgentConfigService')

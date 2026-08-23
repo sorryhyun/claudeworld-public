@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
-import type { SdkTool } from '../handlers/context'
+import type { SdkTool } from '@/sdk/handlers/context'
 
 /**
  * The seam between the `GameTool` shape the handlers under `sdk/handlers/`

@@ -17,22 +17,22 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 
-import { resetSettings } from '../config/settings'
-import { createAgent } from '../crud/agents'
-import { createMessage } from '../crud/messages'
-import { getAgentsInRoom, getRoom } from '../crud/rooms'
-import type { Db } from '../db'
-import { HttpError } from '../domain/errors'
-import { authMiddleware } from '../http/middleware/auth'
-import { createMcpToolsRoutes } from '../http/routes/mcp-tools'
-import type { AppState } from '../http/state'
-import type { AppEnv } from '../http/types'
+import { resetSettings } from '@/config/settings'
+import { createAgent } from '@/crud/agents'
+import { createMessage } from '@/crud/messages'
+import { getAgentsInRoom, getRoom } from '@/crud/rooms'
+import type { Db } from '@/db'
+import { HttpError } from '@/domain/errors'
+import { authMiddleware } from '@/http/middleware/auth'
+import { createMcpToolsRoutes } from '@/http/routes/mcp-tools'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import type {
   ChatRoomMessageInput,
   RoomOrchestrator,
   TurnOutcome,
-} from '../orchestration/room-orchestrator'
-import type { AgentInfo, ChatResponse, ConversationMessage, RoomCreated } from '../schemas/mcp-tools'
+} from '@/orchestration/room-orchestrator'
+import type { AgentInfo, ChatResponse, ConversationMessage, RoomCreated } from '@/schemas/mcp-tools'
 import { createGameApp, type GameAppHarness } from './setup/game-app'
 
 const originalEnv = { ...process.env }

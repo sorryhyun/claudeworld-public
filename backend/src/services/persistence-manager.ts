@@ -2,23 +2,23 @@
 // operations that cannot live on one side. Not a general write path: a runtime
 // mutation added here would gain a second source of truth.
 
-import { getSettings } from '../config/settings'
-import { getAgentByName } from '../crud/agents'
-import { createLocation, getLocations, type LocationCreate } from '../crud/locations'
+import { getSettings } from '@/config/settings'
+import { getAgentByName } from '@/crud/agents'
+import { createLocation, getLocations, type LocationCreate } from '@/crud/locations'
 import {
   addInventoryItem,
   getPlayerState,
   initializePlayerStats,
   setCurrentLocation,
-} from '../crud/player-state'
-import { addAgentToRoom } from '../crud/rooms'
-import { updateWorld } from '../crud/worlds'
-import type { Db } from '../db'
-import type { Location, WorldPhase } from '../db/schema'
-import type { InventoryEntry } from '../domain/player-rules'
+} from '@/crud/player-state'
+import { addAgentToRoom } from '@/crud/rooms'
+import { updateWorld } from '@/crud/worlds'
+import type { Db } from '@/db'
+import type { Location, WorldPhase } from '@/db/schema'
+import type { InventoryEntry } from '@/domain/player-rules'
 // `worlds.stat_definitions`; StatDefinitionsFile is the whole `stats.json`.
-import type { StatDefinitions as StatDefinitionBlob } from '../domain/player-rules'
-import { getLogger } from '../infrastructure/logging/logger'
+import type { StatDefinitions as StatDefinitionBlob } from '@/domain/player-rules'
+import { getLogger } from '@/infrastructure/logging/logger'
 import { LocationStorage } from './location-storage'
 import {
   DEFAULT_GAME_TIME,

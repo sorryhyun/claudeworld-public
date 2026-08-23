@@ -12,11 +12,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { formatMessageForDebug } from '../infrastructure/logging/agent-log'
-import { getLogger, setLogSink, setupLogging, type LogLevel } from '../infrastructure/logging/logger'
-import { formatLogLine, isPerfLoggingEnabled, PerfLogger } from '../infrastructure/logging/perf'
-import { createTurnTelemetry } from '../infrastructure/logging/turn-telemetry'
-import type { TurnEvent } from '../sdk/agent/turn-runner'
+import { formatMessageForDebug } from '@/infrastructure/logging/agent-log'
+import { getLogger, setLogSink, setupLogging, type LogLevel } from '@/infrastructure/logging/logger'
+import { formatLogLine, isPerfLoggingEnabled, PerfLogger } from '@/infrastructure/logging/perf'
+import { createTurnTelemetry } from '@/infrastructure/logging/turn-telemetry'
+import type { TurnEvent } from '@/sdk/agent/turn-runner'
 
 const cleanups: Array<() => void> = []
 

@@ -12,8 +12,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEEPALIVE_INTERVAL_MS } from '../infrastructure/sse'
-import { IDLE_TIMEOUT_SECONDS, listen, stickyPortPath } from '../http/serve'
+import { KEEPALIVE_INTERVAL_MS } from '@/infrastructure/sse'
+import { IDLE_TIMEOUT_SECONDS, listen, stickyPortPath } from '@/http/serve'
 
 const OK = (): Response => new Response('ok')
 

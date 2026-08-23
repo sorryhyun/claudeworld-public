@@ -11,8 +11,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { resetSettings } from '../config/settings'
-import { findProfilePic } from '../http/routes/agents/profile-pic'
+import { resetSettings } from '@/config/settings'
+import { findProfilePic } from '@/http/routes/agents/profile-pic'
 import { adminToken, createGameApp, guestToken, type GameAppHarness } from './setup/game-app'
 
 const originalEnv = { ...process.env }

@@ -14,8 +14,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { getAgentsCached } from '../../../crud/cached'
-import { getLocation } from '../../../crud/locations'
+import { getAgentsCached } from '@/crud/cached'
+import { getLocation } from '@/crud/locations'
 import {
   countAssistantMessages,
   createMessage,
@@ -23,18 +23,18 @@ import {
   getMessagesExcludingChat,
   getMessagesSince,
   type MessageWithAgent,
-} from '../../../crud/messages'
-import { getPlayerState } from '../../../crud/player-state'
-import { getWorld, updateWorld } from '../../../crud/worlds'
-import type { Location, World, WorldPhase } from '../../../db/schema'
-import { isActionManager } from '../../../domain/agent'
-import { toLangKey } from '../../../domain/enums'
-import { getArrivalMessage } from '../../../domain/localization'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { parseJsonColumn } from '../../../schemas/common'
-import { PersistenceManager } from '../../../services/persistence-manager'
-import type { AppState } from '../../state'
-import type { AppEnv } from '../../types'
+} from '@/crud/messages'
+import { getPlayerState } from '@/crud/player-state'
+import { getWorld, updateWorld } from '@/crud/worlds'
+import type { Location, World, WorldPhase } from '@/db/schema'
+import { isActionManager } from '@/domain/agent'
+import { toLangKey } from '@/domain/enums'
+import { getArrivalMessage } from '@/domain/localization'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { parseJsonColumn } from '@/schemas/common'
+import { PersistenceManager } from '@/services/persistence-manager'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import {
   boolQueryParam,
   deferBackground,

@@ -12,7 +12,7 @@ import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Hono, type Context } from 'hono'
 
-import { getAgentByName, syncAgentsWithFilesystem } from '../../../crud/agents'
+import { getAgentByName, syncAgentsWithFilesystem } from '@/crud/agents'
 import {
   createNewRoomForLocation,
   getAllCharactersInWorld,
@@ -20,10 +20,10 @@ import {
   getLocations,
   syncLocationsWithFilesystem,
   type LocationWithRoom,
-} from '../../../crud/locations'
-import { createMessage } from '../../../crud/messages'
-import { getPlayerState } from '../../../crud/player-state'
-import { addAgentToRoom } from '../../../crud/rooms'
+} from '@/crud/locations'
+import { createMessage } from '@/crud/messages'
+import { getPlayerState } from '@/crud/player-state'
+import { addAgentToRoom } from '@/crud/rooms'
 import {
   createWorld as createWorldRow,
   deleteWorld as deleteWorldRow,
@@ -32,11 +32,11 @@ import {
   getWorldsByOwner,
   importWorldFromFilesystem,
   updateWorld,
-} from '../../../crud/worlds'
-import { locations as locationsTable, playerStates, type World } from '../../../db/schema'
-import { toLangKey } from '../../../domain/enums'
-import { getArrivalMessage, getOnboardingMessage } from '../../../domain/localization'
-import { getLogger } from '../../../infrastructure/logging/logger'
+} from '@/crud/worlds'
+import { locations as locationsTable, playerStates, type World } from '@/db/schema'
+import { toLangKey } from '@/domain/enums'
+import { getArrivalMessage, getOnboardingMessage } from '@/domain/localization'
+import { getLogger } from '@/infrastructure/logging/logger'
 import {
   toImportableWorld,
   toStatDefinitions,
@@ -45,11 +45,11 @@ import {
   WorldCreate,
   WorldResetRequest,
   type World as WorldResponse,
-} from '../../../schemas/game'
-import { RoomMappingService } from '../../../services/room-mapping'
-import { HttpError } from '../../../domain/errors'
-import { identityOf, type AppState } from '../../state'
-import type { AppEnv } from '../../types'
+} from '@/schemas/game'
+import { RoomMappingService } from '@/services/room-mapping'
+import { HttpError } from '@/domain/errors'
+import { identityOf, type AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import {
   createLocationFromFilesystem,
   deferBackground,

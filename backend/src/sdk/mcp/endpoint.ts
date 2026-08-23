@@ -9,15 +9,15 @@ import {
   type McpServer,
 } from '@modelcontextprotocol/server'
 
-import { getLogger } from '../../infrastructure/logging/logger'
-import type { SessionKey } from '../client/session'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { SessionKey } from '@/sdk/client/session'
 import {
   buildToolSets,
   isServerName,
   SERVER_INSTRUCTIONS,
   type ServerDeps,
   type ServerName,
-} from '../handlers/servers'
+} from '@/sdk/handlers/servers'
 import { createToolServer } from './adapter'
 import type { TurnRegistry } from './turn-registry'
 

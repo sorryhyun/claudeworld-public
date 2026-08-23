@@ -9,7 +9,7 @@
  */
 
 import { getLogger } from './logging/logger'
-import type { UserRole } from '../auth/roles'
+import type { UserRole } from '@/auth/roles'
 
 const logger = getLogger('SSETicket')
 

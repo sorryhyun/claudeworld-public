@@ -14,8 +14,8 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { resetSettings } from '../config/settings'
-import { SessionPool } from '../sdk/client/session-pool'
+import { resetSettings } from '@/config/settings'
+import { SessionPool } from '@/sdk/client/session-pool'
 import { createGameApp, type GameAppHarness } from './setup/game-app'
 
 const originalEnv = { ...process.env }

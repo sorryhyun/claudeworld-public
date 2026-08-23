@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { AgentCreate, AgentUpdate } from '../schemas/agents'
+import { AgentCreate, AgentUpdate } from '@/schemas/agents'
 import {
   GameTime,
   InventoryItem,
@@ -21,9 +21,9 @@ import {
   WorldCreate,
   WorldResetRequest,
   WorldUpdate,
-} from '../schemas/game'
-import { MessageCreate } from '../schemas/messages'
-import { RoomCreate, RoomUpdate } from '../schemas/rooms'
+} from '@/schemas/game'
+import { MessageCreate } from '@/schemas/messages'
+import { RoomCreate, RoomUpdate } from '@/schemas/rooms'
 
 describe('AgentCreate / AgentUpdate', () => {
   test('a name is the only required field', () => {

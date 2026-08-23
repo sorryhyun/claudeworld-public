@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { formatWithParticles, hasFinalConsonant, selectParticle } from '../lib/korean'
+import { formatWithParticles, hasFinalConsonant, selectParticle } from '@/lib/korean'
 
 describe('hasFinalConsonant', () => {
   test('detects 받침 on Hangul syllables', () => {

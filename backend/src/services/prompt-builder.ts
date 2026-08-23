@@ -6,9 +6,9 @@
  * material furthest from the instructions.
  */
 
-import { formatWithParticles } from '../lib/korean'
-import { getBaseSystemPrompt } from '../sdk/loaders/guidelines'
-import type { AgentConfigData } from '../sdk/parsing/agent-config'
+import { formatWithParticles } from '@/lib/korean'
+import { getBaseSystemPrompt } from '@/sdk/loaders/guidelines'
+import type { AgentConfigData } from '@/sdk/parsing/agent-config'
 
 export type PromptConfigData = Pick<
   AgentConfigData,

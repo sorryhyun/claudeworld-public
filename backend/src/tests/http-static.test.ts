@@ -12,14 +12,14 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { resetSettings } from '../config/settings'
-import { isApiPath, resolveStaticFile } from '../http/static'
+import { resetSettings } from '@/config/settings'
+import { isApiPath, resolveStaticFile } from '@/http/static'
 
 process.env.API_KEY_HASH = '$2b$12$H0fCIM9buSuQsCFErTRi0Omz//QVZxCKJW5Dapi2u3ealuUFzvF9O'
 process.env.JWT_SECRET = 'static-test-secret'
 resetSettings()
 
-const { createApp } = await import('../http/app')
+const { createApp } = await import('@/http/app')
 
 const INDEX_HTML = '<!doctype html><title>ClaudeWorld</title><div id="root"></div>'
 const BUNDLE_JS = 'console.log("bundle")'

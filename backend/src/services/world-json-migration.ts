@@ -21,7 +21,7 @@ import {
   STAT_DEFINITIONS_FILE,
   WORLD_CONFIG_FILE,
 } from './world-service'
-import { getLogger } from '../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('WorldJsonMigration')
 

@@ -13,9 +13,9 @@ import { join } from 'node:path'
 
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 
-import { getSettings } from '../../config/settings'
-import { getDebugConfig } from '../../sdk/loaders/yaml-config'
-import type { ToolDefinition } from '../../sdk/tools/definitions'
+import { getSettings } from '@/config/settings'
+import { getDebugConfig } from '@/sdk/loaders/yaml-config'
+import type { ToolDefinition } from '@/sdk/tools/definitions'
 import { getLogger } from './logger'
 
 const logger = getLogger('DebugLogger')

@@ -6,15 +6,15 @@
 
 import { Hono } from 'hono'
 
-import { addAgentToRoom, getAgentsInRoom } from '../../../crud/rooms'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { toAgent } from '../../../schemas/agents'
-import { toRoom } from '../../../schemas/rooms'
-import { HttpError } from '../../../domain/errors'
-import { requireAdmin } from '../../middleware/auth'
-import type { AppState } from '../../state'
-import type { AppEnv } from '../../types'
-import { intPathParam } from '../game/shared'
+import { addAgentToRoom, getAgentsInRoom } from '@/crud/rooms'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { toAgent } from '@/schemas/agents'
+import { toRoom } from '@/schemas/rooms'
+import { HttpError } from '@/domain/errors'
+import { requireAdmin } from '@/http/middleware/auth'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
+import { intPathParam } from '@/http/routes/game/shared'
 import { ensureRoomAccessFor } from './shared'
 
 const logger = getLogger('RoomRouter.Agents')

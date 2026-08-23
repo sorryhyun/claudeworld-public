@@ -22,8 +22,8 @@ import {
   type PlayerState,
   type StatDefinitions as FileStatDefinitions,
 } from './player-service'
-import type { Db } from '../db'
-import { playerStates } from '../db/schema'
+import type { Db } from '@/db'
+import { playerStates } from '@/db/schema'
 import {
   applyStatChanges,
   InventoryItem,
@@ -32,11 +32,11 @@ import {
   type InventoryEntry,
   type StatDefinition,
   type StatDefinitions as RuleStatDefinitions,
-} from '../domain/player-rules'
-import { PlayerStateSerializer } from '../domain/player-state-serializer'
-import { getLogger } from '../infrastructure/logging/logger'
+} from '@/domain/player-rules'
+import { PlayerStateSerializer } from '@/domain/player-state-serializer'
+import { getLogger } from '@/infrastructure/logging/logger'
 // Type-only: no runtime edge from `services/` into `sdk/`.
-import type { PlayerMutationsPort, TimeAdvanceResult } from '../sdk/handlers/ports'
+import type { PlayerMutationsPort, TimeAdvanceResult } from '@/sdk/handlers/ports'
 
 const logger = getLogger('PlayerFacade')
 

@@ -12,8 +12,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { WorldResetService } from '../services/world-reset-service'
-import type { InitialStateSnapshot } from '../services/world-reset-service'
+import { WorldResetService } from '@/services/world-reset-service'
+import type { InitialStateSnapshot } from '@/services/world-reset-service'
 
 const WORLD = 'testworld'
 

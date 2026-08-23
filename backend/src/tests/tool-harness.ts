@@ -15,7 +15,7 @@
 import { z } from 'zod'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 
-import type { SdkTool } from '../sdk/handlers/context'
+import type { SdkTool } from '@/sdk/handlers/context'
 
 /** Find one tool in what a factory returned; throws rather than returning undefined. */
 export function findTool(tools: SdkTool[], name: string): SdkTool {

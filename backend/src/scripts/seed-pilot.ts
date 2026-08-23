@@ -9,10 +9,10 @@
 import { Database } from 'bun:sqlite'
 import { mkdirSync, rmSync, symlinkSync, copyFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { openDb } from '../db'
-import { formatSqlaDateTime } from '../db/columns'
-import { resolveProjectRoot } from '../config/paths'
-import { dumpJson as toJson } from '../services/world-service'
+import { openDb } from '@/db'
+import { formatSqlaDateTime } from '@/db/columns'
+import { resolveProjectRoot } from '@/config/paths'
+import { dumpJson as toJson } from '@/services/world-service'
 
 const scratchDir = process.argv[2]
 const sourceDb = process.argv[3]

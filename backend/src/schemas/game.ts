@@ -4,10 +4,10 @@
 // bug — see `toLocation`.
 
 import { z } from 'zod'
-import type { PlayerStateWithLocation } from '../crud/player-state'
-import type { Location as LocationRow, World as WorldRow } from '../db/schema'
-import { LANGUAGES, WORLD_PHASES } from '../db/schema'
-import type { InventoryEntry } from '../domain/player-rules'
+import type { PlayerStateWithLocation } from '@/crud/player-state'
+import type { Location as LocationRow, World as WorldRow } from '@/db/schema'
+import { LANGUAGES, WORLD_PHASES } from '@/db/schema'
+import type { InventoryEntry } from '@/domain/player-rules'
 import {
   isoDatetime,
   optionalBool,

@@ -1,21 +1,21 @@
-import { getAgentByName } from '../../crud/agents'
+import { getAgentByName } from '@/crud/agents'
 import {
   addAdjacentLocation,
   createNewRoomForLocation,
   getLocationByName,
   getLocations,
   moveCharacterToLocation,
-} from '../../crud/locations'
-import { createMessage } from '../../crud/messages'
-import { getPlayerState, setCurrentLocation } from '../../crud/player-state'
-import type { LocationStorage } from '../../services/location-storage'
-import type { PlayerService } from '../../services/player-service'
-import { RoomMappingService } from '../../services/room-mapping'
-import type { WorldService } from '../../services/world-service'
-import { travelTool } from '../tools/location'
-import { resolveTool } from '../tools/registry'
-import { persistLocationDesignTool } from '../tools/subagent'
-import { getLogger } from '../../infrastructure/logging/logger'
+} from '@/crud/locations'
+import { createMessage } from '@/crud/messages'
+import { getPlayerState, setCurrentLocation } from '@/crud/player-state'
+import type { LocationStorage } from '@/services/location-storage'
+import type { PlayerService } from '@/services/player-service'
+import { RoomMappingService } from '@/services/room-mapping'
+import type { WorldService } from '@/services/world-service'
+import { travelTool } from '@/sdk/tools/location'
+import { resolveTool } from '@/sdk/tools/registry'
+import { persistLocationDesignTool } from '@/sdk/tools/subagent'
+import { getLogger } from '@/infrastructure/logging/logger'
 import type { LocationPersistenceFactory, TurnStatusPort } from './ports'
 import { tool, requireAgentId, requireRoomId, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 

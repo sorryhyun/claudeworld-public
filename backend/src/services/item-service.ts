@@ -11,9 +11,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { join } from 'node:path'
 
 import { dumpJson, ITEM_TEMPLATE_SUFFIX, MtimeCache, WorldService } from './world-service'
-import { InventoryItem, normalizeProperties } from '../domain/player-rules'
-import type { Equippable, InventoryEntry, ItemTemplate } from '../domain/player-rules'
-import { getLogger } from '../infrastructure/logging/logger'
+import { InventoryItem, normalizeProperties } from '@/domain/player-rules'
+import type { Equippable, InventoryEntry, ItemTemplate } from '@/domain/player-rules'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('ItemService')
 

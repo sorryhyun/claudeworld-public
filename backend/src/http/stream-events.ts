@@ -6,10 +6,10 @@
  * before the port — the frontend was built against it.
  */
 
-import type { Agent } from '../db/schema'
-import type { SseEvent } from '../infrastructure/sse'
-import type { TurnEvent } from '../sdk/agent/turn-runner'
-import type { TurnEventMeta } from '../orchestration/turn'
+import type { Agent } from '@/db/schema'
+import type { SseEvent } from '@/infrastructure/sse'
+import type { TurnEvent } from '@/sdk/agent/turn-runner'
+import type { TurnEventMeta } from '@/orchestration/turn'
 
 /** `null` when the event must not reach clients: a hidden agent's prose
  * (NPC reactions, the Action Manager's tool discussion) stays on the server,

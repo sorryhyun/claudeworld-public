@@ -1,14 +1,14 @@
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 
-import type { SessionKey } from '../client/session'
-import type { ToolContext } from '../handlers/context'
+import type { SessionKey } from '@/sdk/client/session'
+import type { ToolContext } from '@/sdk/handlers/context'
 import {
   buildToolSets,
   createTurnBinding,
   qualifiedToolNames,
   type BuildServersOptions,
   type ServerDeps,
-} from '../handlers/servers'
+} from '@/sdk/handlers/servers'
 import { startMcpEndpoint, type McpEndpoint, type StartMcpEndpointOptions } from './endpoint'
 import { TurnRegistry } from './turn-registry'
 

@@ -1,10 +1,10 @@
 /** CRUD operations for Message entities. Synchronous throughout. */
 
 import { and, asc, count, desc, eq, gt, gte, isNull, type SQL } from 'drizzle-orm'
-import type { Db } from '../db'
-import type { ParticipantType } from '../domain/enums'
-import { agents, messages, roomAgents, rooms, type Message, type MessageRole } from '../db/schema'
-import { getCache, roomMessagesKey } from '../infrastructure/cache'
+import type { Db } from '@/db'
+import type { ParticipantType } from '@/domain/enums'
+import { agents, messages, roomAgents, rooms, type Message, type MessageRole } from '@/db/schema'
+import { getCache, roomMessagesKey } from '@/infrastructure/cache'
 
 export type { ParticipantType }
 

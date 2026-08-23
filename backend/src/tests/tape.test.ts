@@ -8,10 +8,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { createChatModeTape, type ChatTapeAgent } from '../orchestration/tape/chat-tape'
-import { TapeExecutor, type ExecutorDeps, type RespondResult } from '../orchestration/tape/executor'
-import { createGameplayTape, createOnboardingTape } from '../orchestration/tape/gameplay-tape'
-import { TurnTape, type TurnCell } from '../orchestration/tape/models'
+import { createChatModeTape, type ChatTapeAgent } from '@/orchestration/tape/chat-tape'
+import { TapeExecutor, type ExecutorDeps, type RespondResult } from '@/orchestration/tape/executor'
+import { createGameplayTape, createOnboardingTape } from '@/orchestration/tape/gameplay-tape'
+import { TurnTape, type TurnCell } from '@/orchestration/tape/models'
 
 // ============================================================================
 // Helpers

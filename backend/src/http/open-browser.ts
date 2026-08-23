@@ -9,8 +9,8 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { IS_BUNDLED_EXE } from '../config/bundled'
-import { getLogger } from '../infrastructure/logging/logger'
+import { IS_BUNDLED_EXE } from '@/config/bundled'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('Serve')
 

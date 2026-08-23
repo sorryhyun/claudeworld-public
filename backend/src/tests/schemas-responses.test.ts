@@ -13,16 +13,16 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { MessageWithAgent } from '../crud/messages'
-import type { PlayerStateWithLocation } from '../crud/player-state'
+import type { MessageWithAgent } from '@/crud/messages'
+import type { PlayerStateWithLocation } from '@/crud/player-state'
 import type {
   Agent as AgentRow,
   Location as LocationRow,
   PlayerState as PlayerStateRow,
   Room as RoomRow,
   World as WorldRow,
-} from '../db/schema'
-import { Agent, toAgent } from '../schemas/agents'
+} from '@/db/schema'
+import { Agent, toAgent } from '@/schemas/agents'
 import {
   GameStateResponse,
   ImportableWorld,
@@ -40,9 +40,9 @@ import {
   toStatDefinitions,
   toWorld,
   toWorldSummary,
-} from '../schemas/game'
-import { Message, PollResponse, toMessage } from '../schemas/messages'
-import { Room, RoomSummary, toRoom, toRoomSummary, type RoomResponseSource } from '../schemas/rooms'
+} from '@/schemas/game'
+import { Message, PollResponse, toMessage } from '@/schemas/messages'
+import { Room, RoomSummary, toRoom, toRoomSummary, type RoomResponseSource } from '@/schemas/rooms'
 
 const CREATED = new Date('2026-08-06T04:14:54.931Z')
 const UPDATED = new Date('2026-08-07T01:02:03Z')

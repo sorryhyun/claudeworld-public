@@ -1,11 +1,11 @@
-import { getGroupConfig } from '../loaders/group-config'
+import { getGroupConfig } from '@/sdk/loaders/group-config'
 import { ACTION_TOOLS } from './action'
 import { formatTemplate, qualifiedToolName, type ToolDefinition } from './definitions'
 import { ACTION_MANAGER_TOOLS } from './gameplay'
 import { GUIDELINE_TOOLS } from './guideline'
 import { ONBOARDING_TOOLS } from './onboarding'
 import { SUBAGENT_TOOLS } from './subagent'
-import { getLogger } from '../../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 /**
  * The tool catalogue and the `group_config.yaml` override path over it. A tool's

@@ -7,7 +7,7 @@
 
 import { jwtVerify, SignJWT } from 'jose'
 
-import { getLogger } from '../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 import { resolveAuthConfig } from './config'
 import { isUserRole, type UserRole } from './roles'
 

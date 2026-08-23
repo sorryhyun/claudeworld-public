@@ -6,9 +6,9 @@
 
 import { Hono } from 'hono'
 
-import { getCache } from '../../infrastructure/cache'
-import { getLogger } from '../../infrastructure/logging/logger'
-import type { AppEnv } from '../types'
+import { getCache } from '@/infrastructure/cache'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { AppEnv } from '@/http/types'
 
 const logger = getLogger('Debug')
 

@@ -1,8 +1,8 @@
 /** Room/agent SDK session bookkeeping. */
 
 import { and, eq } from 'drizzle-orm'
-import type { Db } from '../db'
-import { roomAgentSessions } from '../db/schema'
+import type { Db } from '@/db'
+import { roomAgentSessions } from '@/db/schema'
 
 export type RoomAgentSession = typeof roomAgentSessions.$inferSelect
 

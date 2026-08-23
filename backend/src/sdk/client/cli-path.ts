@@ -17,7 +17,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { IS_BUNDLED_EXE } from '../../config/bundled'
+import { IS_BUNDLED_EXE } from '@/config/bundled'
 
 /** Env var naming the binary outright. Honoured in every run shape. */
 export const CLAUDE_CODE_PATH_ENV_VAR = 'CLAUDE_CODE_PATH'

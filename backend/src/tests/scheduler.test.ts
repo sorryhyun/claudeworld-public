@@ -15,22 +15,22 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { openDb, type Db } from '../db'
-import { openAndInitDb } from '../db/migrate'
-import { agents, messages, roomAgents, rooms, worlds } from '../db/schema'
-import { getCache } from '../infrastructure/cache'
+import { openDb, type Db } from '@/db'
+import { openAndInitDb } from '@/db/migrate'
+import { agents, messages, roomAgents, rooms, worlds } from '@/db/schema'
+import { getCache } from '@/infrastructure/cache'
 import {
   ACTIVE_WINDOW_MS,
   BackgroundScheduler,
   type SchedulerOrchestrator,
-} from '../infrastructure/scheduler'
+} from '@/infrastructure/scheduler'
 import {
   RoomOrchestrator,
   type RoomOrchestratorDeps,
   type TurnImplementations,
-} from '../orchestration/room-orchestrator'
-import type { ExecutionResult } from '../orchestration/tape/models'
-import { runAutonomousRound, type TurnDeps } from '../orchestration/turn'
+} from '@/orchestration/room-orchestrator'
+import type { ExecutionResult } from '@/orchestration/tape/models'
+import { runAutonomousRound, type TurnDeps } from '@/orchestration/turn'
 
 const OWNER = 'admin'
 const WORLD_ID = 1

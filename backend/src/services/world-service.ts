@@ -8,8 +8,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import type { Dirent } from 'node:fs'
 import { join, sep } from 'node:path'
 
-import { getLogger } from '../infrastructure/logging/logger'
-import { HttpError } from '../domain/errors'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { HttpError } from '@/domain/errors'
 
 const logger = getLogger('WorldService')
 

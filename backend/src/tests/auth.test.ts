@@ -11,7 +11,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { AuthConfig } from '../auth/config'
+import type { AuthConfig } from '@/auth/config'
 import {
   DEFAULT_EXPIRATION_HOURS,
   generateGuestUserId,
@@ -19,8 +19,8 @@ import {
   getRoleFromToken,
   getUserIdFromToken,
   validateJwtToken,
-} from '../auth/jwt'
-import { assertAuthConfigured, validateApiKey, validatePasswordWithRole } from '../auth/passwords'
+} from '@/auth/jwt'
+import { assertAuthConfigured, validateApiKey, validatePasswordWithRole } from '@/auth/passwords'
 
 /**
  * Produced by `bcrypt.hashpw(b"test_password", bcrypt.gensalt())` in Python and

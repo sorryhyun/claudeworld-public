@@ -1,20 +1,20 @@
-import { addCharacterToLocation, getLocationByName } from '../../crud/locations'
-import { getAgentByName } from '../../crud/agents'
-import type { LocationStorage } from '../../services/location-storage'
-import type { PlayerService } from '../../services/player-service'
-import type { WorldService } from '../../services/world-service'
-import { WorldResetService } from '../../services/world-reset-service'
-import { getLoreGuidelinesConfig } from '../loaders/yaml-config'
-import { formatTemplate } from '../tools/definitions'
+import { addCharacterToLocation, getLocationByName } from '@/crud/locations'
+import { getAgentByName } from '@/crud/agents'
+import type { LocationStorage } from '@/services/location-storage'
+import type { PlayerService } from '@/services/player-service'
+import type { WorldService } from '@/services/world-service'
+import { WorldResetService } from '@/services/world-reset-service'
+import { getLoreGuidelinesConfig } from '@/sdk/loaders/yaml-config'
+import { formatTemplate } from '@/sdk/tools/definitions'
 import {
   completeTool,
   draftWorldTool,
   persistWorldTool,
   readLoreGuidelinesTool,
-} from '../tools/onboarding'
-import { resolveTool } from '../tools/registry'
-import { getLogger } from '../../infrastructure/logging/logger'
-import type { AgentFilesystemService } from '../../services/agent-filesystem-service'
+} from '@/sdk/tools/onboarding'
+import { resolveTool } from '@/sdk/tools/registry'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { AgentFilesystemService } from '@/services/agent-filesystem-service'
 import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**

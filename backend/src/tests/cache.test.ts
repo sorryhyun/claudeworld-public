@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { CacheManager, roomAgentsKey, roomMessagesKey } from '../infrastructure/cache'
+import { CacheManager, roomAgentsKey, roomMessagesKey } from '@/infrastructure/cache'
 
 /** Resolve on the next macrotask, so concurrent callers really do overlap. */
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 1))

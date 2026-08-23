@@ -7,7 +7,7 @@
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { getSettings } from '../../config/settings'
+import { getSettings } from '@/config/settings'
 import { getLogger } from './logger'
 
 const logger = getLogger('PerfLogger')

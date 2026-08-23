@@ -1,5 +1,5 @@
-import { sessionKeyOf, type SessionKey } from '../client/session'
-import type { TurnBinding } from '../handlers/servers'
+import { sessionKeyOf, type SessionKey } from '@/sdk/client/session'
+import type { TurnBinding } from '@/sdk/handlers/servers'
 
 /**
  * What each (room, agent) is currently doing, for the MCP endpoint to read: a

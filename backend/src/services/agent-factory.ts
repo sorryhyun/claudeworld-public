@@ -4,14 +4,14 @@
 
 import { eq } from 'drizzle-orm'
 
-import { getPriorityAgentNames } from '../config/settings'
-import { createAgent, getAgent, getAgentByName, updateAgent } from '../crud/agents'
-import type { Db } from '../db'
-import { agents, type Agent } from '../db/schema'
-import { agentConfigKey, getCache } from '../infrastructure/cache'
-import { getLogger } from '../infrastructure/logging/logger'
-import { getGroupConfig } from '../sdk/loaders/group-config'
-import { listAvailableConfigs, type AgentConfigData } from '../sdk/parsing/agent-config'
+import { getPriorityAgentNames } from '@/config/settings'
+import { createAgent, getAgent, getAgentByName, updateAgent } from '@/crud/agents'
+import type { Db } from '@/db'
+import { agents, type Agent } from '@/db/schema'
+import { agentConfigKey, getCache } from '@/infrastructure/cache'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { getGroupConfig } from '@/sdk/loaders/group-config'
+import { listAvailableConfigs, type AgentConfigData } from '@/sdk/parsing/agent-config'
 import { AgentConfigService } from './agent-config-service'
 import { buildSystemPrompt } from './prompt-builder'
 

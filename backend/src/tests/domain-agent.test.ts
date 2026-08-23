@@ -12,7 +12,7 @@ import {
   isOnboardingManager,
   isSystemAgent,
   matchesPatterns,
-} from '../domain/agent'
+} from '@/domain/agent'
 
 describe('role predicates', () => {
   // Each role gets the three spellings its pattern set covers, a real-world

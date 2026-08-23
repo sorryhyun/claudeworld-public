@@ -4,8 +4,8 @@
 
 import { z } from 'zod'
 
-import type { MessageWithAgent } from '../crud/messages'
-import type { Agent as AgentRow } from '../db/schema'
+import type { MessageWithAgent } from '@/crud/messages'
+import type { Agent as AgentRow } from '@/db/schema'
 import { optionalString, pydanticInt } from './common'
 
 /** `POST /mcp-tools/chat`. */

@@ -13,11 +13,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { migrateWorldDataToJson } from '../services/world-json-migration'
-import { ItemService } from '../services/item-service'
-import { LocationStorage } from '../services/location-storage'
-import { PlayerService } from '../services/player-service'
-import { WorldService } from '../services/world-service'
+import { migrateWorldDataToJson } from '@/services/world-json-migration'
+import { ItemService } from '@/services/item-service'
+import { LocationStorage } from '@/services/location-storage'
+import { PlayerService } from '@/services/player-service'
+import { WorldService } from '@/services/world-service'
 
 const WORLD = 'oldworld'
 

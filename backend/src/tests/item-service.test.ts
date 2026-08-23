@@ -12,9 +12,9 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ItemService } from '../services/item-service'
-import { PlayerService } from '../services/player-service'
-import type { PlayerState } from '../services/player-service'
+import { ItemService } from '@/services/item-service'
+import { PlayerService } from '@/services/player-service'
+import type { PlayerState } from '@/services/player-service'
 
 const WORLD = 'testworld'
 

@@ -8,15 +8,15 @@
  */
 
 import { getAgent } from './agents'
-import type { Db } from '../db'
-import type { Agent } from '../db/schema'
+import type { Db } from '@/db'
+import type { Agent } from '@/db/schema'
 import {
   agentObjectKey,
   getCache,
   roomAgentsKey,
   roomMessagesKey,
   roomObjectKey,
-} from '../infrastructure/cache'
+} from '@/infrastructure/cache'
 import {
   getMessages,
   getMessagesAfterAgentResponse,

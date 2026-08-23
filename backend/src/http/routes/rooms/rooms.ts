@@ -13,15 +13,15 @@ import {
   createRoom as createRoomRow,
   getRooms,
   updateRoom as updateRoomRow,
-} from '../../../crud/rooms'
-import { RoomAlreadyExistsError } from '../../../domain/errors'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { RoomCreate, RoomUpdate, toRoom, toRoomSummary } from '../../../schemas/rooms'
-import { HttpError } from '../../../domain/errors'
-import { requireAdmin } from '../../middleware/auth'
-import { identityOf, type AppState } from '../../state'
-import type { AppEnv } from '../../types'
-import { intPathParam, parseBody } from '../game/shared'
+} from '@/crud/rooms'
+import { RoomAlreadyExistsError } from '@/domain/errors'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { RoomCreate, RoomUpdate, toRoom, toRoomSummary } from '@/schemas/rooms'
+import { HttpError } from '@/domain/errors'
+import { requireAdmin } from '@/http/middleware/auth'
+import { identityOf, type AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
+import { intPathParam, parseBody } from '@/http/routes/game/shared'
 import { ensureRoomAccessFor } from './shared'
 
 const logger = getLogger('RoomRouter')

@@ -14,16 +14,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { IS_BUNDLED_EXE, BUNDLED_VERSION } from '../config/bundled'
+import { IS_BUNDLED_EXE, BUNDLED_VERSION } from '@/config/bundled'
 import {
   decideSeedAction,
   embeddedFrontend,
   relocateSeed,
   unpackSeed,
   type SeedManifest,
-} from '../exe/assets'
-import { resolveClaudeExecutable } from '../sdk/client/cli-path'
-import { resetSettings, restoreExpandedDotEnv } from '../config/settings'
+} from '@/exe/assets'
+import { resolveClaudeExecutable } from '@/sdk/client/cli-path'
+import { resetSettings, restoreExpandedDotEnv } from '@/config/settings'
 
 describe('bundled flags', () => {
   test('a test run is not a bundled run', () => {
@@ -283,7 +283,7 @@ describe('the embedded frontend middleware', () => {
     process.env.API_KEY_HASH = '$2b$12$H0fCIM9buSuQsCFErTRi0Omz//QVZxCKJW5Dapi2u3ealuUFzvF9O'
     process.env.JWT_SECRET = 'embedded-test-secret'
     resetSettings()
-    const { createApp } = await import('../http/app')
+    const { createApp } = await import('@/http/app')
     return createApp(undefined, { embeddedFrontend: files })
   }
 

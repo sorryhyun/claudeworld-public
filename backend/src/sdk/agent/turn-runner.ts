@@ -1,8 +1,8 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { NarrationStreamExtractor } from '../client/narration-extractor'
-import { parseMessage, type ParsedUsage } from '../client/stream-parser'
-import { IdleTimeoutError, SessionDeadError, type AgentSession } from '../client/session'
-import type { SessionPool } from '../client/session-pool'
+import { NarrationStreamExtractor } from '@/sdk/client/narration-extractor'
+import { parseMessage, type ParsedUsage } from '@/sdk/client/stream-parser'
+import { IdleTimeoutError, SessionDeadError, type AgentSession } from '@/sdk/client/session'
+import type { SessionPool } from '@/sdk/client/session-pool'
 import { buildAgentOptions, optionsFingerprint, type AgentOptionsInput } from './options-builder'
 
 /** Runs one agent turn as a stream of events: `stream_start`, deltas, then

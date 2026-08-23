@@ -17,8 +17,8 @@
 
 import { and, count, desc, eq, gte, inArray, isNull } from 'drizzle-orm'
 
-import type { Db } from '../db'
-import { roomAgents, rooms, type Room } from '../db/schema'
+import type { Db } from '@/db'
+import { roomAgents, rooms, type Room } from '@/db/schema'
 import { getCache } from './cache'
 import { getLogger } from './logging/logger'
 

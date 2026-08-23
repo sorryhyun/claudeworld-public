@@ -1,18 +1,18 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { addCharacterToLocation, getLocationByName } from '../../crud/locations'
-import { addAgentToRoom } from '../../crud/rooms'
-import { getWorld } from '../../crud/worlds'
-import type { PlayerService } from '../../services/player-service'
-import { RoomMappingService } from '../../services/room-mapping'
+import { addCharacterToLocation, getLocationByName } from '@/crud/locations'
+import { addAgentToRoom } from '@/crud/rooms'
+import { getWorld } from '@/crud/worlds'
+import type { PlayerService } from '@/services/player-service'
+import { RoomMappingService } from '@/services/room-mapping'
 import {
   createComprehensiveCharacterTool,
   implantConsolidatedMemoryTool,
-} from '../tools/character-design'
-import { getLogger } from '../../infrastructure/logging/logger'
-import type { AgentFactory } from '../../services/agent-factory'
-import type { AgentFilesystemService } from '../../services/agent-filesystem-service'
-import type { WorldService } from '../../services/world-service'
+} from '@/sdk/tools/character-design'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { AgentFactory } from '@/services/agent-factory'
+import type { AgentFilesystemService } from '@/services/agent-filesystem-service'
+import type { WorldService } from '@/services/world-service'
 import { tool, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**

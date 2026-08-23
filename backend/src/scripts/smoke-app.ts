@@ -14,13 +14,13 @@ process.env.API_KEY_HASH = '$2b$12$H0fCIM9buSuQsCFErTRi0Omz//QVZxCKJW5Dapi2u3eal
 process.env.JWT_SECRET = 'smoke-secret'
 process.env.ENABLE_GUEST_LOGIN = 'false'
 
-const { resetSettings } = await import('../config/settings')
+const { resetSettings } = await import('@/config/settings')
 resetSettings()
 
-const { wrapDb } = await import('../db')
-const { openAndInitDb } = await import('../db/migrate')
-const { createApp } = await import('../http/app')
-const { createAppState } = await import('../http/state')
+const { wrapDb } = await import('@/db')
+const { openAndInitDb } = await import('@/db/migrate')
+const { createApp } = await import('@/http/app')
+const { createAppState } = await import('@/http/state')
 
 const dir = mkdtempSync(join(tmpdir(), 'cw-smoke-'))
 const sqlite = openAndInitDb({ path: join(dir, 'smoke.db') })

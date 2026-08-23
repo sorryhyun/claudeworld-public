@@ -20,16 +20,16 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { getAgent } from '../crud/agents'
-import { openDb, type Db } from '../db'
-import { applyMigrations, loadMigrations } from '../db/migrate'
-import { agents } from '../db/schema'
-import { AgentConfigService } from '../services/agent-config-service'
+import { getAgent } from '@/crud/agents'
+import { openDb, type Db } from '@/db'
+import { applyMigrations, loadMigrations } from '@/db/migrate'
+import { agents } from '@/db/schema'
+import { AgentConfigService } from '@/services/agent-config-service'
 import {
   AgentFactory,
   mergeAgentConfigs,
   resolveGroupSettings,
-} from '../services/agent-factory'
+} from '@/services/agent-factory'
 
 const migrations = loadMigrations()
 

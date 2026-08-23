@@ -6,7 +6,7 @@
  * survive either way since `usePolling` re-fetches them.
  */
 
-import { AsyncQueue } from '../lib/async-queue'
+import { AsyncQueue } from '@/lib/async-queue'
 import { getLogger } from './logging/logger'
 
 const logger = getLogger('SSE')

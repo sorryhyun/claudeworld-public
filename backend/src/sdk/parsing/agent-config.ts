@@ -8,9 +8,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { YAML } from 'bun'
 
-import { getSettings } from '../../config/settings'
+import { getSettings } from '@/config/settings'
 import { parseLongTermMemory } from './memory'
-import { getLogger } from '../../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('AgentConfig')
 

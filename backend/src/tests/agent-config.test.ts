@@ -3,18 +3,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { resetSettings } from '../config/settings'
+import { resetSettings } from '@/config/settings'
 import {
   hasContent,
   listAvailableConfigs,
   parseAgentConfig,
   type AgentConfigData,
-} from '../sdk/parsing/agent-config'
+} from '@/sdk/parsing/agent-config'
 import {
   buildRuntimeSystemPrompt,
   buildSystemPrompt,
   toSystemPromptMarkdown,
-} from '../services/prompt-builder'
+} from '@/services/prompt-builder'
 
 const ACTION_MANAGER_PATH = 'agents/group_gameplay/Action_Manager'
 

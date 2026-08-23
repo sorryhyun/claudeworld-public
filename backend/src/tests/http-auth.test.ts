@@ -10,8 +10,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
-import { resetSettings } from '../config/settings'
-import { isExcluded } from '../http/middleware/auth'
+import { resetSettings } from '@/config/settings'
+import { isExcluded } from '@/http/middleware/auth'
 
 const PYTHON_BCRYPT_HASH = '$2b$12$H0fCIM9buSuQsCFErTRi0Omz//QVZxCKJW5Dapi2u3ealuUFzvF9O'
 const PASSWORD = 'test_password'
@@ -29,7 +29,7 @@ process.env.ENABLE_GUEST_LOGIN = 'true'
 process.env.JWT_SECRET = 'http-test-secret'
 resetSettings()
 
-const { createApp } = await import('../http/app')
+const { createApp } = await import('@/http/app')
 const app = createApp()
 
 async function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {

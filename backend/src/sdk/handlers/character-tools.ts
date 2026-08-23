@@ -1,22 +1,22 @@
-import { getAgentByName } from '../../crud/agents'
+import { getAgentByName } from '@/crud/agents'
 import {
   addCharacterToLocation,
   getAgentLocationsInWorld,
   getLocationByName,
   removeCharacterFromLocation,
-} from '../../crud/locations'
-import { addAgentToRoom } from '../../crud/rooms'
-import { getWorld } from '../../crud/worlds'
-import type { LocationStorage } from '../../services/location-storage'
-import type { PlayerService } from '../../services/player-service'
-import { RoomMappingService } from '../../services/room-mapping'
-import { deleteCharacterTool, removeCharacterTool } from '../tools/gameplay'
-import { moveCharacterTool } from '../tools/location'
-import { resolveTool } from '../tools/registry'
-import { persistCharacterDesignTool } from '../tools/subagent'
-import { getLogger } from '../../infrastructure/logging/logger'
-import type { AgentFactory } from '../../services/agent-factory'
-import type { AgentFilesystemService } from '../../services/agent-filesystem-service'
+} from '@/crud/locations'
+import { addAgentToRoom } from '@/crud/rooms'
+import { getWorld } from '@/crud/worlds'
+import type { LocationStorage } from '@/services/location-storage'
+import type { PlayerService } from '@/services/player-service'
+import { RoomMappingService } from '@/services/room-mapping'
+import { deleteCharacterTool, removeCharacterTool } from '@/sdk/tools/gameplay'
+import { moveCharacterTool } from '@/sdk/tools/location'
+import { resolveTool } from '@/sdk/tools/registry'
+import { persistCharacterDesignTool } from '@/sdk/tools/subagent'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { AgentFactory } from '@/services/agent-factory'
+import type { AgentFilesystemService } from '@/services/agent-filesystem-service'
 import { tool, requireWorldId, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**

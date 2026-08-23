@@ -26,7 +26,7 @@ import {
   type Equipment,
   type InventoryEntry,
   type StatDefinitions,
-} from '../domain/player-rules'
+} from '@/domain/player-rules'
 
 /** The stat block a generated world typically produces. */
 const STAT_DEFS: StatDefinitions = {

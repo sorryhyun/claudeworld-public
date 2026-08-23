@@ -2,12 +2,12 @@
 
 import type { Context } from 'hono'
 
-import { getRoom, type RoomWithRelations } from '../../../crud/rooms'
-import type { Db } from '../../../db'
-import { RoomNotFoundError } from '../../../domain/errors'
-import { assertRoomAccess } from '../../access-control'
-import { identityOf } from '../../state'
-import type { AppEnv } from '../../types'
+import { getRoom, type RoomWithRelations } from '@/crud/rooms'
+import type { Db } from '@/db'
+import { RoomNotFoundError } from '@/domain/errors'
+import { assertRoomAccess } from '@/http/access-control'
+import { identityOf } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 
 /**
  * Load a room the caller may see, or throw. No world-phase filesystem sync —

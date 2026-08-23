@@ -19,8 +19,8 @@ import {
   roomObjectKey,
   type CacheManager,
   type CacheStats,
-} from '../infrastructure/cache'
-import { getLogger } from '../infrastructure/logging/logger'
+} from '@/infrastructure/cache'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('CacheService')
 

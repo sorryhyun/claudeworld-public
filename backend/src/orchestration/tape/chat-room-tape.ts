@@ -7,8 +7,8 @@
  * so a silent observer provokes no response to itself.
  */
 
-import { separatePriorityAgents, type OrderableAgent } from '../agent-ordering'
-import { getLogger } from '../../infrastructure/logging/logger'
+import { separatePriorityAgents, type OrderableAgent } from '@/orchestration/agent-ordering'
+import { getLogger } from '@/infrastructure/logging/logger'
 import { TurnTape, type TurnCell } from './models'
 
 const logger = getLogger('ChatRoomTape')

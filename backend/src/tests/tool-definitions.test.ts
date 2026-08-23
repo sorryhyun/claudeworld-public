@@ -14,13 +14,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { PROJECT_ROOT_ENV_VAR } from '../config/paths'
-import { resetSettings } from '../config/settings'
-import { clearConfigCache } from '../sdk/loaders/yaml-config'
-import { ACTION_MANAGER_TOOLS, changeStatTool, formatDiceRoll, rollDice } from '../sdk/tools/gameplay'
-import { travelTool } from '../sdk/tools/location'
-import { UNIMPLEMENTED_ITEM_TOOLS } from '../sdk/tools/item'
-import { persistLocationDesignTool } from '../sdk/tools/subagent'
+import { PROJECT_ROOT_ENV_VAR } from '@/config/paths'
+import { resetSettings } from '@/config/settings'
+import { clearConfigCache } from '@/sdk/loaders/yaml-config'
+import { ACTION_MANAGER_TOOLS, changeStatTool, formatDiceRoll, rollDice } from '@/sdk/tools/gameplay'
+import { travelTool } from '@/sdk/tools/location'
+import { UNIMPLEMENTED_ITEM_TOOLS } from '@/sdk/tools/item'
+import { persistLocationDesignTool } from '@/sdk/tools/subagent'
 import {
   getToolNamesByGroup,
   getToolResponse,
@@ -29,7 +29,7 @@ import {
   resolveTool,
   TOOL_GROUPS,
   getToolsByGroup,
-} from '../sdk/tools/registry'
+} from '@/sdk/tools/registry'
 
 /** Parse one field of a tool's schema in isolation. */
 function parseField(schema: z.ZodRawShape, field: string, value: unknown): unknown {

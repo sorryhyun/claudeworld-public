@@ -13,9 +13,9 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { resolveProjectRoot, PROJECT_ROOT_ENV_VAR } from '../../config/paths'
-import { parseDotEnv, SKIP_DOTENV_ENV_VAR } from '../../config/settings'
-import { setLogSink } from '../../infrastructure/logging/logger'
+import { resolveProjectRoot, PROJECT_ROOT_ENV_VAR } from '@/config/paths'
+import { parseDotEnv, SKIP_DOTENV_ENV_VAR } from '@/config/settings'
+import { setLogSink } from '@/infrastructure/logging/logger'
 
 const projectRoot = resolveProjectRoot({})
 process.env[PROJECT_ROOT_ENV_VAR] ??= projectRoot

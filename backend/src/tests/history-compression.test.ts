@@ -15,10 +15,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { createAgent } from '../crud/agents'
-import { openDb, type Db } from '../db'
-import { applyMigrations, loadMigrations } from '../db/migrate'
-import { AgentConfigService } from '../services/agent-config-service'
+import { createAgent } from '@/crud/agents'
+import { openDb, type Db } from '@/db'
+import { applyMigrations, loadMigrations } from '@/db/migrate'
+import { AgentConfigService } from '@/services/agent-config-service'
 import {
   BATCH_SIZE,
   HistoryCompressionService,
@@ -28,8 +28,8 @@ import {
   parseHistoryIntoTurns,
   type SummarizeRequest,
   type TurnEntry,
-} from '../services/history-compression-service'
-import { WorldService } from '../services/world-service'
+} from '@/services/history-compression-service'
+import { WorldService } from '@/services/world-service'
 
 const migrations = loadMigrations()
 

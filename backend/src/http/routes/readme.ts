@@ -10,9 +10,9 @@ import { join } from 'node:path'
 
 import { Hono } from 'hono'
 
-import { getLogger } from '../../infrastructure/logging/logger'
-import { HttpError, validationError } from '../../domain/errors'
-import type { AppEnv } from '../types'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { HttpError, validationError } from '@/domain/errors'
+import type { AppEnv } from '@/http/types'
 
 const logger = getLogger('Readme')
 

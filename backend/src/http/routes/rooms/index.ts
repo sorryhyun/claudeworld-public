@@ -7,8 +7,8 @@
 
 import { Hono } from 'hono'
 
-import type { AppState } from '../../state'
-import type { AppEnv } from '../../types'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import { createRoomAgentRoutes } from './agents'
 import { createRoomMessageRoutes } from './messages'
 import { createRoomRoutes } from './rooms'

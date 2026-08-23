@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { dumpJson, LOCATION_INDEX_FILE, MtimeCache, WorldService } from './world-service'
-import { getLogger } from '../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('LocationStorage')
 

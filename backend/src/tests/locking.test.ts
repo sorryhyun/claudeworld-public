@@ -13,7 +13,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { atomicWrite, safeAppendLine, safeReadFile, withFileLock } from '../infrastructure/locking'
+import { atomicWrite, safeAppendLine, safeReadFile, withFileLock } from '@/infrastructure/locking'
 
 let workDir: string
 

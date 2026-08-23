@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parseSlashCommand } from '../domain/slash-commands'
+import { parseSlashCommand } from '@/domain/slash-commands'
 
 describe('parseSlashCommand', () => {
   test('recognises /chat and /end', () => {

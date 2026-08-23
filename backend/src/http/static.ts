@@ -14,7 +14,7 @@ import { join, normalize, resolve, sep } from 'node:path'
 
 import { createMiddleware } from 'hono/factory'
 
-import { getLogger } from '../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 import type { AppEnv } from './types'
 
 const logger = getLogger('StaticFiles')

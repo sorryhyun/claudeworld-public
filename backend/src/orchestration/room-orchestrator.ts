@@ -1,6 +1,6 @@
-import type { World } from '../db/schema'
-import { getLogger } from '../infrastructure/logging/logger'
-import type { SessionPool } from '../sdk/client/session-pool'
+import type { World } from '@/db/schema'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { SessionPool } from '@/sdk/client/session-pool'
 import type { ExecutionResult } from './tape/models'
 import {
   preConnectLocation,

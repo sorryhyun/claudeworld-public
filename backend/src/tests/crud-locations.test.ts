@@ -13,9 +13,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { openDb, type Db } from '../db'
-import { openAndInitDb } from '../db/migrate'
-import { agents, locations, messages, rooms, worlds } from '../db/schema'
+import { openDb, type Db } from '@/db'
+import { openAndInitDb } from '@/db/migrate'
+import { agents, locations, messages, rooms, worlds } from '@/db/schema'
 import {
   addAdjacentLocation,
   addCharacterToLocation,
@@ -36,8 +36,8 @@ import {
   updateLocation,
   updateLocationLabel,
   type LocationFilesystemSync,
-} from '../crud'
-import { getCache } from '../infrastructure/cache'
+} from '@/crud'
+import { getCache } from '@/infrastructure/cache'
 
 const WORLD_ID = 1
 const WORLD_NAME = 'testworld'

@@ -1,14 +1,14 @@
-import { getCharactersAtLocation, getLocation, getLocations } from '../../crud/locations'
-import { getPlayerState } from '../../crud/player-state'
-import type { LocationStorage } from '../../services/location-storage'
+import { getCharactersAtLocation, getLocation, getLocations } from '@/crud/locations'
+import { getPlayerState } from '@/crud/player-state'
+import type { LocationStorage } from '@/services/location-storage'
 import {
   formatDiceRoll,
   listCharactersTool,
   listLocationsTool,
   rollDice,
   rollTheDiceTool,
-} from '../tools/gameplay'
-import { resolveTool } from '../tools/registry'
+} from '@/sdk/tools/gameplay'
+import { resolveTool } from '@/sdk/tools/registry'
 import { tool, requireWorldId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**

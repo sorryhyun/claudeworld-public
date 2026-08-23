@@ -4,7 +4,7 @@
  * SQLite reports. The cheapest way to catch a transcription slip.
  */
 import { Database } from 'bun:sqlite'
-import { openDb, schema } from '../db'
+import { openDb, schema } from '@/db'
 
 const dbPath = process.argv[2]
 if (!dbPath) {

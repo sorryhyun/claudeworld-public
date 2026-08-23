@@ -6,7 +6,7 @@
  * ({@link assertAuthConfigured}), not on the request path, which only refuses.
  */
 
-import { getLogger } from '../infrastructure/logging/logger'
+import { getLogger } from '@/infrastructure/logging/logger'
 import { resolveAuthConfig, type AuthConfig } from './config'
 import type { UserRole } from './roles'
 

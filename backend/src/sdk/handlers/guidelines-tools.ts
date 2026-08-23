@@ -1,7 +1,7 @@
-import { getExtremeTraits } from '../loaders/group-config'
-import { formatTemplate } from '../tools/definitions'
-import { anthropicTool } from '../tools/guideline'
-import { resolveTool } from '../tools/registry'
+import { getExtremeTraits } from '@/sdk/loaders/group-config'
+import { formatTemplate } from '@/sdk/tools/definitions'
+import { anthropicTool } from '@/sdk/tools/guideline'
+import { resolveTool } from '@/sdk/tools/registry'
 import { tool, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**

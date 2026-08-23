@@ -1,7 +1,7 @@
-import type { Db } from '../../db'
-import type { CreateLocationInput } from '../../services/persistence-manager'
-import type { GameTime, PlayerState } from '../../services/player-service'
-import type { InventoryEntry } from '../../domain/player-rules'
+import type { Db } from '@/db'
+import type { CreateLocationInput } from '@/services/persistence-manager'
+import type { GameTime, PlayerState } from '@/services/player-service'
+import type { InventoryEntry } from '@/domain/player-rules'
 
 /** Dependencies and orchestrator seams the service layer does not provide. */
 

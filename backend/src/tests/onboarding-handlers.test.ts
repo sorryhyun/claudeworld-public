@@ -14,26 +14,26 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { openDb, type Db } from '../db'
-import { openAndInitDb } from '../db/migrate'
-import { agents, rooms as roomsTable, worlds } from '../db/schema'
-import { createLocation, getCharactersAtLocation, getLocations } from '../crud/locations'
-import { getAgentByName } from '../crud/agents'
-import { getCache } from '../infrastructure/cache'
-import { AgentConfigService } from '../services/agent-config-service'
-import { AgentFactory } from '../services/agent-factory'
-import { AgentFilesystemService } from '../services/agent-filesystem-service'
-import { ItemService } from '../services/item-service'
-import { LocationStorage } from '../services/location-storage'
-import { PersistenceManager } from '../services/persistence-manager'
-import { PlayerService } from '../services/player-service'
-import { RoomMappingService } from '../services/room-mapping'
-import { WorldResetService } from '../services/world-reset-service'
-import { MtimeCache, WorldService } from '../services/world-service'
-import { createCharacterDesignTools } from '../sdk/handlers/character-design-tools'
-import { createPersistCharacterTool } from '../sdk/handlers/character-tools'
-import { createPersistLocationTool } from '../sdk/handlers/location-tools'
-import { createOnboardingTools } from '../sdk/handlers/onboarding-tools'
+import { openDb, type Db } from '@/db'
+import { openAndInitDb } from '@/db/migrate'
+import { agents, rooms as roomsTable, worlds } from '@/db/schema'
+import { createLocation, getCharactersAtLocation, getLocations } from '@/crud/locations'
+import { getAgentByName } from '@/crud/agents'
+import { getCache } from '@/infrastructure/cache'
+import { AgentConfigService } from '@/services/agent-config-service'
+import { AgentFactory } from '@/services/agent-factory'
+import { AgentFilesystemService } from '@/services/agent-filesystem-service'
+import { ItemService } from '@/services/item-service'
+import { LocationStorage } from '@/services/location-storage'
+import { PersistenceManager } from '@/services/persistence-manager'
+import { PlayerService } from '@/services/player-service'
+import { RoomMappingService } from '@/services/room-mapping'
+import { WorldResetService } from '@/services/world-reset-service'
+import { MtimeCache, WorldService } from '@/services/world-service'
+import { createCharacterDesignTools } from '@/sdk/handlers/character-design-tools'
+import { createPersistCharacterTool } from '@/sdk/handlers/character-tools'
+import { createPersistLocationTool } from '@/sdk/handlers/location-tools'
+import { createOnboardingTools } from '@/sdk/handlers/onboarding-tools'
 import {
   buildToolSets,
   createTurnBinding,
@@ -41,8 +41,8 @@ import {
   SERVER_NAMES,
   type BuildServersOptions,
   type ServerDeps,
-} from '../sdk/handlers/servers'
-import type { ToolContext } from '../sdk/handlers/context'
+} from '@/sdk/handlers/servers'
+import type { ToolContext } from '@/sdk/handlers/context'
 import { callTool, findTool, isError, resultText } from './tool-harness'
 
 const WORLD_ID = 1

@@ -14,8 +14,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { resetSettings } from '../config/settings'
-import { optionsFingerprint } from '../sdk/agent/options-builder'
+import { resetSettings } from '@/config/settings'
+import { optionsFingerprint } from '@/sdk/agent/options-builder'
 import {
   buildSubagentDefinition,
   buildSubagentDefinitions,
@@ -23,9 +23,9 @@ import {
   clearSubagentDefinitionCache,
   isSubagentParentRole,
   SUBAGENT_TYPES,
-} from '../sdk/agent/subagent-definitions'
-import { qualifiedToolName } from '../sdk/tools/definitions'
-import { SUBAGENT_TOOLS, SUBAGENT_TOOL_NAMES } from '../sdk/tools/subagent'
+} from '@/sdk/agent/subagent-definitions'
+import { qualifiedToolName } from '@/sdk/tools/definitions'
+import { SUBAGENT_TOOLS, SUBAGENT_TOOL_NAMES } from '@/sdk/tools/subagent'
 
 /** Everything the `subagents` server offers when every ServerDeps entry is wired. */
 const ALL_PERSIST_TOOLS: string[] = Object.values(SUBAGENT_TOOL_NAMES)

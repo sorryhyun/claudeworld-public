@@ -13,9 +13,9 @@ import { readMigrationFiles, type MigrationMeta } from 'drizzle-orm/migrator'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { IS_BUNDLED_EXE } from '../config/bundled'
-import { resolveProjectRoot } from '../config/paths'
-import { getLogger } from '../infrastructure/logging/logger'
+import { IS_BUNDLED_EXE } from '@/config/bundled'
+import { resolveProjectRoot } from '@/config/paths'
+import { getLogger } from '@/infrastructure/logging/logger'
 import { describeDeclaredSchema, describeLiveSchema, diffSchemas } from './introspect'
 
 const logger = getLogger('Database')

@@ -1,11 +1,11 @@
-import { getConversationContextConfig } from '../sdk/loaders/yaml-config'
-import { formatWithParticles } from '../lib/korean'
-import type { LocationStorage } from '../services/location-storage'
-import type { PlayerService } from '../services/player-service'
-import type { RoomMappingService } from '../services/room-mapping'
-import type { WorldService } from '../services/world-service'
+import { getConversationContextConfig } from '@/sdk/loaders/yaml-config'
+import { formatWithParticles } from '@/lib/korean'
+import type { LocationStorage } from '@/services/location-storage'
+import type { PlayerService } from '@/services/player-service'
+import type { RoomMappingService } from '@/services/room-mapping'
+import type { WorldService } from '@/services/world-service'
 import type { AgentReaction } from './tape/models'
-import { toLangKey } from '../domain/enums'
+import { toLangKey } from '@/domain/enums'
 
 /**
  * Builds what the Action Manager sees, read from the filesystem rather than the

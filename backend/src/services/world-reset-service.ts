@@ -12,8 +12,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { MtimeCache, WorldService } from './world-service'
-import type { InventoryEntry } from '../domain/player-rules'
-import { getLogger } from '../infrastructure/logging/logger'
+import type { InventoryEntry } from '@/domain/player-rules'
+import { getLogger } from '@/infrastructure/logging/logger'
 import type { GameTime } from './player-service'
 
 const logger = getLogger('WorldResetService')

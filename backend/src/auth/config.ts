@@ -4,7 +4,7 @@
  * explicit config object — and an override applies without a restart.
  */
 
-import { getSettings, isGuestLoginEnabled, type EnvRecord } from '../config/settings'
+import { getSettings, isGuestLoginEnabled, type EnvRecord } from '@/config/settings'
 
 export interface AuthConfig {
   /** Bcrypt hash of the admin password, from `API_KEY_HASH`. */

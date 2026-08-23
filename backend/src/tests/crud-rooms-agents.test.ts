@@ -17,9 +17,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { openDb, type Db } from '../db'
-import { openAndInitDb } from '../db/migrate'
-import { agents, messages, roomAgents, rooms, worlds } from '../db/schema'
+import { openDb, type Db } from '@/db'
+import { openAndInitDb } from '@/db/migrate'
+import { agents, messages, roomAgents, rooms, worlds } from '@/db/schema'
 import {
   addAgentToRoom,
   addGameplayAgentsToRoom,
@@ -40,15 +40,15 @@ import {
   syncAgentsWithFilesystem,
   updateAgent,
   updateRoom,
-} from '../crud'
-import { getAgentsCached } from '../crud/cached'
+} from '@/crud'
+import { getAgentsCached } from '@/crud/cached'
 import {
   agentConfigKey,
   getCache,
   roomAgentsKey,
   roomMessagesKey,
   roomObjectKey,
-} from '../infrastructure/cache'
+} from '@/infrastructure/cache'
 
 const WORLD_ID = 1
 const WORLD_NAME = 'testworld'

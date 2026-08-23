@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Agent } from '../db/schema'
-import { turnEventToSse } from '../http/stream-events'
-import type { TurnEvent } from '../sdk/agent/turn-runner'
+import type { Agent } from '@/db/schema'
+import { turnEventToSse } from '@/http/stream-events'
+import type { TurnEvent } from '@/sdk/agent/turn-runner'
 
 const agent = { id: 7, name: 'Onboarding_Manager' } as Agent
 

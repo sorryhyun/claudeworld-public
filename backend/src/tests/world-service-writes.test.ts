@@ -13,8 +13,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { HttpError } from '../domain/errors'
-import { WorldService } from '../services/world-service'
+import { HttpError } from '@/domain/errors'
+import { WorldService } from '@/services/world-service'
 
 let worldsDir: string
 

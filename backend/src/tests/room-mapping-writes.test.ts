@@ -13,8 +13,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { LocationStorage } from '../services/location-storage'
-import { RoomMappingService } from '../services/room-mapping'
+import { LocationStorage } from '@/services/location-storage'
+import { RoomMappingService } from '@/services/room-mapping'
 
 const WORLD = 'w'
 

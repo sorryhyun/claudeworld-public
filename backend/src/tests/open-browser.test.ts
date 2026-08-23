@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { browserCommands, markerPath, openBrowser, resolveOpenBrowser } from '../http/open-browser'
+import { browserCommands, markerPath, openBrowser, resolveOpenBrowser } from '@/http/open-browser'
 
 const URL = 'http://localhost:8123'
 

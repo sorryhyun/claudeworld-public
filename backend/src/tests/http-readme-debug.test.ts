@@ -13,8 +13,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { resetSettings } from '../config/settings'
-import { getCache } from '../infrastructure/cache'
+import { resetSettings } from '@/config/settings'
+import { getCache } from '@/infrastructure/cache'
 import { createGameApp, type GameAppHarness } from './setup/game-app'
 
 /** `debug.py`'s wire shape, spelled out so the assertions are not index reads. */

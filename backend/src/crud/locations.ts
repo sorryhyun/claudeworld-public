@@ -2,7 +2,7 @@
 
 import { and, asc, eq, isNull, notInArray, or, sql } from 'drizzle-orm'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
-import type { Db } from '../db'
+import type { Db } from '@/db'
 import {
   agents,
   locations,
@@ -12,12 +12,12 @@ import {
   type Agent,
   type Location,
   type Room,
-} from '../db/schema'
-import { getLogger } from '../infrastructure/logging/logger'
-import { locationToRoomKey } from '../domain/room-keys'
+} from '@/db/schema'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { locationToRoomKey } from '@/domain/room-keys'
 import { addAgentToRoom, createRoom, getAgentsInRoom, removeAgentFromRoom } from './rooms'
 import { addGameplayAgentsToRoom } from './worlds'
-import { SYSTEM_AGENT_GROUPS } from '../domain/agent'
+import { SYSTEM_AGENT_GROUPS } from '@/domain/agent'
 
 const logger = getLogger('LocationCRUD')
 

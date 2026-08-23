@@ -3,15 +3,15 @@
 
 import { Hono } from 'hono'
 
-import { getLocation, getLocations, updateLocationLabel } from '../../../crud/locations'
-import { getMessages, getMessagesSince } from '../../../crud/messages'
-import { getPlayerState, setCurrentLocation } from '../../../crud/player-state'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { LocationUpdate, toLocation } from '../../../schemas/game'
-import { RoomMappingService } from '../../../services/room-mapping'
-import { HttpError } from '../../../domain/errors'
-import type { AppState } from '../../state'
-import type { AppEnv } from '../../types'
+import { getLocation, getLocations, updateLocationLabel } from '@/crud/locations'
+import { getMessages, getMessagesSince } from '@/crud/messages'
+import { getPlayerState, setCurrentLocation } from '@/crud/player-state'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { LocationUpdate, toLocation } from '@/schemas/game'
+import { RoomMappingService } from '@/services/room-mapping'
+import { HttpError } from '@/domain/errors'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import {
   boolQueryParam,
   intPathParam,

@@ -1,10 +1,10 @@
 // These two messages are written into the message log by the server, not by an
 // agent; the templates live in `config/localization.yaml`, hot-reloaded.
 
-import type { Language } from '../db/schema'
+import type { Language } from '@/db/schema'
 import { toLangKey } from './enums'
-import { formatWithParticles } from '../lib/korean'
-import { getLocalizationConfig } from '../sdk/loaders/yaml-config'
+import { formatWithParticles } from '@/lib/korean'
+import { getLocalizationConfig } from '@/sdk/loaders/yaml-config'
 
 // Keys are the placeholder names inside `localization.yaml`, so renaming them
 // here silently stops the match.

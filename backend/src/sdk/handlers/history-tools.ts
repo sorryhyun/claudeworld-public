@@ -1,7 +1,7 @@
-import type { WorldService } from '../../services/world-service'
-import { formatTemplate } from '../tools/definitions'
-import { recallHistoryTool } from '../tools/gameplay'
-import { resolveTool } from '../tools/registry'
+import type { WorldService } from '@/services/world-service'
+import { formatTemplate } from '@/sdk/tools/definitions'
+import { recallHistoryTool } from '@/sdk/tools/gameplay'
+import { resolveTool } from '@/sdk/tools/registry'
 import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 /**

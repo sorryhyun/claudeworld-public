@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { getSettings } from '../../config/settings'
+import { getSettings } from '@/config/settings'
 import { getCachedConfig, type YamlConfig } from './yaml-config'
 
 /** Tool-access keys whose values are merged as lists rather than overwritten. */

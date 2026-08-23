@@ -1,5 +1,5 @@
 import { query, type Options, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { AsyncQueue } from '../../lib/async-queue'
+import { AsyncQueue } from '@/lib/async-queue'
 import { createInputChannel, type InputChannel } from './input-channel'
 
 /**

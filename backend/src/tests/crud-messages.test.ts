@@ -35,12 +35,12 @@ import {
   getMessagesExcludingChat,
   getMessagesSince,
   getRecentMessages,
-} from '../crud/messages'
-import { openDb, type Db } from '../db'
-import { formatSqlaDateTime } from '../db/columns'
-import { agents, messages, rooms } from '../db/schema'
-import { applyMigrations, loadMigrations } from '../db/migrate'
-import { getCache, roomMessagesKey } from '../infrastructure/cache'
+} from '@/crud/messages'
+import { openDb, type Db } from '@/db'
+import { formatSqlaDateTime } from '@/db/columns'
+import { agents, messages, rooms } from '@/db/schema'
+import { applyMigrations, loadMigrations } from '@/db/migrate'
+import { getCache, roomMessagesKey } from '@/infrastructure/cache'
 
 const migrations = loadMigrations()
 

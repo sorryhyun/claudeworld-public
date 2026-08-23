@@ -1,4 +1,4 @@
-import type { UserRole } from '../auth/roles'
+import type { UserRole } from '@/auth/roles'
 
 /**
  * Per-request state set by the auth middleware and read by routers.

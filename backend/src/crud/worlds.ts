@@ -1,7 +1,7 @@
 /** CRUD operations for World entities. */
 
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
-import type { Db } from '../db'
+import type { Db } from '@/db'
 import {
   agents,
   locations,
@@ -15,16 +15,16 @@ import {
   type Room,
   type World,
   type WorldPhase,
-} from '../db/schema'
+} from '@/db/schema'
 import { invalidateRoomCache } from './cache-invalidation'
 import type { PlayerStateWithLocation } from './player-state'
 import { addAgentToRoom, createRoom } from './rooms'
-import { toLangKey } from '../domain/enums'
-import { PlayerStateSerializer } from '../domain/player-state-serializer'
-import { getLogger } from '../infrastructure/logging/logger'
-import type { PlayerService } from '../services/player-service'
-import type { RoomMappingService } from '../services/room-mapping'
-import type { WorldConfig } from '../services/world-service'
+import { toLangKey } from '@/domain/enums'
+import { PlayerStateSerializer } from '@/domain/player-state-serializer'
+import { getLogger } from '@/infrastructure/logging/logger'
+import type { PlayerService } from '@/services/player-service'
+import type { RoomMappingService } from '@/services/room-mapping'
+import type { WorldConfig } from '@/services/world-service'
 
 const logger = getLogger('WorldCRUD')
 

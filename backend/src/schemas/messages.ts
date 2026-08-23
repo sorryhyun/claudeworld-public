@@ -1,9 +1,9 @@
 // The row → response mapping is not validation, so it lives in `toMessage`.
 
 import { z } from 'zod'
-import type { MessageWithAgent } from '../crud/messages'
-import { MESSAGE_ROLES } from '../db/schema'
-import { PARTICIPANT_TYPES, type ParticipantType } from '../domain/enums'
+import type { MessageWithAgent } from '@/crud/messages'
+import { MESSAGE_ROLES } from '@/db/schema'
+import { PARTICIPANT_TYPES, type ParticipantType } from '@/domain/enums'
 import { isoDatetime, optionalInt, optionalString, parseJsonColumn, pydanticInt, requiredTimestamp } from './common'
 
 // Re-exported so a caller naming these schemas needs only this module.

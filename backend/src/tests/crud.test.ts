@@ -17,7 +17,7 @@ import { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDb, type Db } from '../db'
+import { openDb, type Db } from '@/db'
 import {
   addActionToHistory,
   addAgentToRoom,
@@ -38,8 +38,8 @@ import {
   incrementTurn,
   updateRoomAgentSession,
   updateWorldLastPlayed,
-} from '../crud'
-import type { GameTimeSnapshot } from '../crud'
+} from '@/crud'
+import type { GameTimeSnapshot } from '@/crud'
 
 // Fixture contents, asserted on below. World 1 "asdf" owns room 1
 // ("Onboarding: asdf") with three messages; agent 1 Onboarding_Manager is its

@@ -1,34 +1,34 @@
-import { getSettings } from '../config/settings'
+import { getSettings } from '@/config/settings'
 
-import { getAgentsCached } from '../crud/cached'
-import { getAgentsInRoom, getRoom, markRoomAsFinished } from '../crud/rooms'
-import { getCharactersAtLocation, getLocation } from '../crud/locations'
+import { getAgentsCached } from '@/crud/cached'
+import { getAgentsInRoom, getRoom, markRoomAsFinished } from '@/crud/rooms'
+import { getCharactersAtLocation, getLocation } from '@/crud/locations'
 import {
   countAssistantMessages,
   createMessage,
   getMessagesAfterAgentResponse,
   type MessageWithAgent,
-} from '../crud/messages'
-import { getPlayerState } from '../crud/player-state'
-import { getRoomAgentSession, updateRoomAgentSession } from '../crud/sessions'
-import type { Db } from '../db'
-import type { Agent, World } from '../db/schema'
-import { isActionManager, isOnboardingManager } from '../domain/agent'
-import { getLogger } from '../infrastructure/logging/logger'
-import { buildHooks, SubagentTimings, type HookTelemetry } from '../sdk/agent/hooks'
+} from '@/crud/messages'
+import { getPlayerState } from '@/crud/player-state'
+import { getRoomAgentSession, updateRoomAgentSession } from '@/crud/sessions'
+import type { Db } from '@/db'
+import type { Agent, World } from '@/db/schema'
+import { isActionManager, isOnboardingManager } from '@/domain/agent'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { buildHooks, SubagentTimings, type HookTelemetry } from '@/sdk/agent/hooks'
 import {
   buildAgentOptions,
   optionsFingerprint,
   type AgentOptionsInput,
-} from '../sdk/agent/options-builder'
-import { buildSubagentDefinitionsForRole } from '../sdk/agent/subagent-definitions'
-import { TurnRunner, type TurnEvent } from '../sdk/agent/turn-runner'
-import type { SessionPool } from '../sdk/client/session-pool'
-import type { ServerDeps, ServerRole } from '../sdk/handlers/servers'
-import type { McpTools } from '../sdk/mcp'
-import type { ToolContext } from '../sdk/handlers/context'
-import { parseAgentConfig } from '../sdk/parsing/agent-config'
-import { buildSystemPrompt } from '../services/prompt-builder'
+} from '@/sdk/agent/options-builder'
+import { buildSubagentDefinitionsForRole } from '@/sdk/agent/subagent-definitions'
+import { TurnRunner, type TurnEvent } from '@/sdk/agent/turn-runner'
+import type { SessionPool } from '@/sdk/client/session-pool'
+import type { ServerDeps, ServerRole } from '@/sdk/handlers/servers'
+import type { McpTools } from '@/sdk/mcp'
+import type { ToolContext } from '@/sdk/handlers/context'
+import { parseAgentConfig } from '@/sdk/parsing/agent-config'
+import { buildSystemPrompt } from '@/services/prompt-builder'
 import { separateInterruptAgents } from './agent-ordering'
 import { buildConversationContext } from './conversation-context'
 import { createChatRoomTapes } from './tape/chat-room-tape'

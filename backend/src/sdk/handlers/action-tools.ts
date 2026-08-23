@@ -1,8 +1,8 @@
-import type { AgentConfigService } from '../../services/agent-config-service'
-import type { PlayerService } from '../../services/player-service'
-import { formatTemplate } from '../tools/definitions'
-import { memorizeTool, recallTool, skipTool } from '../tools/action'
-import { resolveTool } from '../tools/registry'
+import type { AgentConfigService } from '@/services/agent-config-service'
+import type { PlayerService } from '@/services/player-service'
+import { formatTemplate } from '@/sdk/tools/definitions'
+import { memorizeTool, recallTool, skipTool } from '@/sdk/tools/action'
+import { resolveTool } from '@/sdk/tools/registry'
 import { tool, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 // The tools every character has: decline to speak, write a memory, read one.

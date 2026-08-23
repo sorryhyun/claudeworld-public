@@ -35,11 +35,11 @@ import {
   removeInventoryItem,
   setCurrentLocation,
   updateStats,
-} from '../crud/player-state'
-import { openDb, type Db } from '../db'
-import { openAndInitDb } from '../db/migrate'
-import { locations, playerStates, worlds } from '../db/schema'
-import type { InventoryEntry, StatDefinitions } from '../domain/player-rules'
+} from '@/crud/player-state'
+import { openDb, type Db } from '@/db'
+import { openAndInitDb } from '@/db/migrate'
+import { locations, playerStates, worlds } from '@/db/schema'
+import type { InventoryEntry, StatDefinitions } from '@/domain/player-rules'
 
 const WORLD_ID = 1
 /** A world row with no `player_states` row, for the empty-return branches. */

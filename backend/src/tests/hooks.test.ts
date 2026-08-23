@@ -21,7 +21,7 @@ import {
   SubagentTimings,
   SUBAGENT_DISPATCH_TOOLS,
   type HookTelemetry,
-} from '../sdk/agent/hooks'
+} from '@/sdk/agent/hooks'
 
 const NO_SIGNAL = { signal: new AbortController().signal }
 

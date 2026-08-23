@@ -19,7 +19,7 @@ import { createInterface } from 'node:readline'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 
-import { resolveProjectRoot } from '../config/paths'
+import { resolveProjectRoot } from '@/config/paths'
 
 /** Cost factor; 12 matches the hashes existing `.env` files already carry. */
 const BCRYPT_COST = 12

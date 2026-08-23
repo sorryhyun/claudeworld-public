@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { separateInterruptAgents, separatePriorityAgents } from '../orchestration/agent-ordering'
+import { separateInterruptAgents, separatePriorityAgents } from '@/orchestration/agent-ordering'
 
 interface TestAgent {
   name: string

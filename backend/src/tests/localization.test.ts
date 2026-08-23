@@ -15,8 +15,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { getArrivalMessage, getOnboardingMessage } from '../domain/localization'
-import type { Language } from '../db/schema'
+import { getArrivalMessage, getOnboardingMessage } from '@/domain/localization'
+import type { Language } from '@/db/schema'
 
 describe('getOnboardingMessage', () => {
   test.each([

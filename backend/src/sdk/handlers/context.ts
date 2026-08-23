@@ -1,6 +1,6 @@
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/server'
 import type { z } from 'zod'
-import type { Db } from '../../db'
+import type { Db } from '@/db'
 
 // Deliberately not the Agent SDK's `tool()` helper: it types its handler against
 // v1 of `@modelcontextprotocol/sdk`, which cannot be registered on an v2 server.

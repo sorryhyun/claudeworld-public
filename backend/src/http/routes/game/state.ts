@@ -9,13 +9,13 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { getPlayerState } from '../../../crud/player-state'
-import { getLogger } from '../../../infrastructure/logging/logger'
-import { parseJsonColumn } from '../../../schemas/common'
-import { GameTime, toPlayerState } from '../../../schemas/game'
-import { HttpError } from '../../../domain/errors'
-import type { AppState } from '../../state'
-import type { AppEnv } from '../../types'
+import { getPlayerState } from '@/crud/player-state'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { parseJsonColumn } from '@/schemas/common'
+import { GameTime, toPlayerState } from '@/schemas/game'
+import { HttpError } from '@/domain/errors'
+import type { AppState } from '@/http/state'
+import type { AppEnv } from '@/http/types'
 import { intPathParam, requireWorld } from './shared'
 
 const logger = getLogger('GameRouter.State')

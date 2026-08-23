@@ -6,8 +6,8 @@
  */
 
 import { eq } from 'drizzle-orm'
-import type { Db } from '../db'
-import { locations, playerStates, type Location, type PlayerState } from '../db/schema'
+import type { Db } from '@/db'
+import { locations, playerStates, type Location, type PlayerState } from '@/db/schema'
 import {
   applyStatChanges,
   initializeStatsFromDefinitions,
@@ -17,9 +17,9 @@ import {
   type InventoryEntry,
   type InventoryItemFields,
   type StatDefinitions,
-} from '../domain/player-rules'
-import { PlayerStateSerializer } from '../domain/player-state-serializer'
-import { getLogger } from '../infrastructure/logging/logger'
+} from '@/domain/player-rules'
+import { PlayerStateSerializer } from '@/domain/player-state-serializer'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('PlayerStateCRUD')
 

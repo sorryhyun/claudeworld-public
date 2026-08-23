@@ -1,7 +1,7 @@
 // CRUD for Room entities and room membership. Synchronous throughout.
 
 import { and, asc, desc, eq } from 'drizzle-orm'
-import type { Db } from '../db'
+import type { Db } from '@/db'
 import {
   agents,
   messages,
@@ -11,10 +11,10 @@ import {
   type Agent,
   type Room,
   type World,
-} from '../db/schema'
-import type { UserRole } from '../auth/roles'
-import { getCache, roomAgentsKey, roomObjectKey } from '../infrastructure/cache'
-import { getLogger } from '../infrastructure/logging/logger'
+} from '@/db/schema'
+import type { UserRole } from '@/auth/roles'
+import { getCache, roomAgentsKey, roomObjectKey } from '@/infrastructure/cache'
+import { getLogger } from '@/infrastructure/logging/logger'
 import { invalidateRoomCache } from './cache-invalidation'
 import { createSystemMessage, type MessageWithAgent } from './messages'
 

@@ -12,10 +12,10 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, write
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { LocationStorage } from '../services/location-storage'
-import { PlayerService } from '../services/player-service'
-import { RoomMappingService } from '../services/room-mapping'
-import { MtimeCache, WorldService } from '../services/world-service'
+import { LocationStorage } from '@/services/location-storage'
+import { PlayerService } from '@/services/player-service'
+import { RoomMappingService } from '@/services/room-mapping'
+import { MtimeCache, WorldService } from '@/services/world-service'
 
 /**
  * The fixture worlds tree, checked in under `src/tests/fixtures/worlds/`.

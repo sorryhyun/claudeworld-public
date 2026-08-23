@@ -32,16 +32,16 @@ import {
   getMessagesSinceCached,
   getRecentMessagesCached,
   getRoomCached,
-} from '../crud/cached'
+} from '@/crud/cached'
 import {
   invalidateAgentCache,
   invalidateMessagesCache,
   invalidateRoomCache,
-} from '../crud/cache-invalidation'
-import { createMessage, getMessagesSince } from '../crud/messages'
-import { openDb, type Db } from '../db'
-import { initDb } from '../db/migrate'
-import { agents, messages, roomAgents, rooms, worlds, type Agent } from '../db/schema'
+} from '@/crud/cache-invalidation'
+import { createMessage, getMessagesSince } from '@/crud/messages'
+import { openDb, type Db } from '@/db'
+import { initDb } from '@/db/migrate'
+import { agents, messages, roomAgents, rooms, worlds, type Agent } from '@/db/schema'
 import {
   agentConfigKey,
   agentObjectKey,
@@ -49,7 +49,7 @@ import {
   roomAgentsKey,
   roomMessagesKey,
   roomObjectKey,
-} from '../infrastructure/cache'
+} from '@/infrastructure/cache'
 
 const WORLD_ID = 1
 const ROOM_ID = 1

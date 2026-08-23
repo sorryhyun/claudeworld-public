@@ -9,13 +9,13 @@ import { join } from 'node:path'
 
 import { ItemService } from './item-service'
 import { dumpJson, MtimeCache, PLAYER_STATE_FILE, STAT_DEFINITIONS_FILE, WorldService } from './world-service'
-import { applyStatChanges } from '../domain/player-rules'
+import { applyStatChanges } from '@/domain/player-rules'
 import type {
   InventoryEntry,
   StatDefinition as RuleStatDefinition,
   StatDefinitions as RuleStatDefinitions,
-} from '../domain/player-rules'
-import { getLogger } from '../infrastructure/logging/logger'
+} from '@/domain/player-rules'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('PlayerService')
 

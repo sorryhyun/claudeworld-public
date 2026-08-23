@@ -2,11 +2,11 @@
 
 import { Hono } from 'hono'
 
-import { generateGuestUserId, generateJwtToken } from '../../auth/jwt'
-import { validatePasswordWithRole } from '../../auth/passwords'
-import type { SessionPool } from '../../sdk/client/session-pool'
-import { rateLimit } from '../middleware/rate-limit'
-import type { AppEnv } from '../types'
+import { generateGuestUserId, generateJwtToken } from '@/auth/jwt'
+import { validatePasswordWithRole } from '@/auth/passwords'
+import type { SessionPool } from '@/sdk/client/session-pool'
+import { rateLimit } from '@/http/middleware/rate-limit'
+import type { AppEnv } from '@/http/types'
 
 /**
  * A factory, not a singleton: the login limiter keeps its counters in a

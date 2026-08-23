@@ -13,8 +13,8 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { resetSettings } from '../config/settings'
-import { WorldResetService } from '../services/world-reset-service'
+import { resetSettings } from '@/config/settings'
+import { WorldResetService } from '@/services/world-reset-service'
 import {
   createGameApp,
   guestToken,

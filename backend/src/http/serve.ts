@@ -5,8 +5,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { getLogger } from '../infrastructure/logging/logger'
-import { KEEPALIVE_INTERVAL_MS } from '../infrastructure/sse'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { KEEPALIVE_INTERVAL_MS } from '@/infrastructure/sse'
 import { API_PREFIXES } from './static'
 
 const logger = getLogger('Serve')

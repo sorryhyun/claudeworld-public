@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { getMemoryBySubtitle, getMemorySubtitles, parseLongTermMemory } from '../sdk/parsing/memory'
+import { getMemoryBySubtitle, getMemorySubtitles, parseLongTermMemory } from '@/sdk/parsing/memory'
 
 let dir: string
 let memoryFile: string

@@ -12,8 +12,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describeDeclaredSchema, describeLiveSchema, diffSchemas, type SchemaDiff } from '../db/introspect'
-import { applyMigrations, loadMigrations } from '../db/migrate'
+import { describeDeclaredSchema, describeLiveSchema, diffSchemas, type SchemaDiff } from '@/db/introspect'
+import { applyMigrations, loadMigrations } from '@/db/migrate'
 
 const args = process.argv.slice(2)
 const againstIndex = args.indexOf('--against')

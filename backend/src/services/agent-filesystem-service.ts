@@ -9,8 +9,8 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 
-import { getLogger } from '../infrastructure/logging/logger'
-import { parseAgentConfig, REQUIRED_AGENT_FILES } from '../sdk/parsing/agent-config'
+import { getLogger } from '@/infrastructure/logging/logger'
+import { parseAgentConfig, REQUIRED_AGENT_FILES } from '@/sdk/parsing/agent-config'
 import { MtimeCache, WorldService } from './world-service'
 
 const logger = getLogger('AgentFilesystemService')

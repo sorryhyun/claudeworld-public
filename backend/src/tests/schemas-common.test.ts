@@ -21,7 +21,7 @@ import {
   serializeBool,
   serializeOptionalUtcDatetime,
   serializeUtcDatetime,
-} from '../schemas/common'
+} from '@/schemas/common'
 
 describe('serializeUtcDatetime', () => {
   test('writes UTC as a trailing Z, never as +00:00', () => {

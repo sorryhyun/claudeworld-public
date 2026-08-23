@@ -15,8 +15,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseSessionKey, sessionKeyOf } from '../sdk/client/session'
-import { SessionPool } from '../sdk/client/session-pool'
+import { parseSessionKey, sessionKeyOf } from '@/sdk/client/session'
+import { SessionPool } from '@/sdk/client/session-pool'
 
 /** A pool holding the given keys, with a placeholder for each session. */
 function poolWithKeys(keys: string[]): SessionPool {

@@ -20,12 +20,12 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client'
 
-import { McpTools } from '../sdk/mcp'
-import type { ToolContext } from '../sdk/handlers/context'
-import type { ServerDeps } from '../sdk/handlers/servers'
-import { PlayerService } from '../services/player-service'
-import { LocationStorage } from '../services/location-storage'
-import { RoomMappingService } from '../services/room-mapping'
+import { McpTools } from '@/sdk/mcp'
+import type { ToolContext } from '@/sdk/handlers/context'
+import type { ServerDeps } from '@/sdk/handlers/servers'
+import { PlayerService } from '@/services/player-service'
+import { LocationStorage } from '@/services/location-storage'
+import { RoomMappingService } from '@/services/room-mapping'
 
 const ROOM = 12
 const AGENT = 7

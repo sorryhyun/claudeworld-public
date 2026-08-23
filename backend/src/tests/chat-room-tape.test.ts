@@ -9,9 +9,9 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { separateInterruptAgents } from '../orchestration/agent-ordering'
-import { createChatRoomTapes, type ChatRoomAgent } from '../orchestration/tape/chat-room-tape'
-import type { TurnCell } from '../orchestration/tape/models'
+import { separateInterruptAgents } from '@/orchestration/agent-ordering'
+import { createChatRoomTapes, type ChatRoomAgent } from '@/orchestration/tape/chat-room-tape'
+import type { TurnCell } from '@/orchestration/tape/models'
 
 function agent(id: number, extra: Partial<ChatRoomAgent> = {}): ChatRoomAgent {
   return { id, priority: 0, interruptEveryTurn: false, transparent: false, ...extra }

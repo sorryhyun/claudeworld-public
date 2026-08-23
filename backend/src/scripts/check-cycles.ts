@@ -2,7 +2,8 @@
  * Fail on any import cycle among the src/ modules (tests and scripts excluded —
  * they are leaves nothing imports back from). Regex-based rather than a parser:
  * internal imports in this codebase are all static `from '...'` or dynamic
- * `import('...')` with relative specifiers, which the pattern below covers.
+ * `import('...')` with relative or `@/` (src-rooted) specifiers, which the
+ * pattern below covers.
  * Type-only imports are stripped first — they are erased at compile time and
  * cannot create a runtime cycle. Wired into `bun run lint` beside eslint's
  * boundary rules, which cannot see cycles.
@@ -28,10 +29,12 @@ function collect(dir: string, out: string[] = []): string[] {
 }
 
 const TYPE_ONLY_RE = /(?:import|export)\s+type\s[^;]*?from\s*['"][^'"]+['"]/g
-const IMPORT_RE = /(?:from|import)\s*\(?\s*['"](\.\.?\/[^'"]+)['"]/g
+const IMPORT_RE = /(?:from|import)\s*\(?\s*['"]((?:\.\.?|@)\/[^'"]+)['"]/g
 
 function resolveSpecifier(fromFile: string, specifier: string): string | null {
-  const base = resolve(dirname(fromFile), specifier)
+  const base = specifier.startsWith('@/')
+    ? join(SRC, specifier.slice(2))
+    : resolve(dirname(fromFile), specifier)
   for (const candidate of [base.endsWith('.ts') ? base : `${base}.ts`, join(base, 'index.ts')]) {
     try {
       if (statSync(candidate).isFile()) return candidate

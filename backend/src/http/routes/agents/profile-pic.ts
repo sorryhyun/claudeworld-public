@@ -11,8 +11,8 @@ import { join, resolve, sep } from 'node:path'
 
 import type { Context } from 'hono'
 
-import { HttpError } from '../../../domain/errors'
-import type { AppEnv } from '../../types'
+import { HttpError } from '@/domain/errors'
+import type { AppEnv } from '@/http/types'
 
 /**
  * Word characters, hyphens, dots, spaces and the CJK ranges — agents are

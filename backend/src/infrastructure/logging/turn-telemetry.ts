@@ -4,8 +4,8 @@
  * wants neither (the pilot, a test) simply does not build one.
  */
 
-import type { HookTelemetry } from '../../sdk/agent/hooks'
-import type { TurnEvent } from '../../sdk/agent/turn-runner'
+import type { HookTelemetry } from '@/sdk/agent/hooks'
+import type { TurnEvent } from '@/sdk/agent/turn-runner'
 import { writeAgentResponseLog } from './agent-log'
 import { getLogger } from './logger'
 import { getPerfLogger, type PerfLogger } from './perf'

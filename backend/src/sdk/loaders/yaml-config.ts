@@ -7,8 +7,8 @@
 import { readFileSync, statSync } from 'node:fs'
 import { YAML } from 'bun'
 
-import { getSettings } from '../../config/settings'
-import { getLogger } from '../../infrastructure/logging/logger'
+import { getSettings } from '@/config/settings'
+import { getLogger } from '@/infrastructure/logging/logger'
 
 const logger = getLogger('YamlConfig')
 

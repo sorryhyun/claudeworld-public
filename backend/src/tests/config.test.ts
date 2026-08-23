@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
-import { createProjectPaths, resolveProjectRoot } from '../config/paths'
+import { createProjectPaths, resolveProjectRoot } from '@/config/paths'
 import {
   AGENT_TOOL_NAMES,
   createSettings,
@@ -15,10 +15,10 @@ import {
   parseDotEnv,
   SKIP_DOTENV_ENV_VAR,
   type EnvRecord,
-} from '../config/settings'
-import { getAgentToolConfig, getExtremeTraits, getGroupConfig } from '../sdk/loaders/group-config'
-import { getBaseSystemPrompt, isActionManager, isOnboardingManager } from '../sdk/loaders/guidelines'
-import { clearConfigCache, getCachedConfig, loadYamlFile } from '../sdk/loaders/yaml-config'
+} from '@/config/settings'
+import { getAgentToolConfig, getExtremeTraits, getGroupConfig } from '@/sdk/loaders/group-config'
+import { getBaseSystemPrompt, isActionManager, isOnboardingManager } from '@/sdk/loaders/guidelines'
+import { clearConfigCache, getCachedConfig, loadYamlFile } from '@/sdk/loaders/yaml-config'
 
 describe('paths', () => {
   const paths = createProjectPaths()
