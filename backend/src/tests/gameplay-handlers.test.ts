@@ -24,6 +24,7 @@ import {
   getCharactersAtLocation,
   getLocationByName,
 } from '@/crud/locations'
+import { createRoom } from '@/crud/rooms'
 import { getCache } from '@/infrastructure/cache'
 import { AgentConfigService } from '@/services/agent-config-service'
 import { AgentFilesystemService } from '@/services/agent-filesystem-service'
@@ -37,6 +38,7 @@ import { createGuidelinesTools } from '@/sdk/handlers/guidelines-tools'
 import { createHistoryTools } from '@/sdk/handlers/history-tools'
 import { createItemTools } from '@/sdk/handlers/item-tools'
 import { createLocationTools } from '@/sdk/handlers/location-tools'
+import { createNarrativeTools } from '@/sdk/handlers/narrative-tools'
 import { createMechanicsTools } from '@/sdk/handlers/mechanics-tools'
 import { createWorldTools } from '@/sdk/handlers/world-tools'
 import type { ToolContext } from '@/sdk/handlers/context'
@@ -718,6 +720,53 @@ describe('travel', () => {
 // ============================================================================
 // item-tools
 // ============================================================================
+
+describe('narration', () => {
+  /**
+   * The Action Manager is a hidden agent, so `turn.ts` persists nothing for it
+   * and never fires its `onMessageSaved`. That makes this tool the only place a
+   * gameplay turn produces a `new_message` — without the callback the line the
+   * player waited a whole turn for appears whenever the next poll lands.
+   */
+  let roomId: number
+
+  beforeEach(() => {
+    roomId = createRoom(db, { name: 'Location: Town Square' }, OWNER, WORLD_ID).id
+  })
+
+  function tools(onNarrationSaved?: (roomId: number, message: { id: number }) => void) {
+    return createNarrativeTools(ctxFor({ roomId }), {
+      players: services.players,
+      rooms: services.rooms,
+      onNarrationSaved: onNarrationSaved as never,
+    })
+  }
+
+  test('announces the saved row so it can be pushed to the room', async () => {
+    const saved: { roomId: number; id: number }[] = []
+    await callTool(findTool(tools((roomId, message) => {
+      saved.push({ roomId, id: message.id })
+    }), 'narration'), { narrative: 'The mill looms.' })
+
+    const written = db.select().from(messages).all()
+    expect(written).toHaveLength(1)
+    expect(saved).toEqual([{ roomId, id: written[0]!.id }])
+  })
+
+  test('the announced row carries the agent the frontend labels the bubble with', async () => {
+    let agentName: string | null | undefined
+    await callTool(findTool(tools((_roomId, message) => {
+      agentName = (message as unknown as { agent: { name: string } | null }).agent?.name
+    }), 'narration'), { narrative: 'The mill looms.' })
+
+    expect(agentName).toBe('Action_Manager')
+  })
+
+  test('persists the line even with nobody listening', async () => {
+    await callTool(findTool(tools(), 'narration'), { narrative: 'The mill looms.' })
+    expect(db.select().from(messages).all()[0]!.content).toBe('The mill looms.')
+  })
+})
 
 describe('persist_item', () => {
   function tools(mutations?: PlayerMutationsPort) {

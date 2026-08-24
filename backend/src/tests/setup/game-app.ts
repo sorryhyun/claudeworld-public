@@ -26,6 +26,7 @@ import { resetSettings } from '@/config/settings'
 import { getCache } from '@/infrastructure/cache'
 import { BackgroundScheduler } from '@/infrastructure/scheduler'
 import { EventBroadcaster } from '@/infrastructure/sse'
+import { LiveStreamRegistry } from '@/http/live-streams'
 import { SSETicketManager } from '@/infrastructure/sse-ticket'
 import { openDb, type Db } from '@/db'
 import { RoomOrchestrator } from '@/orchestration/room-orchestrator'
@@ -222,6 +223,7 @@ export async function createGameApp(
     // Real instances, not stubs: both are pure in-memory bookkeeping with no
     // I/O, and the SSE route tests drive them directly.
     broadcaster: new EventBroadcaster(),
+    liveStreams: new LiveStreamRegistry(),
     tickets: new SSETicketManager(),
     services,
     serverDeps,

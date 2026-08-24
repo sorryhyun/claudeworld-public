@@ -357,4 +357,52 @@ describe('SSE', () => {
     expect(frame).toContain('"text":"hi"')
     await reader.cancel()
   })
+
+  test('a connect replays whatever is mid-stream as catch_up', async () => {
+    // The opening scene's `stream_start` is broadcast before the client knows
+    // the room id to subscribe to, and `useSSE.ts` drops deltas for an agent it
+    // has no bubble for — so without this replay the whole turn is invisible.
+    const room = await createRoom('Tavern')
+    app.state.liveStreams.record(room.id, {
+      type: 'stream_start',
+      agent_id: 2,
+      agent_name: 'Action_Manager',
+      temp_id: 'temp_1',
+    })
+    app.state.liveStreams.record(room.id, {
+      type: 'narration_delta',
+      agent_id: 2,
+      delta: 'Wednesday, nine at night.',
+    })
+
+    const { ticket } = (await app.json<{ ticket: string }>(`/rooms/${room.id}/stream/ticket`, {
+      method: 'POST',
+    })) as { ticket: string }
+    const stream = await app.request(`/rooms/${room.id}/stream?ticket=${ticket}`, { token: null })
+    const reader = stream.body!.getReader()
+
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('event: connected')
+
+    const frame = new TextDecoder().decode((await reader.read()).value)
+    expect(frame).toContain('event: catch_up')
+    expect(frame).toContain('"agent_id":2')
+    expect(frame).toContain('"agent_name":"Action_Manager"')
+    expect(frame).toContain('"temp_id":"temp_1"')
+    expect(frame).toContain('"narration_text":"Wednesday, nine at night."')
+    await reader.cancel()
+  })
+
+  test('an idle room replays nothing before the first live event', async () => {
+    const room = await createRoom('Tavern')
+    const { ticket } = (await app.json<{ ticket: string }>(`/rooms/${room.id}/stream/ticket`, {
+      method: 'POST',
+    })) as { ticket: string }
+    const stream = await app.request(`/rooms/${room.id}/stream?ticket=${ticket}`, { token: null })
+    const reader = stream.body!.getReader()
+    await reader.read() // the `connected` frame
+
+    app.state.broadcaster.broadcast(room.id, { type: 'content_delta', text: 'hi' })
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('event: content_delta')
+    await reader.cancel()
+  })
 })

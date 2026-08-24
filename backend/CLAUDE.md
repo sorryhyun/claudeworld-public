@@ -265,12 +265,24 @@ orchestration/tape/    chat-room-tape.ts (the chat-room scheduler)
 (fired from `orchestration/turn.ts`) are wired to the `EventBroadcaster` in
 `http/state.ts`, with `http/stream-events.ts` translating turn events into the wire
 format `useSSE.ts` listens for — a hidden agent's `content_delta` is suppressed there,
-its thinking and narration stream. **Known gap:** `thinking_text` and `response_text` on
-`/rooms/{id}/chatting-agents` are always empty, and the SSE stream does not replay
-catch-up events on connect — so a client that connects (or reconnects) mid-turn shows
-nothing until the next event arrives. Both need a per-room registry of
-partially-streamed responses; the turn keeps that state instead. The same gap is
-documented in `routes/game/polling.ts`.
+its thinking and narration stream.
+
+**`http/live-streams.ts` is what makes a mid-turn connect work.** `useSSE.ts` accumulates
+a delta only for an agent it already has a bubble for, and only `stream_start` creates
+one — so a client that misses that one event drops the entire rest of the turn on the
+floor. `POST /worlds/{id}/enter` misses it *by construction*: it mints a fresh room, hands
+the opening turn to a background task and answers, and the client learns the room id from
+that answer, so its `EventSource` cannot be up in time. The fan-out therefore records what
+each `stream_start` established, `routes/rooms/sse.ts` replays it as `catch_up` on
+connect, and `/rooms/{id}/chatting-agents` fills `thinking_text` / `response_text` from
+the same registry. Subscribe and snapshot happen in one tick, with no `await` between
+them, or a delta is counted twice or lost.
+
+**The Action Manager's narration needs its own `new_message`.** It is a hidden agent, so
+`turn.ts` persists nothing for it and never fires `onMessageSaved`; the `narration` tool
+writes the row and calls `NarrativeDeps.onNarrationSaved`, which `http/state.ts` points at
+the same broadcast. Without it the finished narration only appears on the next poll, which
+is up to 15 seconds away while SSE is connected.
 
 ## Filesystem-Primary Architecture
 

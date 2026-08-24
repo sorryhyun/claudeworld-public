@@ -141,6 +141,7 @@ export interface ServerDeps {
   /** Room status indicators and the two orchestrator side effects `travel` fires. */
   status?: TurnStatusPort
   onNarrationProduced?: NarrativeDeps['onNarrationProduced']
+  onNarrationSaved?: NarrativeDeps['onNarrationSaved']
   invalidateAgentConfig?: ActionDeps['invalidateAgentConfig']
   random?: () => number
 }
@@ -262,6 +263,7 @@ export function buildToolSets(binding: TurnBinding, deps: ServerDeps): ToolSets 
           players: deps.players,
           rooms: deps.rooms,
           onNarrationProduced: deps.onNarrationProduced,
+          onNarrationSaved: deps.onNarrationSaved,
         }),
         ...createWorldTools(ctx, { locations: deps.locations, random: deps.random }),
       ]

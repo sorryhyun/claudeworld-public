@@ -263,9 +263,9 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
    * owning no room agent — the World Seed Generator (`-1`) and a Task sub-agent
    * (`-2`), which must differ because the frontend keys rows by id.
    *
-   * **Gap: `thinking_text` and `response_text` are always empty.** They need a
-   * per-room registry of partially-streamed responses; the SDK layer keeps that
-   * on the turn instead. `has_narrated`, which unblocks input, is wired.
+   * `thinking_text` and `response_text` come from `http/live-streams.ts`, the
+   * same registry the SSE stream replays on connect — so this fallback shows
+   * the live text rather than a bare spinner when SSE is unavailable.
    */
   routes.get('/worlds/:world_id/chatting-agents', (c) => {
     const worldId = intPathParam(c, 'world_id')
@@ -280,18 +280,27 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
 
     if (chattingAgentIds.length > 0) {
       const byId = new Map(getAgentsCached(state.db, targetRoomId).map((a) => [a.id, a]))
+      const live = new Map(
+        state.liveStreams.snapshot(targetRoomId).map((stream) => [stream.agentId, stream]),
+      )
 
       for (const agentId of chattingAgentIds) {
         const agent = byId.get(agentId)
         if (!agent) continue
 
+        const stream = live.get(agentId)
         const info: Record<string, unknown> = {
           id: agent.id,
           name: agent.name,
           // The Action Manager narrates; an avatar would put a face on the prose.
           profile_pic: isActionManager(agent.name) ? null : agent.profilePic,
-          thinking_text: '',
-          response_text: '',
+          thinking_text: stream?.thinkingText ?? '',
+          // The Action Manager's raw prose is its tool discussion — the same
+          // suppression `stream-events.ts` applies — so the player sees the
+          // narration it streamed, never the reasoning behind it.
+          response_text: isActionManager(agent.name)
+            ? (stream?.narrationText ?? '')
+            : (stream?.responseText ?? ''),
         }
         if (isActionManager(agent.name)) {
           info.has_narrated = state.orchestrator.hasNarrationProduced(targetRoomId)

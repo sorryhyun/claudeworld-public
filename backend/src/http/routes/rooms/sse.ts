@@ -5,7 +5,9 @@
  * `middleware/auth.ts` excludes the GET *because* this module authenticates it;
  * the exclusion and the `validateTicket` call are two halves of one check.
  *
- * **Known gap:** no catch-up replay on connect, as in `routes/game/polling.ts`.
+ * A connect replays whatever is mid-stream in the room as `catch_up` frames —
+ * see `http/live-streams.ts` for why a client that misses `stream_start` sees
+ * nothing at all afterwards.
  */
 
 import { Hono } from 'hono'
@@ -48,12 +50,33 @@ export function createSseRoutes(state: AppState): Hono<AppEnv> {
     // distinguishing them would tell an attacker which half to vary.
     if (ticketData === null) throw new HttpError(401, 'Invalid or expired ticket')
 
+    // Both in this tick, before the first `await`: an event broadcast after the
+    // subscribe is queued, one folded in before it is in the snapshot, and no
+    // ordering of the two can drop or double a delta.
     const queue = state.broadcaster.subscribe(roomId)
+    const catchUp = state.liveStreams.snapshot(roomId)
     logger.debug(`SSE stream opened for room ${roomId} by ${ticketData.userId}`)
 
     async function* events(): AsyncGenerator<string> {
       try {
         yield frame('connected', JSON.stringify({ room_id: roomId }))
+
+        // Before any queued delta, or the client would apply deltas to a bubble
+        // the catch-up is about to overwrite.
+        for (const stream of catchUp) {
+          yield frame(
+            'catch_up',
+            JSON.stringify({
+              type: 'catch_up',
+              agent_id: stream.agentId,
+              agent_name: stream.agentName,
+              temp_id: stream.tempId,
+              thinking_text: stream.thinkingText,
+              response_text: stream.responseText,
+              narration_text: stream.narrationText,
+            }),
+          )
+        }
 
         while (!state.broadcaster.isShuttingDown) {
           let data: string | null

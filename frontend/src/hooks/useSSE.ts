@@ -139,12 +139,17 @@ export function useSSE(roomId: number | null): UseSSEReturn {
 
       // Handle named events
 
-      // Catch-up: restore streaming state for agents already mid-stream on connect/reconnect
+      // Catch-up: restore streaming state for agents already mid-stream on connect/reconnect.
+      // The server sends one of these per in-flight stream immediately after `connected`,
+      // which is the only thing that makes a turn started before this connection visible.
       es.addEventListener("catch_up", (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
           const agentId = data.agent_id;
           if (agentId == null) return;
+
+          const tempId = data.temp_id || `catch_up_${agentId}`;
+          tempIdMapRef.current.set(tempId, agentId);
 
           setStreamingAgents((prev) => {
             // Don't overwrite if we already have this agent (stream_start arrived first)
@@ -154,7 +159,7 @@ export function useSSE(roomId: number | null): UseSSEReturn {
               thinking_text: data.thinking_text || "",
               response_text: data.response_text || "",
               agent_name: data.agent_name,
-              temp_id: `catch_up_${agentId}`,
+              temp_id: tempId,
               narration_text: data.narration_text || "",
             });
             return next;
@@ -185,71 +190,62 @@ export function useSSE(roomId: number | null): UseSSEReturn {
         }
       });
 
-      es.addEventListener("content_delta", (e: MessageEvent) => {
+      /**
+       * Apply one delta to an agent's bubble, creating the bubble if the
+       * `stream_start` that should have created it never reached this client.
+       *
+       * Dropping the delta instead is what made the opening scene invisible: the
+       * turn a world's first room starts is broadcast before the client knows
+       * the room's id, so every delta after it applied to nothing. The server
+       * replays a `catch_up` on connect now, and this is the belt to that
+       * braces — it also covers a reconnect landing mid-delta against an older
+       * server.
+       */
+      const applyDelta = (
+        e: MessageEvent,
+        field: "thinking_text" | "response_text" | "narration_text",
+      ) => {
         try {
           const data: SSEEvent = JSON.parse(e.data);
           const agentId =
             data.agent_id ?? tempIdMapRef.current.get(data.temp_id || "");
           if (agentId == null) return;
+          const delta = data.delta || "";
+          if (!delta) return;
+
+          if (data.temp_id) tempIdMapRef.current.set(data.temp_id, agentId);
 
           setStreamingAgents((prev) => {
-            const existing = prev.get(agentId);
-            if (!existing) return prev;
+            const existing = prev.get(agentId) ?? {
+              thinking_text: "",
+              response_text: "",
+              agent_name: data.agent_name,
+              temp_id: data.temp_id || `recovered_${agentId}`,
+              narration_text: "",
+            };
             const next = new Map(prev);
             next.set(agentId, {
               ...existing,
-              response_text: existing.response_text + (data.delta || ""),
+              [field]: (existing[field] || "") + delta,
             });
             return next;
           });
         } catch {
           /* ignore */
         }
-      });
+      };
 
-      es.addEventListener("thinking_delta", (e: MessageEvent) => {
-        try {
-          const data: SSEEvent = JSON.parse(e.data);
-          const agentId =
-            data.agent_id ?? tempIdMapRef.current.get(data.temp_id || "");
-          if (agentId == null) return;
+      es.addEventListener("content_delta", (e: MessageEvent) =>
+        applyDelta(e, "response_text"),
+      );
 
-          setStreamingAgents((prev) => {
-            const existing = prev.get(agentId);
-            if (!existing) return prev;
-            const next = new Map(prev);
-            next.set(agentId, {
-              ...existing,
-              thinking_text: existing.thinking_text + (data.delta || ""),
-            });
-            return next;
-          });
-        } catch {
-          /* ignore */
-        }
-      });
+      es.addEventListener("thinking_delta", (e: MessageEvent) =>
+        applyDelta(e, "thinking_text"),
+      );
 
-      es.addEventListener("narration_delta", (e: MessageEvent) => {
-        try {
-          const data: SSEEvent = JSON.parse(e.data);
-          const agentId =
-            data.agent_id ?? tempIdMapRef.current.get(data.temp_id || "");
-          if (agentId == null) return;
-
-          setStreamingAgents((prev) => {
-            const existing = prev.get(agentId);
-            if (!existing) return prev;
-            const next = new Map(prev);
-            next.set(agentId, {
-              ...existing,
-              narration_text: (existing.narration_text || "") + (data.delta || ""),
-            });
-            return next;
-          });
-        } catch {
-          /* ignore */
-        }
-      });
+      es.addEventListener("narration_delta", (e: MessageEvent) =>
+        applyDelta(e, "narration_text"),
+      );
 
       es.addEventListener("stream_end", (e: MessageEvent) => {
         try {

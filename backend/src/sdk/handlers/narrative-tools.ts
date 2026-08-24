@@ -1,4 +1,5 @@
-import { createMessage } from '@/crud/messages'
+import { getAgent } from '@/crud/agents'
+import { createMessage, type MessageWithAgent } from '@/crud/messages'
 import type { PlayerService } from '@/services/player-service'
 import type { RoomMappingService } from '@/services/room-mapping'
 import { formatTemplate } from '@/sdk/tools/definitions'
@@ -12,6 +13,15 @@ export interface NarrativeDeps {
   rooms: RoomMappingService
   /** Called when narration lands, so the turn loop knows the player can act again. */
   onNarrationProduced?: (roomId: number) => void
+  /**
+   * Push the saved line to the room's SSE clients.
+   *
+   * `turn.ts` fires its own `onMessageSaved`, but never for the Action Manager:
+   * that agent is hidden, so the turn loop persists nothing and this tool is
+   * the only thing that writes what the player reads. Without this the finished
+   * narration waits for whenever the next poll lands.
+   */
+  onNarrationSaved?: (roomId: number, message: MessageWithAgent) => void
 }
 
 /**
@@ -45,13 +55,15 @@ export function createNarrativeTools(
       const narrative = args.narrative
       const playerState = deps.players.loadPlayerState(worldName)
 
-      createMessage(ctx.getDb(), roomId, {
+      const db = ctx.getDb()
+      const saved = createMessage(db, roomId, {
         content: narrative,
         role: 'assistant',
         agentId,
         thinking: serializeNpcReactions(ctx.npcReactions ?? []),
         gameTimeSnapshot: playerState?.gameTime ?? null,
       })
+      deps.onNarrationSaved?.(roomId, { ...saved, agent: getAgent(db, agentId) })
 
       // Load-bearing for turn flow: the signal that input can reopen.
       deps.onNarrationProduced?.(roomId)

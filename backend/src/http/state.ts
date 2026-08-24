@@ -1,5 +1,6 @@
 import type { Context } from 'hono'
 
+import { type MessageWithAgent } from '@/crud/messages'
 import type { Db } from '@/db'
 import { getLogger } from '@/infrastructure/logging/logger'
 import { BackgroundScheduler } from '@/infrastructure/scheduler'
@@ -29,6 +30,7 @@ import { WorldService } from '@/services/world-service'
 import { getSettings } from '@/config/settings'
 import { toMessage } from '@/schemas/messages'
 import type { Identity } from './access-control'
+import { LiveStreamRegistry } from './live-streams'
 import { turnEventToSse } from './stream-events'
 import type { AppEnv } from './types'
 
@@ -62,6 +64,8 @@ export interface AppState {
   history: HistoryCompressionService
   /** Per-room SSE fan-out. */
   broadcaster: EventBroadcaster
+  /** What a client that connects mid-turn is replayed before the deltas. */
+  liveStreams: LiveStreamRegistry
   /** Single-use tickets, because `EventSource` cannot send a header. */
   tickets: SSETicketManager
   /** Constructed but *not* started — `main.ts` does that, so tests get no timer. */
@@ -98,6 +102,20 @@ export function createAppState(options: CreateAppStateOptions): AppState {
   const agentFactory = new AgentFactory(agentConfigs)
 
 
+  // Above `serverDeps` only so the narration tool's callback can reach them;
+  // nothing broadcasts before a turn is running either way.
+  const broadcaster = new EventBroadcaster()
+  const liveStreams = new LiveStreamRegistry()
+
+  /** The one place a saved message becomes a `new_message` frame. */
+  const broadcastMessage = (roomId: number, message: MessageWithAgent): void => {
+    broadcaster.broadcast(roomId, {
+      type: 'new_message',
+      message_id: message.id,
+      message: toMessage(message),
+    })
+  }
+
   // Built before the orchestrator and closing over it. The cycle is real, and
   // the closure breaks it: no callback fires before a turn is running.
   const serverDeps: ServerDeps = {
@@ -118,6 +136,11 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     // Input unblocks on narration, not turn end: the Action Manager keeps
     // working afterwards on stats and suggestions.
     onNarrationProduced: (roomId: number) => { orchestrator.setNarrationProduced(roomId) },
+    // The Action Manager is a hidden agent, so `turn.ts` persists nothing for
+    // it and this is the *only* `new_message` a gameplay turn ever produces.
+    // Without it the narration the player waited a turn for shows up whenever
+    // the next poll happens to land.
+    onNarrationSaved: broadcastMessage,
     // The inversion the SDK layer depends on: nothing under `src/sdk/` imports
     // orchestration, it fires side effects through these callbacks.
     status: {
@@ -151,8 +174,6 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     agentConfigs,
   )
 
-  const broadcaster = new EventBroadcaster()
-
   const orchestrator = new RoomOrchestrator({
     db: options.db,
     pool,
@@ -166,15 +187,13 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     // does not vanish between `stream_end` and the next poll.
     onEvent: (agent, event, meta) => {
       const sse = turnEventToSse(agent, event, meta)
-      if (sse) broadcaster.broadcast(meta.roomId, sse)
+      if (!sse) return
+      // Recorded before the broadcast, so a client subscribing between the two
+      // is impossible rather than merely unlikely: both run in one tick.
+      liveStreams.record(meta.roomId, sse)
+      broadcaster.broadcast(meta.roomId, sse)
     },
-    onMessageSaved: (roomId, message) => {
-      broadcaster.broadcast(roomId, {
-        type: 'new_message',
-        message_id: message.id,
-        message: toMessage(message),
-      })
-    },
+    onMessageSaved: broadcastMessage,
   })
 
   const scheduler = new BackgroundScheduler({
@@ -197,6 +216,7 @@ export function createAppState(options: CreateAppStateOptions): AppState {
     reset,
     history,
     broadcaster,
+    liveStreams,
     tickets: new SSETicketManager(),
     scheduler,
     projectRoot,

@@ -634,12 +634,12 @@ export function SessionProvider({
         const withoutChatting = prev.filter((m) => !m.is_chatting);
 
         const chattingMessages: GameMessage[] = chattingAgents.map((agent) => {
-          // For Action_Manager, don't show raw response_text - it contains tool discussions
-          // The actual narration is created via the narration tool as a separate message
-          const isActionManager = agent.name === "Action_Manager";
+          // `response_text` already carries the narration for Action_Manager and
+          // the raw prose for everyone else — the backend applies the same
+          // suppression the SSE stream does, so no second filter belongs here.
           return {
             id: -agent.id,
-            content: isActionManager ? "" : agent.response_text || "",
+            content: agent.response_text || "",
             role: "assistant" as const,
             agent_id: agent.id,
             agent_name: agent.name,
