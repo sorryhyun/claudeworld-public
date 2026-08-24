@@ -16,15 +16,16 @@ const CLAUDE_ENV_OVERRIDES: Record<string, string> = {
   DISABLE_TELEMETRY: 'true',
   CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK: 'true',
   // Suppresses the CLI's stock sub-agents so `Task` only sees ours.
-  CLAUDE_CODE_DISABLE_BUILTIN_AGENTS: 'true',
-  CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: 'true',
+  CLAUDE_CODE_DISABLE_BUILTIN_AGENTS: '1',
+  CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: '1',
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: 'true',
-  CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: 'true',
+  CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1',
   ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
-  
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
   // Produces the `input_json_delta` events the narration extractor consumes.
   // Without it, narration cannot stream before the tool call completes.
   CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: 'true',
+  CLAUDE_CODE_TOTAL_TOKENS_REMINDER: 'off',
   // A floor under the stateless 2026-07-28 MCP revision `sdk/mcp/` serves;
   // neither works alone. Load-bearing because the endpoint runs
   // `legacy: 'reject'`, so a CLI landing on the 2025-era `initialize` loses every
