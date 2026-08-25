@@ -104,10 +104,17 @@ export const listLocationsTool = {
 export const listCharactersTool = {
   name: 'list_characters',
   description:
-    'List the characters present at a location. Leave `location` empty for the current location. ' +
-    'Use this before narrating who is in the scene.',
+    'List every character that exists in this world, grouped by the location they are at, ' +
+    'with the player\'s current location marked and a final group for those standing ' +
+    'nowhere. Pass a `location` name to narrow the list to who is present at that one ' +
+    'place. Use this before narrating who is in the scene, and before creating a ' +
+    'character: anyone this returns already exists and is moved or reused, never made a ' +
+    'second time.',
   inputSchema: {
-    location: z.string().default('').describe('Location name; empty means the current location'),
+    location: z
+      .string()
+      .default('')
+      .describe('Location name to narrow to; empty lists every character in the world'),
   },
   response: '{characters_list}',
   readOnly: true,

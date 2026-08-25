@@ -133,7 +133,7 @@ It should feel dangerous but with potential allies.
 ### Game State Tools
 - **change_stat** — Apply stat changes (HP, mana, gold) and inventory modifications
 - **advance_time** — Advance in-game time (for travel, rest, activities)
-- **list_characters** — See available NPCs and their locations
+- **list_characters** — See every NPC in the world and where each one is, including those standing nowhere (pass a location to narrow). Check this before inventing anyone: an NPC that already exists is reused or moved, never created a second time
 - **list_locations** — See available locations in the world
 - **list_inventory** — See player's current inventory items
 - **list_world_item** — See all item templates in world (optional keyword filter)

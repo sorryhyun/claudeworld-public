@@ -79,7 +79,10 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
     'and correcting mid-narration. Only then apply consequences — `change_stat`, ' +
     '`advance_time`, `travel`, `move_character` — and only then call `narration`, once, ' +
     'as the last step. Never describe an outcome you have not already committed through ' +
-    'a tool, and never name a location, character or item the lists did not return.',
+    'a tool, and never name a location, character or item the lists did not return. ' +
+    '`list_characters` covers the whole world, not just this room, and includes the ' +
+    'characters standing nowhere: anyone it returns already exists and is moved or ' +
+    'reused — dispatch a designer only for a character it did not list.',
 
   [SERVER_NAMES.onboarding]:
     'This is world creation, and it is a conversation with the player as much as it is ' +
@@ -265,7 +268,12 @@ export function buildToolSets(binding: TurnBinding, deps: ServerDeps): ToolSets 
           onNarrationProduced: deps.onNarrationProduced,
           onNarrationSaved: deps.onNarrationSaved,
         }),
-        ...createWorldTools(ctx, { locations: deps.locations, random: deps.random }),
+        ...createWorldTools(ctx, {
+          locations: deps.locations,
+          agentFiles: deps.agentFiles,
+          rooms: deps.rooms,
+          random: deps.random,
+        }),
       ]
 
       if (deps.agentFiles) {

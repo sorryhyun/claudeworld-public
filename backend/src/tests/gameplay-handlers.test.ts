@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm'
 
 import { openDb, type Db } from '@/db'
 import { openAndInitDb } from '@/db/migrate'
-import { agents, messages, worlds } from '@/db/schema'
+import { agents, messages, playerStates, worlds } from '@/db/schema'
 import {
   addCharacterToLocation,
   createLocation,
@@ -889,6 +889,137 @@ describe('recall_history', () => {
     writeConsolidated('## [the_fire]\nx\n\n## [the_pact]\ny')
     const tools = createHistoryTools(ctxFor(), { worlds: services.worlds })
     expect(findTool(tools, 'recall_history').description).toContain("'the_fire', 'the_pact'")
+  })
+})
+
+// ============================================================================
+// world-tools — list_characters, whose default scope is the whole world
+// ============================================================================
+
+describe('list_characters', () => {
+  function tools() {
+    return createWorldTools(ctxFor(), {
+      locations: services.locations,
+      agentFiles: services.agentFiles,
+      rooms: services.rooms,
+    })
+  }
+
+  /** Place `name` at `location`, creating both the agent row and the location. */
+  function placeCharacter(name: string, location: string, nutshell: string): number {
+    const existing = getLocationByName(db, WORLD_ID, location)
+    const row = existing ?? createLocation(db, WORLD_ID, { name: location })
+    const agent = db
+      .insert(agents)
+      .values({ name, group: null, worldName: WORLD, systemPrompt: 'p', inANutshell: nutshell })
+      .returning({ id: agents.id })
+      .get()
+    addCharacterToLocation(db, agent.id, row.id)
+    return row.id
+  }
+
+  function standAt(locationId: number): void {
+    db.insert(playerStates).values({ id: 1, worldId: WORLD_ID, currentLocationId: locationId }).run()
+  }
+
+  test('lists every character in the world, grouped by location', async () => {
+    const square = placeCharacter('Brannt', 'town_square', 'A blacksmith.')
+    placeCharacter('Ilva', 'north_road', 'A courier.')
+    standAt(square)
+
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+
+    // The point of the change: someone a whole location away is still visible,
+    // so the Action Manager reuses Ilva instead of inventing a second courier.
+    expect(text).toContain('**Brannt**: A blacksmith.')
+    expect(text).toContain('**Ilva**: A courier.')
+    expect(text).toContain('### town_square (current location)')
+    expect(text).toContain('### north_road')
+    expect(text).not.toContain('### north_road (current location)')
+  })
+
+  test('still names the current location when nobody is standing in it', async () => {
+    placeCharacter('Ilva', 'north_road', 'A courier.')
+    const square = createLocation(db, WORLD_ID, { name: 'town_square' })
+    standAt(square.id)
+
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+    expect(text).toContain('### town_square (current location)\n- nobody')
+    expect(text).toContain('**Ilva**: A courier.')
+  })
+
+  test('narrows to one location when asked', async () => {
+    const square = placeCharacter('Brannt', 'town_square', 'A blacksmith.')
+    placeCharacter('Ilva', 'north_road', 'A courier.')
+    standAt(square)
+
+    const text = resultText(
+      await callTool(findTool(tools(), 'list_characters'), { location: 'north_road' }),
+    )
+    expect(text).toBe('- **Ilva**: A courier.')
+  })
+
+  test('says so for a location that holds nobody', async () => {
+    createLocation(db, WORLD_ID, { name: 'north_road' })
+    const text = resultText(
+      await callTool(findTool(tools(), 'list_characters'), { location: 'north_road' }),
+    )
+    expect(text).toBe('Nobody is at "north_road".')
+  })
+
+  test('rejects a location that does not exist', async () => {
+    const text = resultText(
+      await callTool(findTool(tools(), 'list_characters'), { location: 'the_moon' }),
+    )
+    expect(text).toBe('No location named "the_moon" exists in this world.')
+  })
+
+  test('lists a character that has a folder but no location row', async () => {
+    const square = placeCharacter('Brannt', 'town_square', 'A blacksmith.')
+    standAt(square)
+    // What `persist_character_design` leaves behind during onboarding: a folder
+    // and nothing else. Before this it was invisible, and got designed again.
+    writeAgentFolder('Vess', 'A ferryman.')
+
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+    expect(text).toContain('### Not at any location\n- **Vess**: A ferryman.')
+    expect(text).toContain('`move_character`')
+  })
+
+  test('groups an unrowed character by its seat in the room mapping', async () => {
+    const square = placeCharacter('Brannt', 'town_square', 'A blacksmith.')
+    standAt(square)
+    writeAgentFolder('Vess', 'A ferryman.')
+    const road = createLocation(db, WORLD_ID, { name: 'north_road' })
+    services.rooms.setRoomMapping(WORLD, 'location:north_road', road.roomId!, ['Vess'])
+
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+    expect(text).toContain('### north_road\n- **Vess**: A ferryman.')
+    expect(text).not.toContain('### Not at any location')
+  })
+
+  test('does not list a placed character twice for having a folder as well', async () => {
+    const square = placeCharacter('Brannt', 'town_square', 'A blacksmith.')
+    standAt(square)
+    writeAgentFolder('Brannt', 'A blacksmith.')
+
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+    expect(text.match(/Brannt/g)).toHaveLength(1)
+  })
+
+  test('lists an archived character nowhere at all', async () => {
+    const square = placeCharacter('Brannt', 'town_square', 'A blacksmith.')
+    standAt(square)
+    writeAgentFolder('Vess', 'A ferryman.')
+    services.agentFiles.archiveAgent(WORLD, 'Vess')
+
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+    expect(text).not.toContain('Vess')
+  })
+
+  test('says the world is empty rather than that the room is', async () => {
+    const text = resultText(await callTool(findTool(tools(), 'list_characters'), {}))
+    expect(text).toBe('No characters exist in this world yet.')
   })
 })
 
