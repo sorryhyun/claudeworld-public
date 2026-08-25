@@ -32,10 +32,21 @@ export function resolveOpenBrowser(env: Record<string, string | undefined> = pro
 
 // Chrome by name precedes the default-browser opener, which stays last so a
 // machine without Chrome still gets a page. `wslview` is for WSL.
+//
+// Chrome is asked for `--app=<url>`: a window with no address bar, no tab strip
+// and no back button, which is what the app should look like when the browser
+// *is* the UI. Every fallback below the Chrome entries opens an ordinary tab —
+// only Chromium understands the flag.
 export function browserCommands(platform: NodeJS.Platform, url: string): string[][] {
+  const app = `--app=${url}`
   switch (platform) {
     case 'darwin':
+      // The binary directly, not `open -a`: `open` forwards `--args` only when
+      // it *starts* the app, so with Chrome already running it would activate
+      // the existing window and drop the flag on the floor. Invoking the binary
+      // hands the flag to the running instance, which opens the app window.
       return [
+        ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', app],
         ['open', '-a', 'Google Chrome', url],
         ['open', url],
       ]
@@ -43,15 +54,15 @@ export function browserCommands(platform: NodeJS.Platform, url: string): string[
       // `start` is a cmd builtin, not an executable, and its first quoted
       // argument is taken as the window title — hence the empty one.
       return [
-        ['cmd', '/c', 'start', '', 'chrome', url],
+        ['cmd', '/c', 'start', '', 'chrome', app],
         ['cmd', '/c', 'start', '', url],
       ]
     default:
       return [
-        ['google-chrome', url],
-        ['google-chrome-stable', url],
-        ['chromium', url],
-        ['chromium-browser', url],
+        ['google-chrome', app],
+        ['google-chrome-stable', app],
+        ['chromium', app],
+        ['chromium-browser', app],
         ['wslview', url],
         ['xdg-open', url],
       ]

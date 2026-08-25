@@ -26,7 +26,9 @@ export class SessionPool {
   /** `maxConcurrentConnections` caps simultaneous CLI spawns, which a large cast
    * would otherwise make one-per-NPC. The MCP turn registry hangs off `onEvict` —
    * a binding shares the session's key, so the two must die together or the
-   * endpoint keeps answering for an agent with no subprocess. */
+   * endpoint keeps answering for an agent with no subprocess. The one exception
+   * is `acquire`'s reopen, which replaces a session under a key whose binding is
+   * the incoming turn's; see there. */
   constructor(
     private readonly maxConcurrentConnections = 10,
     private readonly onEvict?: (id: string) => void,
@@ -51,7 +53,14 @@ export class SessionPool {
 
     const existing = this.sessions.get(id)
     if (existing && this.isReusable(existing, fingerprint, resume)) return existing
-    if (existing) await this.evict(id)
+    // A *reopen*, not an eviction, so `onEvict` stays silent: the caller bound
+    // this key's turn moments ago — `McpTools.bindTurn` runs before `acquire`,
+    // deliberately — and releasing here would drop that binding on the floor.
+    // The session about to open connects its MCP servers at startup, so it
+    // would land on the endpoint's 409 and lose every tool for its whole life.
+    // The binding in the registry belongs to the turn being opened, not to the
+    // session being replaced, and both wear the same key.
+    if (existing) await this.evict(id, { releaseBinding: false })
 
     const pending = this.opening.get(id)
     if (pending) return pending
@@ -134,14 +143,15 @@ export class SessionPool {
     await Promise.all(this.keysForAgent(agentId).map((k) => this.evict(k)))
   }
 
-  /** Safe to call for an absent key. */
-  async evict(id: string): Promise<void> {
+  /** Safe to call for an absent key. `releaseBinding: false` is the reopen in
+   * `acquire` and nothing else — see the comment there. */
+  async evict(id: string, options: { releaseBinding?: boolean } = {}): Promise<void> {
     const session = this.sessions.get(id)
     if (!session) return
     this.sessions.delete(id)
     // Before the close, not after: closing awaits the subprocess, and an in-flight
     // tool call must not resolve a binding for a session on its way out.
-    this.onEvict?.(id)
+    if (options.releaseBinding !== false) this.onEvict?.(id)
     await session.close()
   }
 

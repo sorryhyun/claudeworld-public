@@ -47,14 +47,46 @@ describe('browserCommands', () => {
     for (const platform of ['darwin', 'win32', 'linux'] as NodeJS.Platform[]) {
       const commands = browserCommands(platform, URL)
       expect(commands.length).toBeGreaterThan(1)
-      expect(commands.every((argv) => argv.includes(URL))).toBe(true)
+      expect(commands.every((argv) => argv.some((arg) => arg.includes(URL)))).toBe(true)
       // The generic opener is the fallback, never the first choice.
       expect(commands[0]?.join(' ')).toContain('hrome')
     }
   })
 
+  test('asks Chrome for an app window, and only Chrome', () => {
+    for (const platform of ['darwin', 'win32', 'linux'] as NodeJS.Platform[]) {
+      const commands = browserCommands(platform, URL)
+      // The first candidate — the one that runs on a machine with Chrome — asks
+      // for the chromeless window.
+      expect(commands[0]).toContain(`--app=${URL}`)
+      for (const argv of commands) {
+        // `--app` is a Chromium flag: an entry either is a Chromium invocation
+        // carrying it, or is a fallback opening a plain tab at the bare URL.
+        if (argv.includes(`--app=${URL}`)) {
+          expect(argv.join(' ').toLowerCase()).toContain('chrom')
+        } else {
+          expect(argv).toContain(URL)
+        }
+      }
+    }
+  })
+
+  test('macOS runs the Chrome binary, since `open --args` drops the flag when Chrome is up', () => {
+    expect(browserCommands('darwin', URL)[0]).toEqual([
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      `--app=${URL}`,
+    ])
+  })
+
   test("Windows start gets the empty window title its first quoted argument is taken for", () => {
-    expect(browserCommands('win32', URL)[0]).toEqual(['cmd', '/c', 'start', '', 'chrome', URL])
+    expect(browserCommands('win32', URL)[0]).toEqual([
+      'cmd',
+      '/c',
+      'start',
+      '',
+      'chrome',
+      `--app=${URL}`,
+    ])
   })
 })
 
@@ -70,8 +102,8 @@ describe('openBrowser', () => {
     })
     cleanup()
 
-    expect(argv).toEqual(['chromium', URL])
-    expect(spawned).toEqual([['chromium', URL]])
+    expect(argv).toEqual(['chromium', `--app=${URL}`])
+    expect(spawned).toEqual([['chromium', `--app=${URL}`]])
   })
 
   test('falls back to the default-browser opener when Chrome is absent', () => {
@@ -125,7 +157,7 @@ describe('openBrowser', () => {
     })
     cleanup()
 
-    expect(second).toEqual(['google-chrome', URL])
+    expect(second).toEqual(['google-chrome', `--app=${URL}`])
     expect(spawned).toHaveLength(1)
   })
 
@@ -139,7 +171,7 @@ describe('openBrowser', () => {
       marker: path,
     }
 
-    expect(openBrowser(URL, options)).toEqual(['google-chrome', URL])
+    expect(openBrowser(URL, options)).toEqual(['google-chrome', `--app=${URL}`])
     // Same pid, fresh module graph: exactly what `bun --watch` does on save.
     expect(openBrowser(URL, options)).toBeNull()
     cleanup()
@@ -161,7 +193,7 @@ describe('openBrowser', () => {
     // The old tab is pointing at a port nothing is listening on any more.
     expect(openBrowser('http://localhost:8124', options)).toEqual([
       'google-chrome',
-      'http://localhost:8124',
+      '--app=http://localhost:8124',
     ])
     cleanup()
 
@@ -182,7 +214,7 @@ describe('openBrowser', () => {
     })
     cleanup()
 
-    expect(argv).toEqual(['google-chrome', URL])
+    expect(argv).toEqual(['google-chrome', `--app=${URL}`])
   })
 })
 
