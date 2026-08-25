@@ -26,6 +26,7 @@ import {
 } from '@/sdk/agent/subagent-definitions'
 import { qualifiedToolName } from '@/sdk/tools/definitions'
 import { LORE_CONTRIBUTION_TOOL, SUBAGENT_TOOLS, SUBAGENT_TOOL_NAMES } from '@/sdk/tools/subagent'
+import { renderWorldSettingsBrief } from '@/domain/world-settings'
 
 /** Everything the `subagents` server offers when every ServerDeps entry is wired. */
 const ALL_SUBAGENT_TOOLS: string[] = [
@@ -230,6 +231,92 @@ describe('buildSubagentDefinition (synthetic agents tree)', () => {
     expect(buildSubagentDefinitionsForRole('action_manager', ALL_SUBAGENT_TOOLS)?.item_designer?.description).toBe(
       'Invoke for potions.',
     )
+  })
+})
+
+/** The world's ground rules as `orchestration/turn.ts` renders them. */
+const KOREAN_BRIEF = renderWorldSettingsBrief({
+  worldName: '쵸비츠월드',
+  language: 'ko',
+  playerName: '지승현',
+  genre: null,
+  theme: null,
+  namingStyle: '한글 이름, 한자 없이',
+  styleNotes: null,
+})
+
+describe('the world settings brief reaches every designer', () => {
+  test('the brief is in the prompt, above the output instruction', () => {
+    // Order matters: a designer that reads "you MUST call persist" first treats
+    // the tool call as the whole job and writes the content in English anyway.
+    const prompt = buildSubagentDefinition('item_designer', true, KOREAN_BRIEF).prompt
+    expect(prompt).toContain('## World Settings')
+    expect(prompt).toContain('Language: Korean (한국어)')
+    expect(prompt).toContain('한글 이름, 한자 없이')
+    expect(prompt.indexOf('## World Settings')).toBeLessThan(
+      prompt.indexOf('## Output Instructions'),
+    )
+  })
+
+  test('a designer that returns prose gets it too', () => {
+    // It inherits the parent's tools rather than a persist callback, but what it
+    // writes still ends up in the world.
+    expect(
+      buildSubagentDefinition('detailed_character_designer', true, KOREAN_BRIEF).prompt,
+    ).toContain('Language: Korean (한국어)')
+  })
+
+  test('no world means no brief, not an empty heading', () => {
+    // A chat room has no world and so no language of its own; the section is
+    // omitted rather than rendered blank.
+    expect(buildSubagentDefinition('item_designer').prompt).not.toContain('## World Settings')
+  })
+
+  test('every designer of a role carries the brief', () => {
+    const definitions = buildSubagentDefinitionsForRole(
+      'onboarding',
+      ALL_SUBAGENT_TOOLS,
+      KOREAN_BRIEF,
+    )
+    for (const definition of Object.values(definitions ?? {})) {
+      expect(definition.prompt).toContain('Language: Korean (한국어)')
+    }
+  })
+
+  test('the brief is part of the cache key', () => {
+    // The language can change mid-onboarding — `set_world_settings` is
+    // re-callable — and answering the next turn from the previous brief's entry
+    // would keep the designers writing in the language the player left behind.
+    const korean = buildSubagentDefinitionsForRole('onboarding', ALL_SUBAGENT_TOOLS, KOREAN_BRIEF)
+    const english = buildSubagentDefinitionsForRole(
+      'onboarding',
+      ALL_SUBAGENT_TOOLS,
+      renderWorldSettingsBrief({
+        worldName: 'testworld',
+        language: 'en',
+        playerName: null,
+        genre: null,
+        theme: null,
+        namingStyle: null,
+        styleNotes: null,
+      }),
+    )
+
+    expect(korean).not.toBe(english)
+    expect(korean?.item_designer?.prompt).toContain('Korean (한국어)')
+    expect(english?.item_designer?.prompt).toContain('Language: English')
+    expect(english?.item_designer?.prompt).not.toContain('Korean')
+    // Same brief again is still one cache entry.
+    expect(buildSubagentDefinitionsForRole('onboarding', ALL_SUBAGENT_TOOLS, KOREAN_BRIEF)).toBe(
+      korean,
+    )
+  })
+
+  test('identifiers are carved out of the language rule', () => {
+    // Told only "write everything in Korean", a designer hands `item_id` a
+    // Hangul string and puts a non-ASCII filename in `items/`.
+    expect(KOREAN_BRIEF).toContain('`item_id`')
+    expect(KOREAN_BRIEF).toContain('lowercase ASCII')
   })
 })
 

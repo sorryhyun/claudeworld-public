@@ -45,6 +45,7 @@ agents:
     disabled_tools:
       - memorize  # Use complete tool instead
     enabled_tools:
+      - set_world_settings  # Language, player name, naming/style conventions -- first
       - draft_world         # Lightweight draft to unblock sub-agents
       - persist_world       # Comprehensive: full lore + stats
       - persist_character_design

@@ -28,7 +28,7 @@ import { getPlayerState } from '@/crud/player-state'
 import { getWorld, updateWorld } from '@/crud/worlds'
 import type { Location, World, WorldPhase } from '@/db/schema'
 import { isActionManager } from '@/domain/agent'
-import { toLangKey } from '@/domain/enums'
+import { isLanguage, toLangKey } from '@/domain/enums'
 import { getArrivalMessage } from '@/domain/localization'
 import { getLogger } from '@/infrastructure/logging/logger'
 import { parseJsonColumn } from '@/schemas/common'
@@ -103,6 +103,13 @@ export function createPollingRoutes(state: AppState): Hono<AppEnv> {
           `user_name mismatch for world ${world.name}: DB=${String(world.userName)}, FS=${fsConfig.userName}. Syncing.`,
         )
         updates.userName = fsConfig.userName
+        changed = true
+      }
+      if (isLanguage(fsConfig.language) && fsConfig.language !== world.language) {
+        logger.info(
+          `language mismatch for world ${world.name}: DB=${String(world.language)}, FS=${fsConfig.language}. Syncing.`,
+        )
+        updates.language = fsConfig.language
         changed = true
       }
       if (fsConfig.genre && fsConfig.genre !== world.genre) {

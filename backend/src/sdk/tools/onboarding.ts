@@ -1,15 +1,18 @@
 import { z } from 'zod'
+import { LANGUAGES } from '@/db/schema'
 import { requiredText, requiredTextOfLength, type ToolDefinition } from './definitions'
 
 /**
- * World initialisation. Only the *ends* are ordered: `draft_world` writes just
- * enough lore for the designers to produce thematically consistent content, and
- * `complete` flips the phase. Between them the Onboarding Manager builds
- * incrementally — re-drafting as the interview moves, dispatching a designer the
- * moment the player names something, reading `world_status` to see what already
- * exists — and `persist_world` writes the finished lore and stat system over the
- * draft. Skipping `draft_world` produces a world whose locations were designed
- * against nothing; that is the one sequencing the descriptions still enforce.
+ * World initialisation. Only the *ends* are ordered: `set_world_settings` and
+ * `draft_world` write just enough for the designers to produce content in the
+ * right language and the right key, and `complete` flips the phase. Between them
+ * the Onboarding Manager builds incrementally — re-drafting as the interview
+ * moves, dispatching a designer the moment the player names something, reading
+ * `world_status` to see what already exists — and `persist_world` writes the
+ * finished lore and stat system over the draft. Skipping either of the two
+ * openers produces a world whose locations were designed against nothing, or
+ * designed in the wrong language; that is the one sequencing the descriptions
+ * still enforce.
  */
 
 /** One entry in the world's stat system, as written to `stats.json`. */
@@ -37,6 +40,63 @@ export const statSystemSchema = z.object({
 
 export type StatSystemInput = z.infer<typeof statSystemSchema>
 
+export const setWorldSettingsTool = {
+  name: 'set_world_settings',
+  description: `Register the world's ground rules: the language everything is written in,
+what the player is called, and any naming or style convention every designer must follow.
+
+**Call this FIRST — before draft_world and before dispatching any sub-agent.** These
+settings are handed to every design sub-agent automatically, inside its own prompt, so
+a designer dispatched before they are registered writes against the defaults instead.
+That is how a Korean world ends up with an English item name.
+
+Re-callable and merging: pass only what changed, and the fields you omit keep their
+current value. A sub-agent reads the settings its dispatch was built with, so a
+designer you dispatch **later in this same turn** still sees the previous ones —
+restate anything you just changed in that Task prompt; from your next message onward
+they arrive on their own.`,
+  inputSchema: {
+    language: z
+      .enum(LANGUAGES)
+      .nullable()
+      .default(null)
+      .describe(
+        "The language every player-visible string in this world is written in: 'en', " +
+          "'ko' or 'jp'. Mirror the language the player is speaking. " +
+          'Omit to keep the current language.',
+      ),
+    player_name: requiredText('Player name')
+      .nullable()
+      .default(null)
+      .describe(
+        'What the player wants to be called in the world, written in the world ' +
+          'language. Omit to keep the current name; `complete` confirms it at the end.',
+      ),
+    naming_style: requiredText('Naming style')
+      .nullable()
+      .default(null)
+      .describe(
+        'How people, places and things are named here, in one or two sentences ' +
+          "(e.g. '한국어 이름, 한자 없이', 'Norse-flavoured given names, no surnames'). " +
+          'Omit to keep the current convention.',
+      ),
+    style_notes: requiredText('Style notes')
+      .nullable()
+      .default(null)
+      .describe(
+        'Anything else every designer must honour: tone, era, technology level, ' +
+          'content limits, house rules. Omit to keep the current notes.',
+      ),
+  },
+  response: `World settings registered.
+
+{settings}
+
+Every design sub-agent you dispatch from your next message onward receives this
+automatically.`,
+  enabled: true,
+} satisfies ToolDefinition
+
 export const readLoreGuidelinesTool = {
   name: 'read_lore_guidelines',
   description: `Return the lore writing guidelines for world creation.
@@ -52,9 +112,10 @@ for creating comprehensive world lore before calling draft_world or persist_worl
 export const draftWorldTool = {
   name: 'draft_world',
   description: `Create or update the lightweight world draft: genre, theme, lore summary.
-Call this FIRST — as soon as the world has a direction, not once the interview is
-over — because it is what unblocks the design sub-agents. They use this context to
-create thematically consistent content while the conversation continues.
+Call this early — right after \`set_world_settings\`, as soon as the world has a
+direction, not once the interview is over — because it is what unblocks the design
+sub-agents. They use this context to create thematically consistent content while the
+conversation continues.
 
 **Call it again whenever the conversation moves the world.** Pass only the fields
 that changed; omitted fields keep their current value, and the sections your
@@ -144,10 +205,11 @@ export const completeTool = {
 This is a lightweight tool that finalizes the onboarding process.
 
 Call this tool LAST, after:
-1. draft_world (genre, theme, lore summary) — early, and re-called as the world moved
-2. Sub-agents (location_designer, character_designer, item_designer) — dispatched
+1. set_world_settings (language, player name, conventions) — first, before any designer
+2. draft_world (genre, theme, lore summary) — early, and re-called as the world moved
+3. Sub-agents (location_designer, character_designer, item_designer) — dispatched
    throughout the interview, not all at the end
-3. persist_world (full lore, stats)
+4. persist_world (full lore, stats)
 
 Call world_status first if you are unsure what exists.
 
@@ -180,6 +242,7 @@ The world is now ready for adventure!`,
 } satisfies ToolDefinition
 
 export const ONBOARDING_TOOLS = {
+  set_world_settings: setWorldSettingsTool,
   read_lore_guidelines: readLoreGuidelinesTool,
   world_status: worldStatusTool,
   draft_world: draftWorldTool,

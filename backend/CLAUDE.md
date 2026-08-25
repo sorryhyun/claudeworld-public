@@ -191,6 +191,31 @@ re-drafts as the interview moves, dispatching a designer the turn the player nam
 a person or an object; `world_status` is the read-only tool it uses to see what already
 exists before creating a second copy. Only `persist_world` and `complete` are terminal.
 
+**`set_world_settings` comes before all of them, and it is what the sub-agents read.** A
+design sub-agent has no world context of its own — it sees a task prompt and its own
+`characteristics.md` — so left to itself it writes item names and descriptions in English
+inside a Korean world. The tool registers the world's ground rules (language, player name,
+naming convention, house rules) into `world.json`; `domain/world-settings.ts` renders them
+and `sdk/agent/subagent-definitions.ts` pastes that block into every designer's system
+prompt. Four consequences:
+
+- **It is rendered, not stored as prose.** `language`, `user_name`, `genre` and `theme` are
+  already `world.json` fields read by the localisation layer, so the settings live there
+  rather than in a second file that would fork the same three values. Only what has no
+  field of its own — the naming convention, the house rules — goes in the config's
+  `settings` bag. A world created before the tool existed still renders a brief.
+- **The brief is part of the sub-agent definition cache key and of `optionsFingerprint`.**
+  A language changed mid-onboarding has to evict both, or the designers go on writing in
+  the language the player left behind.
+- **`Options.agents` is baked in at `query()` time**, so a designer dispatched *later in
+  the same turn* as the `set_world_settings` call still carries the previous brief. The
+  tool's description says so and tells the manager to restate what it changed in that Task
+  prompt; from the next turn onward it arrives on its own.
+- **The language reaches the `worlds` row through `syncWorldFromFs`**, in both its copies
+  (`routes/game/worlds.ts` and `routes/game/polling.ts`). The column is what
+  `orchestration/turn.ts` and `domain/localization.ts` read; without the sync the tool
+  would change what the designers write and nothing else.
+
 **The lore file has three owners.** `src/sdk/handlers/lore-sections.ts` splits `lore.md`
 into a body (the Onboarding Manager's, replaced wholesale by `draft_world` and
 `persist_world`), a `## World Lore Additions` region written by the design sub-agents
@@ -363,8 +388,8 @@ Tool declarations are Zod-schema modules in `src/sdk/tools/`:
 - **`action.ts`** — common action tools (skip, memorize, recall)
 - **`guideline.ts`** — guideline tools (read, anthropic)
 - **`gameplay.ts`** — Action Manager tools (narration, suggest_options, travel, …)
-- **`onboarding.ts`** — onboarding phase tools (world_status, draft_world, persist_world,
-  complete)
+- **`onboarding.ts`** — onboarding phase tools (set_world_settings, world_status,
+  draft_world, persist_world, complete)
 - **`item.ts` / `location.ts` / `character-design.ts` / `subagent.ts`** — sub-agent persist
   tools, plus `add_world_lore`, which every holder of the `subagents` server may call
 

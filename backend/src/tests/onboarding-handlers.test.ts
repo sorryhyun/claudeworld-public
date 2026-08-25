@@ -179,6 +179,85 @@ function onboardingDeps() {
   }
 }
 
+describe('set_world_settings', () => {
+  test('registers the language and the player name on world.json', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const text = resultText(
+      await callTool(findTool(tools, 'set_world_settings'), {
+        language: 'ko',
+        player_name: '지승현',
+        naming_style: '한글 이름, 한자 없이',
+      }),
+    )
+
+    const config = deps.worlds!.loadWorldConfig(WORLD)!
+    expect(config.language).toBe('ko')
+    expect(config.userName).toBe('지승현')
+    expect(config.settings.naming_style).toBe('한글 이름, 한자 없이')
+
+    // The response is the same brief the designers receive; the manager seeing
+    // something else would be the manager unable to check its own work.
+    expect(text).toContain('Language: Korean (한국어)')
+    expect(text).toContain('지승현')
+    expect(text).toContain('한글 이름, 한자 없이')
+  })
+
+  test('a second call merges rather than blanking what it omits', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const settings = findTool(tools, 'set_world_settings')
+
+    await callTool(settings, { language: 'ko', player_name: '지승현' })
+    await callTool(settings, { style_notes: '근미래, 폭력 묘사는 절제' })
+
+    const config = deps.worlds!.loadWorldConfig(WORLD)!
+    expect(config.language).toBe('ko')
+    expect(config.userName).toBe('지승현')
+    expect(config.settings.style_notes).toBe('근미래, 폭력 묘사는 절제')
+  })
+
+  test('a call with nothing in it is an error, not a no-op write', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    const result = await callTool(findTool(tools, 'set_world_settings'), {})
+    expect(isError(result)).toBe(true)
+    expect(resultText(result)).toContain('at least one of')
+  })
+
+  test('the settings survive the writers that follow it', async () => {
+    // `draft_world` and `complete` both save the whole config; a merge that
+    // dropped the settings bag would silently un-register the conventions
+    // half-way through the interview.
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    await callTool(findTool(tools, 'set_world_settings'), {
+      language: 'ko',
+      naming_style: '한글 이름',
+    })
+    await callTool(findTool(tools, 'draft_world'), {
+      genre: 'near-future sci-fi',
+      theme: 'quiet loneliness',
+      lore_summary: 'A'.repeat(60),
+    })
+
+    const config = deps.worlds!.loadWorldConfig(WORLD)!
+    expect(config.language).toBe('ko')
+    expect(config.settings.naming_style).toBe('한글 이름')
+  })
+
+  test('world_status reports what is registered and what is not', async () => {
+    const tools = createOnboardingTools(ctxFor(), onboardingDeps())
+    expect(resultText(await callTool(findTool(tools, 'world_status')))).toContain(
+      'Naming convention: (not registered)',
+    )
+
+    await callTool(findTool(tools, 'set_world_settings'), {
+      language: 'ko',
+      naming_style: '한글 이름',
+    })
+    const text = resultText(await callTool(findTool(tools, 'world_status')))
+    expect(text).toContain('Language: ko')
+    expect(text).toContain('Naming convention: 한글 이름')
+  })
+})
+
 describe('draft_world', () => {
   test('records genre and theme and writes a placeholder lore file', async () => {
     const tools = createOnboardingTools(ctxFor(), onboardingDeps())
@@ -936,6 +1015,7 @@ describe('buildServers', () => {
       'mcp__onboarding__complete',
       'mcp__onboarding__read_lore_guidelines',
       'mcp__onboarding__world_status',
+      'mcp__onboarding__set_world_settings',
       // The designers the manager dispatches mid-interview report back here,
       // and may extend the lore they were designing against.
       'mcp__subagents__persist_location_design',

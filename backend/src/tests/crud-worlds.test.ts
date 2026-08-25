@@ -252,6 +252,14 @@ describe('updateWorld', () => {
     expect(unchanged?.userName).toBe('손님')
   })
 
+  test('carries a language change onto the row', () => {
+    // `set_world_settings` writes `world.json`; the two `syncWorldFromFs` copies
+    // are what bring the change to the column every prompt is built off.
+    const world = createWorld(db, { name: 'asdf', language: 'en' }, OWNER)
+    expect(updateWorld(db, world.id, { language: 'ko' })?.language).toBe('ko')
+    expect(updateWorld(db, world.id, { language: null })?.language).toBe('ko')
+  })
+
   test('writes an empty stat_definitions as "{}", not NULL', () => {
     const world = createWorld(db, { name: 'asdf' }, OWNER)
     updateWorld(db, world.id, { statDefinitions: {} })

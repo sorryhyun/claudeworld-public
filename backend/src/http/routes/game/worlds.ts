@@ -34,7 +34,7 @@ import {
   updateWorld,
 } from '@/crud/worlds'
 import { locations as locationsTable, playerStates, type World } from '@/db/schema'
-import { toLangKey } from '@/domain/enums'
+import { isLanguage, toLangKey } from '@/domain/enums'
 import { getArrivalMessage, getOnboardingMessage } from '@/domain/localization'
 import { getLogger } from '@/infrastructure/logging/logger'
 import {
@@ -81,6 +81,14 @@ export function syncWorldFromFs(state: AppState, world: World): boolean {
   }
   if (config.userName && config.userName !== world.userName) {
     updates.userName = config.userName
+    count += 1
+  }
+  // `set_world_settings` writes the language to `world.json`; without this the
+  // column keeps the language the world was created with and every prompt
+  // built off the row — the arrival message, the response instruction — stays
+  // in it.
+  if (isLanguage(config.language) && config.language !== world.language) {
+    updates.language = config.language
     count += 1
   }
   if (config.genre && config.genre !== world.genre) {

@@ -161,6 +161,9 @@ export interface WorldUpdate {
   genre?: string | null
   theme?: string | null
   userName?: string | null
+  /** Written by `set_world_settings`, which reaches `world.json` first; the
+   * column is what `orchestration/turn.ts` and the localisation layer read. */
+  language?: Language | null
   statDefinitions?: Record<string, unknown> | null
 }
 
@@ -179,6 +182,7 @@ export function updateWorld(db: Db, worldId: number, update: WorldUpdate): World
   if (update.genre !== undefined && update.genre !== null) patch.genre = update.genre
   if (update.theme !== undefined && update.theme !== null) patch.theme = update.theme
   if (update.userName !== undefined && update.userName !== null) patch.userName = update.userName
+  if (update.language !== undefined && update.language !== null) patch.language = update.language
   if (update.statDefinitions !== undefined && update.statDefinitions !== null) {
     patch.statDefinitions = JSON.stringify(update.statDefinitions)
   }

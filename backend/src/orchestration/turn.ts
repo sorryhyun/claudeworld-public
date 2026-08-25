@@ -22,6 +22,7 @@ import {
   type AgentOptionsInput,
 } from '@/sdk/agent/options-builder'
 import { buildSubagentDefinitionsForRole } from '@/sdk/agent/subagent-definitions'
+import { renderWorldSettingsBrief, toWorldSettings } from '@/domain/world-settings'
 import { TurnRunner, type TurnEvent } from '@/sdk/agent/turn-runner'
 import type { SessionPool } from '@/sdk/client/session-pool'
 import type { ServerDeps, ServerRole } from '@/sdk/handlers/servers'
@@ -818,8 +819,13 @@ function buildAgentTurn(
       // What the dispatch tool can reach; `undefined` for a character, so its
       // dispatch stays inert. Tool names are passed so a designer whose persist
       // tool this turn does not serve is dropped rather than left with nothing
-      // to call.
-      agents: buildSubagentDefinitionsForRole(role, servers.toolNames),
+      // to call, and the settings brief so every designer writes in the world's
+      // own language without the dispatching agent having to say so.
+      agents: buildSubagentDefinitionsForRole(
+        role,
+        servers.toolNames,
+        worldSettingsBrief(deps, world),
+      ),
       hooks,
       resume,
       useSonnet: deps.useSonnet,
@@ -827,6 +833,23 @@ function buildAgentTurn(
     message,
     resume,
   }
+}
+
+/**
+ * The world's ground rules, as every design sub-agent dispatched this turn will
+ * read them. Empty for a chat room, which has no world and so no language of its
+ * own to write in.
+ *
+ * Read from `world.json` rather than from the `worlds` row: the free-text half
+ * of the settings — the naming convention, the house rules — has no column, and
+ * the filesystem is the source of truth for the rest of it anyway. The service's
+ * mtime cache makes this a `stat` on the turns where nothing changed.
+ */
+function worldSettingsBrief(deps: TurnDeps, world: World | null): string {
+  if (world === null) return ''
+  const config = deps.services.worlds.loadWorldConfig(world.name)
+  if (!config) return ''
+  return renderWorldSettingsBrief(toWorldSettings(config))
 }
 
 // Gameplay messages (`chat_session_id IS NULL`) are visible to everyone; what is

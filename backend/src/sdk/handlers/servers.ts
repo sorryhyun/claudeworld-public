@@ -86,7 +86,11 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
 
   [SERVER_NAMES.onboarding]:
     'This is world creation, and it is a conversation with the player as much as it is ' +
-    'a build. `read_lore_guidelines` first — it carries the structure the rest of this ' +
+    'a build. `set_world_settings` comes before everything else: it registers the ' +
+    'language the world is written in and what the player is called, and it is handed ' +
+    'to every design sub-agent automatically — a designer dispatched before it is ' +
+    'called writes in the default language, which is how a Korean world grows English ' +
+    'items. `read_lore_guidelines` next — it carries the structure the rest of this ' +
     'namespace expects. `draft_world` is cheap and re-callable: call it as soon as the ' +
     'genre and theme are clear, then call it again — with only the fields that moved — ' +
     'each time the conversation changes them. Build the world *during* the interview ' +
@@ -100,6 +104,9 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
 
   [SERVER_NAMES.subagents]:
     'These are the callbacks a design sub-agent reports its finished work through. ' +
+    "Everything player-visible you write through them is written in the world's own " +
+    'language, as the World Settings in your prompt state it; only machine identifiers ' +
+    '— a location `name`, an `item_id`, a stat or flag name — stay lowercase ASCII. ' +
     'Prose is not a result — a design that is described but never persisted through the ' +
     'tool for it is discarded when the sub-agent ends. Persist once, at the end, with ' +
     'the complete design rather than in fragments as you go: `persist_item` takes every ' +

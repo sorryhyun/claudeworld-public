@@ -11,8 +11,15 @@ import {
   draftWorldTool,
   persistWorldTool,
   readLoreGuidelinesTool,
+  setWorldSettingsTool,
   worldStatusTool,
 } from '@/sdk/tools/onboarding'
+import {
+  NAMING_STYLE_KEY,
+  STYLE_NOTES_KEY,
+  renderWorldSettingsBrief,
+  toWorldSettings,
+} from '@/domain/world-settings'
 import { resolveTool } from '@/sdk/tools/registry'
 import { getLogger } from '@/infrastructure/logging/logger'
 import type { AgentFilesystemService } from '@/services/agent-filesystem-service'
@@ -27,6 +34,12 @@ import { tool, requireWorldName, toolError, toolSuccess, type SdkTool, type Tool
  * is what it reads to avoid building the same place twice. Both writers go
  * through `lore-sections.ts`, because the lore file is no longer the manager's
  * alone — the designers write into it too (see `lore-tools.ts`).
+ *
+ * `set_world_settings` comes before both. It is the only writer of the world's
+ * ground rules — language, player name, naming and style conventions — and what
+ * it stores is rendered into every design sub-agent's prompt by
+ * `sdk/agent/subagent-definitions.ts`, which is what stops a Korean world from
+ * growing English items.
  *
  * Beyond flipping the phase, `complete` captures the initial-state snapshot the
  * reset feature restores to — it has to be taken after the item designer has
@@ -59,6 +72,57 @@ function loadLoreGuidelines(): string {
 export function createOnboardingTools(ctx: ToolContext, deps: OnboardingDeps): SdkTool[] {
   const worldName = requireWorldName(ctx)
   const tools: SdkTool[] = []
+
+  const settingsDef = resolveTool(setWorldSettingsTool.name, ctx.groupName)
+  if (settingsDef) {
+    tools.push(
+      tool(
+        setWorldSettingsTool.name,
+        settingsDef.description,
+        setWorldSettingsTool.inputSchema,
+        async (args) => {
+          if (
+            args.language === null &&
+            args.player_name === null &&
+            args.naming_style === null &&
+            args.style_notes === null
+          ) {
+            return toolError(
+              'set_world_settings needs at least one of language, player_name, ' +
+                'naming_style or style_notes. Call world_status to see what is registered.',
+            )
+          }
+
+          try {
+            // Merge, like `draft_world`: a later call fixing the naming convention
+            // must not blank the language the world was created with.
+            const config = deps.worlds.ensureWorldExists(worldName)
+            if (args.language !== null) config.language = args.language
+            if (args.player_name !== null) config.userName = args.player_name
+            // Copied rather than mutated in place: the config came out of the
+            // service's mtime cache, and the entry is shared with every other
+            // reader until the save invalidates it.
+            const settings = { ...config.settings }
+            if (args.naming_style !== null) settings[NAMING_STYLE_KEY] = args.naming_style
+            if (args.style_notes !== null) settings[STYLE_NOTES_KEY] = args.style_notes
+            config.settings = settings
+            deps.worlds.saveWorldConfig(worldName, config)
+
+            // Echoed back verbatim: this is the same text the designers receive,
+            // so the manager can see what it just committed them to.
+            return toolSuccess(
+              formatTemplate(settingsDef.response, {
+                settings: renderWorldSettingsBrief(toWorldSettings(config)),
+              }),
+            )
+          } catch (error) {
+            logger.error(`Failed to register world settings: ${String(error)}`)
+            return toolError(`Error registering world settings: ${String(error)}`)
+          }
+        },
+      ),
+    )
+  }
 
   const loreDef = resolveTool(readLoreGuidelinesTool.name, ctx.groupName)
   if (loreDef) {
@@ -292,7 +356,14 @@ function buildWorldStatus(deps: OnboardingDeps, worldName: string): string {
   lines.push(`Phase: ${config?.pendingPhase ?? config?.phase ?? 'onboarding'}`)
   lines.push(`Genre: ${config?.genre ?? '(not set)'}`)
   lines.push(`Theme: ${config?.theme ?? '(not set)'}`)
-  lines.push(`Player name: ${config?.userName ?? '(not set — complete sets it)'}`)
+  lines.push(`Player name: ${config?.userName ?? '(not set — set_world_settings sets it)'}`)
+
+  // Reported because they are what the designers are being handed: a world
+  // whose language reads wrong here is producing content in that language.
+  const settings = config ? toWorldSettings(config) : null
+  lines.push(`Language: ${settings?.language ?? 'en'} (set_world_settings changes it)`)
+  lines.push(`Naming convention: ${settings?.namingStyle ?? '(not registered)'}`)
+  lines.push(`Style notes: ${settings?.styleNotes ?? '(not registered)'}`)
 
   const sections = splitLore(deps.worlds.loadLore(worldName))
   lines.push(`Lore body: ${sections.body.length} characters`)

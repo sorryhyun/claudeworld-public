@@ -99,6 +99,7 @@ function buildSubagentPrompt(
   characteristics: string,
   persistToolName: string | undefined,
   loreToolName: string | undefined,
+  settingsBrief: string,
 ): string {
   const displayName = SUBAGENT_DISPLAY_NAMES[type]
 
@@ -109,6 +110,12 @@ ${identity || `A specialized ${displayName} for ClaudeWorld TRPG.`}
 
 ## Guidelines
 ${characteristics || 'Follow the task instructions carefully and provide accurate results.'}`
+
+  // Above the output instructions on purpose: it constrains *what* is written,
+  // and a designer that reads the persist instruction first tends to treat the
+  // tool call as the whole job. Empty for a turn with no world — a chat room has
+  // no language to write in.
+  if (settingsBrief) prompt += `\n\n${settingsBrief}`
 
   if (persistToolName) {
     prompt += `
@@ -148,6 +155,12 @@ export function persistToolFor(type: SubagentType): string | undefined {
 
 /** A missing folder is not an error: the prompt falls back to generic text.
  *
+ * `settingsBrief` is the world's ground rules, rendered by
+ * `domain/world-settings.ts` — the language every player-visible string is
+ * written in, above all. It is passed in rather than read here because this
+ * module knows nothing about which world a turn is for; `orchestration/turn.ts`
+ * holds that. Empty is legitimate: a chat room has no world.
+ *
  * `withLoreTool` is the turn's answer to "is `add_world_lore` served" — the same
  * gate the persist tools go through. A designer restricted to a tool the turn
  * does not serve is dispatched with a tool that never answers, so the grant and
@@ -157,6 +170,7 @@ export function persistToolFor(type: SubagentType): string | undefined {
 export function buildSubagentDefinition(
   type: SubagentType,
   withLoreTool = true,
+  settingsBrief = '',
 ): AgentDefinition {
   const dir = subagentDir(type)
   const identity = readIdentityFile(dir, 'in_a_nutshell.md')
@@ -169,7 +183,14 @@ export function buildSubagentDefinition(
 
   const definition: AgentDefinition = {
     description: description || `Sub-agent for ${type.replaceAll('_', ' ')}`,
-    prompt: buildSubagentPrompt(type, identity, characteristics, persistToolName, loreToolName),
+    prompt: buildSubagentPrompt(
+      type,
+      identity,
+      characteristics,
+      persistToolName,
+      loreToolName,
+      settingsBrief,
+    ),
     // 'inherit', not an explicit id: a sub-agent must follow the `USE_SONNET`
     // flip with its parent, or an Opus turn silently spawns Sonnet designers.
     model: 'inherit',
@@ -182,9 +203,9 @@ export function buildSubagentDefinition(
   return definition
 }
 
-export function buildSubagentDefinitions(): Record<string, AgentDefinition> {
+export function buildSubagentDefinitions(settingsBrief = ''): Record<string, AgentDefinition> {
   return Object.fromEntries(
-    SUBAGENT_TYPES.map((type) => [type, buildSubagentDefinition(type)]),
+    SUBAGENT_TYPES.map((type) => [type, buildSubagentDefinition(type, true, settingsBrief)]),
   )
 }
 
@@ -208,10 +229,17 @@ function sameMtimes(a: Record<string, number>, b: Record<string, number>): boole
  * designer restricted to a persist tool the turn does not serve is dispatched with
  * no tools at all and its design discarded as prose, whereas dropping the designer
  * makes `Task` report an unknown `subagent_type`. Cached on mtimes, so editing
- * `characteristics.md` lands on the next turn without a restart. */
+ * `characteristics.md` lands on the next turn without a restart.
+ *
+ * `settingsBrief` is this world's ground rules — see
+ * {@link buildSubagentDefinition}. It is part of the cache key rather than the
+ * mtime map because it is rendered, not read from a file: a world whose language
+ * changed mid-onboarding must not be answered with the previous language's
+ * definitions. */
 export function buildSubagentDefinitionsForRole(
   role: string,
   availableTools: readonly string[],
+  settingsBrief = '',
 ): Record<string, AgentDefinition> | undefined {
   if (!isSubagentParentRole(role)) return undefined
 
@@ -228,15 +256,19 @@ export function buildSubagentDefinitionsForRole(
   const withLoreTool = served.has(LORE_CONTRIBUTION_TOOL)
 
   // The surviving list is part of the key: two turns of one role can be served
-  // different tool sets. So is the lore grant, for the same reason.
-  const cacheKey = `${role}|${types.join(',')}|${withLoreTool ? 'lore' : 'nolore'}`
+  // different tool sets. So is the lore grant, for the same reason, and so is the
+  // brief — hashed rather than embedded, since it is a paragraph and this key is
+  // built on every turn.
+  const cacheKey =
+    `${role}|${types.join(',')}|${withLoreTool ? 'lore' : 'nolore'}` +
+    `|${settingsBrief ? Bun.hash(settingsBrief).toString(16) : 'nobrief'}`
   const mtimes = identityMtimes(types)
 
   const cached = cache.get(cacheKey)
   if (cached && sameMtimes(cached.mtimes, mtimes)) return cached.definitions
 
   const definitions = Object.fromEntries(
-    types.map((type) => [type, buildSubagentDefinition(type, withLoreTool)]),
+    types.map((type) => [type, buildSubagentDefinition(type, withLoreTool, settingsBrief)]),
   )
   cache.set(cacheKey, { mtimes, definitions })
   logger.debug(
