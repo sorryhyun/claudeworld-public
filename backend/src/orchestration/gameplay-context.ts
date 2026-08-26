@@ -75,6 +75,10 @@ export interface ActionManagerMessageInput extends ActionManagerContextInput {
   playerAction: string
   agentName: string
   npcReactions?: AgentReaction[]
+  /** NPCs started alongside this turn and still speaking. Mutually exclusive
+   * with {@link npcReactions}: reactions already in hand are pasted in, ones
+   * still in flight are announced and fetched with `await_reactions`. */
+  pendingReactionNames?: string[]
 }
 
 export function buildActionManagerUserMessage(
@@ -96,9 +100,30 @@ export function buildActionManagerUserMessage(
     }
     parts.push('</npc_reactions>', '')
     parts.push(
-      'Use these NPC reactions to inform your narration. Incorporate their responses naturally into the story.',
+      'Voice these NPCs in your narration: name each one, quote what they said as spoken ' +
+        'dialogue and stage what they did. Nothing they said reaches the player except ' +
+        'through you.',
       '',
     )
+  } else if (input.pendingReactionNames?.length) {
+    // The NPCs were started at the same moment this turn was, so the reactions
+    // do not exist yet. Announcing who is speaking is what makes the first
+    // narration possible: it can set the scene with the right cast before a
+    // single reaction has come back.
+    parts.push('<npc_reactions status="in_flight">')
+    parts.push(
+      `${input.pendingReactionNames.join(', ')} — present at this location — are reacting to ` +
+        "the player's action right now, at the same time as you.",
+      '',
+      'Narrate the action itself first: the player is watching a blank screen until your ' +
+        'first `narration` lands, and it does not have to wait for them. Then call ' +
+        '`await_reactions` to collect what they said, and call `narration` again to voice ' +
+        'it — quoted dialogue, attributed by name.',
+      '',
+      'Settle the reactions with `await_reactions` before `travel`: leaving a location ' +
+        'while its characters are still speaking cuts them off mid-sentence.',
+    )
+    parts.push('</npc_reactions>', '')
   }
 
   // Read-and-clear: this is one-shot continuity written by the `travel` tool so

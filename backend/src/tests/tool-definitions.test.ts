@@ -163,6 +163,7 @@ describe('ACTION_MANAGER_TOOLS', () => {
     expect(Object.keys(ACTION_MANAGER_TOOLS).sort()).toEqual(
       [
         'advance_time',
+        'await_reactions',
         'change_stat',
         'delete_character',
         'equip_item',
@@ -222,6 +223,9 @@ describe('isReadOnlyTool', () => {
    * that the decision gets made rather than defaulted.
    */
   const READ_ONLY = [
+    // Waits rather than reads, but it changes nothing and the point of the flag
+    // is that the CLI may run it alongside another call.
+    'await_reactions',
     'list_characters',
     'list_inventory',
     'list_locations',

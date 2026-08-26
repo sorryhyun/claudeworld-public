@@ -182,8 +182,8 @@ unchanged. `src/scripts/setup-env.ts` writes `$2b$` hashes at cost 12 to match.
 ## Game System
 
 Seven specialized agents collaborate in two phases: **Onboarding** (interview → world
-generation) and **Gameplay** (a 2-cell tape where NPCs react first, then the Action Manager
-coordinates sub-agents and handles narration).
+generation) and **Gameplay** (a 2-cell tape whose cells run *side by side*: the NPCs react
+while the Action Manager coordinates sub-agents and narrates).
 
 **Onboarding builds incrementally, not in one batch at the end.** `draft_world` is
 re-callable and merges the fields it is given, so the Onboarding Manager drafts early and
@@ -228,12 +228,30 @@ no append path — which is what forces the discipline.
 **Gameplay tape flow:**
 
 1. **Cell 1 (NPC Reactions)** — NPCs at the player's location react concurrently (hidden),
-   responses collected
-2. **Cell 2 (Action Manager)** — receives NPC reactions, interprets the action, invokes
-   sub-agents, generates narration
+   responses collected. The cell is **`deferred`**: the executor starts it and advances
+   without awaiting it.
+2. **Cell 2 (Action Manager)** — starts at the same moment, interprets the action, invokes
+   sub-agents, and calls `narration` for the player's own action while the NPCs are still
+   speaking. `await_reactions` then collects what they said and a second `narration` voices
+   it.
 
 Implemented in `src/orchestration/tape/` (`gameplay-tape.ts`, `chat-tape.ts`,
 `executor.ts`), driven by `room-orchestrator.ts`.
+
+**The two cells overlap, and three things follow from that:**
+
+- **An NPC has no voice of its own.** Its reaction is never persisted as a message; it
+  reaches the player only because the Action Manager quoted it. The prompts say so in four
+  places (`SERVER_INSTRUCTIONS`, the `narration` and `await_reactions` descriptions,
+  `Action_Manager/characteristics.md`) because a model handed a block of NPC prose with no
+  instruction summarises it instead.
+- **The executor awaits the deferred cell before the turn returns**, whether or not anyone
+  called `await_reactions`. A turn that returned with NPCs still generating would race the
+  next turn for their sessions — `SessionPool.acquire` reopens a *busy* session, killing
+  the turn it is in the middle of.
+- **`travel` settles the reactions first** (`ctx.awaitNpcReactions`, called at the top of
+  its handler). Its memory round reopens the sessions of exactly the NPCs that may still be
+  answering, and that is the same collision.
 
 [`../docs/how_it_works.md`](../docs/how_it_works.md) has the detailed architecture — agent
 roles, turn flow diagrams, sub-agent invocation, data storage, API endpoints. **Its code

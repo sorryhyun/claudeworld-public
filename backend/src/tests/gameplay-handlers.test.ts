@@ -41,7 +41,7 @@ import { createLocationTools } from '@/sdk/handlers/location-tools'
 import { createNarrativeTools } from '@/sdk/handlers/narrative-tools'
 import { createMechanicsTools } from '@/sdk/handlers/mechanics-tools'
 import { createWorldTools } from '@/sdk/handlers/world-tools'
-import type { ToolContext } from '@/sdk/handlers/context'
+import type { NpcReaction, ToolContext } from '@/sdk/handlers/context'
 import type { PlayerMutationsPort, TurnStatusPort } from '@/sdk/handlers/ports'
 import { callTool, findTool, isError, resultText } from './tool-harness'
 
@@ -765,6 +765,83 @@ describe('narration', () => {
   test('persists the line even with nobody listening', async () => {
     await callTool(findTool(tools(), 'narration'), { narrative: 'The mill looms.' })
     expect(db.select().from(messages).all()[0]!.content).toBe('The mill looms.')
+  })
+})
+
+describe('await_reactions', () => {
+  /**
+   * The NPCs run beside the Action Manager rather than before it, so this tool
+   * is how their lines reach the only agent that can speak them to the player.
+   */
+  let roomId: number
+
+  beforeEach(() => {
+    roomId = createRoom(db, { name: 'Location: Town Square' }, OWNER, WORLD_ID).id
+  })
+
+  function toolsWith(overrides: Partial<ToolContext>) {
+    return createNarrativeTools(ctxFor({ roomId, ...overrides }), {
+      players: services.players,
+      rooms: services.rooms,
+    })
+  }
+
+  test('waits for the NPCs still speaking and returns every line verbatim', async () => {
+    let release: ((value: NpcReaction[]) => void) | null = null
+    const collected: NpcReaction[] = []
+    const pending = new Promise<NpcReaction[]>((resolve) => {
+      release = resolve
+    })
+
+    const call = callTool(
+      findTool(
+        toolsWith({
+          npcReactions: collected,
+          awaitNpcReactions: async () => {
+            const settled = await pending
+            collected.splice(0, collected.length, ...settled)
+            return collected
+          },
+        }),
+        'await_reactions',
+      ),
+      {},
+    )
+
+    release!([
+      { agentId: 1, agentName: 'Elara', content: '"Where did you hear that name?"' },
+      { agentId: 2, agentName: 'Marcus', content: 'He sets down the crate and says nothing.' },
+    ])
+
+    const text = resultText(await call)
+    expect(text).toContain("2 character(s) reacted to the player's action")
+    expect(text).toContain('### Elara')
+    expect(text).toContain('"Where did you hear that name?"')
+    expect(text).toContain('### Marcus')
+    expect(text).toContain('He sets down the crate and says nothing.')
+  })
+
+  test('the awaited reactions land where `narration` reads them from', async () => {
+    // The `thinking` column is the only durable record of a reaction, and it is
+    // written from the same array this tool fills.
+    const collected: NpcReaction[] = []
+    const built = toolsWith({
+      npcReactions: collected,
+      awaitNpcReactions: () => {
+        collected.push({ agentId: 1, agentName: 'Elara', content: 'She laughs.' })
+        return Promise.resolve(collected)
+      },
+    })
+
+    await callTool(findTool(built, 'await_reactions'), {})
+    await callTool(findTool(built, 'narration'), { narrative: 'The mill looms.' })
+
+    expect(db.select().from(messages).all()[0]!.thinking).toContain('=== Elara ===')
+  })
+
+  test('an empty location says so rather than returning nothing', async () => {
+    const text = resultText(await callTool(findTool(toolsWith({}), 'await_reactions'), {}))
+    expect(text).toContain('No one else is at this location')
   })
 })
 

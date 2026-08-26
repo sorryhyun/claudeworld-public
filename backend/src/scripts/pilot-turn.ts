@@ -12,6 +12,7 @@ import { createMessage } from '@/crud/messages'
 import { addActionToHistory, incrementTurn } from '@/crud/player-state'
 import { openDb, schema } from '@/db'
 import { createTurnTelemetry } from '@/infrastructure/logging/turn-telemetry'
+import { isActionManager } from '@/domain/agent'
 import { runGameplayTurn } from '@/orchestration/turn'
 import { SessionPool } from '@/sdk/client/session-pool'
 import { McpTools } from '@/sdk/mcp'
@@ -78,6 +79,10 @@ createMessage(db, manifest.roomId, {
 
 let narrationDeltaChars = 0
 let narrationProduced = false
+// The overlap is the point of the deferred reaction cell, and it is only
+// observable against a live model — hence here rather than in the test suite.
+let firstNarrationAt = 0
+let lastNpcFinishedAt = 0
 
 // Tools are served over the stateless MCP endpoint, so even a driver with no
 // HTTP app needs one; `mcp.stop()` at the end closes it.
@@ -96,6 +101,7 @@ const serverDeps: ServerDeps = {
     new PersistenceManager(db, worldId, worldName, worldsDir),
   onNarrationProduced: () => {
     narrationProduced = true
+    if (firstNarrationAt === 0) firstNarrationAt = Date.now()
   },
 }
 
@@ -120,6 +126,10 @@ const onEvent = (agent: { name: string }, event: TurnEvent): void => {
   if (event.type === 'thinking_delta') tally.thinking += event.delta.length
   if (event.type === 'narration_delta') narrationDeltaChars += event.delta.length
   perAgent.set(agent.name, tally)
+
+  if (event.type === 'stream_end' && !isActionManager(agent.name)) {
+    lastNpcFinishedAt = Date.now()
+  }
 
   if (event.type === 'stream_end') {
     const bits = [
@@ -199,8 +209,13 @@ check(
 )
 check(narrationDeltaChars > 0, `narration streamed incrementally (${narrationDeltaChars} chars)`)
 check(
+  firstNarrationAt > 0 && lastNpcFinishedAt > 0 && firstNarrationAt < lastNpcFinishedAt,
+  `the first narration landed before the NPCs finished ` +
+    `(${((lastNpcFinishedAt - firstNarrationAt) / 1000).toFixed(1)}s of head start)`,
+)
+check(
   narration?.thinking?.includes('[NPC_REACTIONS]') === true,
-  'NPC reactions stored on the narration message',
+  'the last narration carries the NPC reactions (so `await_reactions` was called)',
 )
 check(suggestions.length === 2, `two follow-up options suggested (${suggestions.length})`)
 

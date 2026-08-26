@@ -17,7 +17,8 @@ automatically when you touch files there:
 create and run interactive worlds:
 
 - **Onboarding**: Interview → World generation → Character creation
-- **Gameplay**: User action → NPC reactions → Interpretation → Resolution → Narration
+- **Gameplay**: User action → NPC reactions *and* interpretation/resolution/narration,
+  run side by side, with the Action Manager voicing what the NPCs said
 
 It also has a chat-room mode (`/rooms`, `/agents`) that predates the TRPG mode and is
 still fully supported.

@@ -63,6 +63,7 @@ agents:
       - get_game_state
       - get_location
       - travel
+      - await_reactions
       - narration
       - suggest_options
       - remove_character  # Direct NPC removal

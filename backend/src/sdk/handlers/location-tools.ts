@@ -70,6 +70,13 @@ export function createLocationTools(ctx: ToolContext, deps: LocationToolDeps): S
       // the *departure* room, which is the room the player is still watching.
       let departureRoomId: number | null = null
 
+      // The NPCs of this location may still be reacting — they were started
+      // alongside the Action Manager, not before it. Travel is where that
+      // matters: the memory round below reopens their sessions, and reopening a
+      // *busy* session kills the turn it is in the middle of. Waiting here costs
+      // nothing the memory round was not about to spend anyway.
+      await ctx.awaitNpcReactions?.()
+
       try {
         const fromLocationName = deps.players.loadPlayerState(worldName)?.currentLocation || 'unknown'
         const fromLocation =

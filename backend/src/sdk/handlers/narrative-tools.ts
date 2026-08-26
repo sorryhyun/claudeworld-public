@@ -3,7 +3,7 @@ import { createMessage, type MessageWithAgent } from '@/crud/messages'
 import type { PlayerService } from '@/services/player-service'
 import type { RoomMappingService } from '@/services/room-mapping'
 import { formatTemplate } from '@/sdk/tools/definitions'
-import { narrationTool, suggestOptionsTool } from '@/sdk/tools/gameplay'
+import { awaitReactionsTool, narrationTool, suggestOptionsTool } from '@/sdk/tools/gameplay'
 import { tool, requireAgentId, requireRoomId, requireWorldName, toolSuccess, type SdkTool, type ToolContext } from './context'
 
 // The tools that produce what the player actually sees.
@@ -72,6 +72,23 @@ export function createNarrativeTools(
     },
   )
 
+  // Always offered, in flight or not: tool sets must not vary per turn — the
+  // allow-list is baked into the session at `query()` time — so an empty
+  // location gets the tool and a sentence saying there was nobody to hear it.
+  const awaitReactions = tool(
+    awaitReactionsTool.name,
+    awaitReactionsTool.description,
+    awaitReactionsTool.inputSchema,
+    async () => {
+      const reactions = (await ctx.awaitNpcReactions?.()) ?? ctx.npcReactions ?? []
+      return toolSuccess(
+        formatTemplate(awaitReactionsTool.response ?? '{reactions}', {
+          reactions: formatReactions(reactions),
+        }),
+      )
+    },
+  )
+
   const suggestOptions = tool(
     suggestOptionsTool.name,
     suggestOptionsTool.description,
@@ -86,5 +103,27 @@ export function createNarrativeTools(
     },
   )
 
-  return [narration, suggestOptions]
+  return [narration, awaitReactions, suggestOptions]
+}
+
+/**
+ * What the Action Manager reads back. Each reaction is reproduced whole — this
+ * is the only copy that exists, since a reaction is never persisted as a message
+ * — and the closing line is there because a model handed a block of NPC prose
+ * with no instruction summarises it instead of quoting it.
+ */
+function formatReactions(reactions: ReadonlyArray<{ agentName: string; content: string }>): string {
+  if (reactions.length === 0) {
+    return 'No one else is at this location — nobody reacted. Narrate the scene as the player alone in it.'
+  }
+
+  const blocks = reactions.map((r) => `### ${r.agentName}\n${r.content}`)
+  return [
+    `${String(reactions.length)} character(s) reacted to the player's action:`,
+    '',
+    ...blocks,
+    '',
+    'Now call `narration` for this: name each character, quote what they said as spoken ' +
+      'dialogue and stage what they did. These lines reach the player only through you.',
+  ].join('\n')
 }

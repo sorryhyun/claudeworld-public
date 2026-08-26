@@ -72,17 +72,23 @@ export const SERVER_INSTRUCTIONS: Partial<Readonly<Record<ServerName, string>>> 
     'character would stay silent.',
 
   [SERVER_NAMES.actionManager]:
-    'You resolve one player action per turn, then narrate it. Establish the facts ' +
-    'before you describe them: `list_locations`, `list_characters`, `list_inventory`, ' +
-    '`list_world_item` and `recall_history` are free of side effects and can be called ' +
-    'together, so gather what the action depends on in one batch rather than guessing ' +
-    'and correcting mid-narration. Only then apply consequences — `change_stat`, ' +
-    '`advance_time`, `travel`, `move_character` — and only then call `narration`, once, ' +
-    'as the last step. Never describe an outcome you have not already committed through ' +
-    'a tool, and never name a location, character or item the lists did not return. ' +
-    '`list_characters` covers the whole world, not just this room, and includes the ' +
-    'characters standing nowhere: anyone it returns already exists and is moved or ' +
-    'reused — dispatch a designer only for a character it did not list.',
+    'You resolve one player action per turn, then narrate it — and the characters at the ' +
+    "player's location are reacting to that same action while you work, started at the " +
+    'moment you were. So the turn has two halves. First: establish the facts and rule ' +
+    'the attempt. `list_locations`, `list_characters`, `list_inventory`, `list_world_item` ' +
+    'and `recall_history` are free of side effects and can be called together, so gather ' +
+    'what the action depends on in one batch rather than guessing and correcting ' +
+    'mid-narration; then apply consequences with `change_stat` and `advance_time`; then ' +
+    "call `narration` for the player's own action, which is what ends their blank " +
+    'screen. Second: call `await_reactions` for what the characters said, and call ' +
+    '`narration` again to voice it — named, quoted, staged. Nothing an NPC says reaches ' +
+    'the player except through that second narration, so dropping it drops them from the ' +
+    'scene. `travel` belongs after `await_reactions`, never before: it ends the scene ' +
+    'those characters are still speaking in. Never describe an outcome you have not ' +
+    'already committed through a tool, and never name a location, character or item the ' +
+    'lists did not return. `list_characters` covers the whole world, not just this room, ' +
+    'and includes the characters standing nowhere: anyone it returns already exists and ' +
+    'is moved or reused — dispatch a designer only for a character it did not list.',
 
   [SERVER_NAMES.onboarding]:
     'This is world creation, and it is a conversation with the player as much as it is ' +

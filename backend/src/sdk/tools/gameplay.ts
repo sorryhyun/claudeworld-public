@@ -178,6 +178,31 @@ Available history entries: {history_subtitles}
   enabled: true,
 } satisfies ToolDefinition
 
+export const awaitReactionsTool = {
+  name: 'await_reactions',
+  description: `Collect what the NPCs at this location did and said in response to the player's action.
+
+They are running **right now**, started at the same moment you were, so this tool waits for
+whichever of them are still speaking and returns every reaction verbatim.
+
+**Call it after you have already narrated the player's own action.** That first \`narration\`
+is what the player reads while the NPCs are still thinking; this tool is how you find out
+what to write next. Calling it before you have narrated anything wastes the head start and
+leaves the player watching a blank screen.
+
+Then call \`narration\` a second time for what came back: quote each NPC's dialogue as
+spoken lines, attributed by name, and stage the actions they described. What they said is
+not raw material to summarise — it is the scene, and a reaction that never reaches the
+player was never in the game.
+
+Returns a note saying so when nobody is present. Safe to call more than once; every call
+after the first returns the same reactions without waiting again.`,
+  inputSchema: {},
+  response: '{reactions}',
+  enabled: true,
+  readOnly: true,
+} satisfies ToolDefinition
+
 export const narrationTool = {
   name: 'narration',
   description: `REQUIRED: Create a visible narrative message describing the outcome of the player's action.
@@ -195,12 +220,24 @@ This is the text the player will see in the chat. It should be:
 - Keep paragraphs focused and punchy
 - End on a moment of tension or choice
 
+**Voice the NPCs — this is the narrator's job, not theirs.**
+An NPC has no voice of its own in front of the player: nothing it says reaches the screen
+except through this tool. So whenever \`await_reactions\` has returned something, name the
+character and quote what they actually said as spoken dialogue, then stage the action they
+took around it. Keep their wording and their register — do not flatten three characters
+into one summary sentence, and do not report speech in the abstract ("the guard objects")
+where the guard gave you a line.
+
 **DO NOT:**
 - Write the player's actions or feelings
 - Use purple prose or overwrite
 - Resolve situations too quickly
+- Drop an NPC's reaction, or paraphrase away a line they actually spoke
 
-Call this AFTER resolving mechanics (stat changes via change_stat, travel, etc.) to describe what happened.`,
+Called more than once per turn, by design: narrate the player's action as soon as the
+ruling is clear, then call \`await_reactions\` and narrate again for what the NPCs and the
+sub-agents brought back. Resolve mechanics (\`change_stat\`, \`travel\`, …) before describing
+their effects.`,
   inputSchema: {
     narrative: z
       .string()
@@ -295,6 +332,7 @@ export const CORE_GAMEPLAY_TOOLS = {
   delete_character: deleteCharacterTool,
   inject_memory: injectMemoryTool,
   roll_the_dice: rollTheDiceTool,
+  await_reactions: awaitReactionsTool,
   narration: narrationTool,
   suggest_options: suggestOptionsTool,
   change_stat: changeStatTool,

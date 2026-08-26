@@ -1,10 +1,15 @@
 import { TurnTape, type TurnCell } from './models'
 
 /** NPCs at the player's location react concurrently and hidden, their responses
- * collected rather than persisted; then the Action Manager runs alone, receives
- * those reactions and narrates through its tools. `null` when the room has no
- * Action Manager — falling through to a generic sequential handler produces
- * output that looks plausible but is not a gameplay turn. */
+ * collected rather than persisted; the Action Manager starts at the *same
+ * moment* and narrates through its tools, pulling the reactions in with
+ * `await_reactions` once it has narrated the player's own action. `null` when
+ * the room has no Action Manager — falling through to a generic sequential
+ * handler produces output that looks plausible but is not a gameplay turn.
+ *
+ * The reaction cell is `deferred`, which is the whole point: run in order, the
+ * player watched a blank screen for the length of the slowest NPC before a
+ * single word was written. */
 export function createGameplayTape(actionManagerId: number | null, npcIds: number[]): TurnTape | null {
   if (actionManagerId === null) return null
 
@@ -18,6 +23,7 @@ export function createGameplayTape(actionManagerId: number | null, npcIds: numbe
       agentIds: npcIds,
       hidden: true,
       isReaction: true,
+      deferred: true,
     })
   }
 

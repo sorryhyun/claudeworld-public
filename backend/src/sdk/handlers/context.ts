@@ -59,8 +59,20 @@ export interface ToolContext {
   worldId?: number
   /** Subtitle -> content, parsed from consolidated_memory.md. Backs `recall`. */
   longTermMemoryIndex: Record<string, string>
-  /** Collected in cell 1; `narration` stores them in the `thinking` column. */
+  /**
+   * What the NPCs said this turn. `narration` stores them in the `thinking`
+   * column. Empty at the start of a gameplay turn — the NPCs are still running —
+   * and filled in by {@link awaitNpcReactions}, so a `narration` written before
+   * that records only what was actually known when it was written.
+   */
   npcReactions?: NpcReaction[]
+  /**
+   * Waits for the NPCs running *alongside* this turn and folds what they said
+   * into {@link npcReactions}, which is the same array on every call. Absent
+   * when nothing is in flight — an empty location, or an agent that is not the
+   * Action Manager.
+   */
+  awaitNpcReactions?: () => Promise<NpcReaction[]>
   getDb: () => Db
 }
 

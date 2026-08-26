@@ -1,8 +1,9 @@
 /**
  * The turn tape: a fixed sequence of "cells", each naming the agents that run
  * in it. Cells run strictly in order; agents *within* a cell may run
- * concurrently. The gameplay tape is two cells — NPCs react, then the Action
- * Manager narrates with those reactions in hand.
+ * concurrently. The gameplay tape is two cells — the NPCs react, and the Action
+ * Manager narrates — but the first is *deferred*, so the two run side by side
+ * and the Action Manager pulls the reactions in when it wants them.
  */
 
 export type CellType = 'sequential' | 'concurrent' | 'interrupt'
@@ -16,6 +17,21 @@ export interface TurnCell {
   isReaction: boolean
   /** For interrupt cells: the agent whose message triggered it, so it is skipped. */
   triggeringAgentId?: number
+  /**
+   * Start the cell but do not wait for it: the tape advances immediately and the
+   * next cell runs alongside it, holding a {@link PendingReactions} handle it can
+   * await when it is ready. Only meaningful together with `isReaction`. The
+   * executor still awaits the cell before the tape finishes, so its responses are
+   * counted and no agent is left running into the next turn.
+   */
+  deferred?: boolean
+}
+
+/** A deferred cell in flight, handed to the cells that run alongside it. */
+export interface PendingReactions {
+  /** Who is still speaking, so a prompt can name them before they answer. */
+  agentIds: number[]
+  reactions: Promise<AgentReaction[]>
 }
 
 // True only for a cell that needs `Promise.all`. A one-agent concurrent cell

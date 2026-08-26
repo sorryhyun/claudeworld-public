@@ -123,12 +123,22 @@ describe('createGameplayTape', () => {
     expect(createGameplayTape(null, [1, 2])).toBeNull()
   })
 
-  test('NPCs react concurrently and hidden, then the Action Manager runs alone', () => {
+  test('NPCs react concurrently and hidden, alongside the Action Manager', () => {
     const cells = createGameplayTape(99, [1, 2])?.cells ?? []
 
     expect(cells).toHaveLength(2)
-    expect(cells[0]).toMatchObject({ cellType: 'concurrent', agentIds: [1, 2], hidden: true, isReaction: true })
+    expect(cells[0]).toMatchObject({
+      cellType: 'concurrent',
+      agentIds: [1, 2],
+      hidden: true,
+      isReaction: true,
+      deferred: true,
+    })
     expect(cells[1]).toMatchObject({ cellType: 'sequential', agentIds: [99], hidden: true, isReaction: false })
+  })
+
+  test('the Action Manager cell is not deferred — something has to be waited on', () => {
+    expect(createGameplayTape(99, [1])?.cells[1]?.deferred).toBeUndefined()
   })
 
   test('an empty location skips the reaction cell entirely', () => {
@@ -226,6 +236,86 @@ describe('TapeExecutor', () => {
     expect(seen[0]).toBeUndefined()
     expect(seen[1]).toBeUndefined()
     expect(seen[2]).toEqual(['reply from 1', 'reply from 2'])
+  })
+
+  test('a deferred cell does not block the next one, and hands it a promise', async () => {
+    const started: number[] = []
+    let releaseNpcs: (() => void) | null = null
+    const npcsHeld = new Promise<void>((resolve) => {
+      releaseNpcs = resolve
+    })
+
+    let handedTo9: string[] | undefined
+    const respond = async ({
+      agentId,
+      pendingReactions,
+    }: {
+      agentId: number
+      pendingReactions?: { agentIds: number[]; reactions: Promise<Array<{ content: string }>> }
+    }): Promise<RespondResult> => {
+      started.push(agentId)
+      if (agentId === 9) {
+        // The Action Manager is running while the NPCs are still held.
+        expect(pendingReactions?.agentIds).toEqual([1, 2])
+        releaseNpcs?.()
+        handedTo9 = (await pendingReactions?.reactions)?.map((r) => r.content)
+        return { responded: true, responseText: 'narrated', agentName: 'a-9' }
+      }
+      await npcsHeld
+      return { responded: true, responseText: `reply from ${agentId}`, agentName: `a-${agentId}` }
+    }
+
+    const result = await new TapeExecutor({ isPaused: () => false, respond }).execute(
+      new TurnTape([
+        cell([1, 2], { cellType: 'concurrent', isReaction: true, deferred: true }),
+        cell([9]),
+      ]),
+      { userMessage: 'hello' },
+    )
+
+    // 9 started before either NPC finished — the point of the whole arrangement.
+    expect(started).toEqual([1, 2, 9])
+    expect(handedTo9).toEqual(['reply from 1', 'reply from 2'])
+    expect(result.reactions.map((r) => r.content)).toEqual(['reply from 1', 'reply from 2'])
+    expect(result.totalResponses).toBe(3)
+    expect(result.cellsExecuted).toBe(2)
+  })
+
+  test('a deferred cell nobody waited on is still awaited before the turn returns', async () => {
+    let npcFinished = false
+    const respond = async ({ agentId }: { agentId: number }): Promise<RespondResult> => {
+      if (agentId === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        npcFinished = true
+      }
+      return { responded: true, responseText: `reply from ${agentId}`, agentName: `a-${agentId}` }
+    }
+
+    // The Action Manager never touches `pendingReactions`; leaving the NPC
+    // generating into the next turn would race it for its own session.
+    const result = await new TapeExecutor({ isPaused: () => false, respond }).execute(
+      new TurnTape([cell([1], { isReaction: true, deferred: true }), cell([9])]),
+      { userMessage: 'hello' },
+    )
+
+    expect(npcFinished).toBe(true)
+    expect(result.reactions.map((r) => r.content)).toEqual(['reply from 1'])
+    expect(result.totalResponses).toBe(2)
+  })
+
+  test('a deferred cell that throws costs its reactions, not the turn', async () => {
+    const respond = ({ agentId }: { agentId: number }): Promise<RespondResult> => {
+      if (agentId === 1) return Promise.reject(new Error('session died'))
+      return Promise.resolve({ responded: true, responseText: 'narrated', agentName: 'a-9' })
+    }
+
+    const result = await new TapeExecutor({ isPaused: () => false, respond }).execute(
+      new TurnTape([cell([1], { isReaction: true, deferred: true }), cell([9])]),
+      { userMessage: 'hello' },
+    )
+
+    expect(result.reactions).toEqual([])
+    expect(result.totalResponses).toBe(1)
   })
 
   test('a skip is counted as a skip, and an all-skip turn says so', async () => {

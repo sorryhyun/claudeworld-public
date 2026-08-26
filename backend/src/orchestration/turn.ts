@@ -27,7 +27,7 @@ import { TurnRunner, type TurnEvent } from '@/sdk/agent/turn-runner'
 import type { SessionPool } from '@/sdk/client/session-pool'
 import type { ServerDeps, ServerRole } from '@/sdk/handlers/servers'
 import type { McpTools } from '@/sdk/mcp'
-import type { ToolContext } from '@/sdk/handlers/context'
+import type { NpcReaction, ToolContext } from '@/sdk/handlers/context'
 import { parseAgentConfig } from '@/sdk/parsing/agent-config'
 import { buildSystemPrompt } from '@/services/prompt-builder'
 import { separateInterruptAgents } from './agent-ordering'
@@ -44,10 +44,10 @@ import { TapeExecutor, type RespondArgs, type RespondResult } from './tape/execu
 import type { AgentReaction, ExecutionResult } from './tape/models'
 
 /**
- * Runs one turn, in three shapes: gameplay (NPCs, then the Action Manager, all
- * hidden), onboarding (the Onboarding Manager alone) and chat (NPCs, one per
- * cell). A hidden agent's prose is never persisted — its `narration` tool writes
- * the visible message instead.
+ * Runs one turn, in three shapes: gameplay (the NPCs and the Action Manager
+ * side by side, all hidden), onboarding (the Onboarding Manager alone) and chat
+ * (NPCs, one per cell). A hidden agent's prose is never persisted — its
+ * `narration` tool writes the visible message instead.
  */
 
 const logger = getLogger('Turn')
@@ -573,6 +573,7 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
     userMessage,
     hidden,
     npcReactions,
+    pendingReactions,
     signal,
   }: RespondArgs): Promise<RespondResult> {
     const agent = ctx.byId.get(agentId)
@@ -589,6 +590,16 @@ function makeResponder(deps: TurnDeps, ctx: ResponderContext) {
       locationName: ctx.locationName,
       userMessage,
       npcReactions,
+      // Resolved to names here, not in the executor: the tape deals in ids, and
+      // it is the prompt that needs to say who is still speaking.
+      pendingReactions: pendingReactions
+        ? {
+            names: pendingReactions.agentIds.map(
+              (id) => ctx.byId.get(id)?.name ?? `Agent ${String(id)}`,
+            ),
+            reactions: pendingReactions.reactions,
+          }
+        : undefined,
       chatSessionId: ctx.chatSessionId,
       timings: ctx.timings,
     })
@@ -685,6 +696,9 @@ interface BuildTurnInput {
   locationName: string | null
   userMessage: string
   npcReactions: AgentReaction[] | undefined
+  /** NPCs still speaking as this agent starts — a deferred cell of the tape,
+   * resolved to names for the prompt. */
+  pendingReactions?: { names: string[]; reactions: Promise<AgentReaction[]> }
   chatSessionId: number | null
   timings: SubagentTimings
   /** Send `userMessage` as written instead of building conversation context. */
@@ -708,6 +722,9 @@ function buildAgentTurn(
 
   const resume = getRoomAgentSession(db, input.roomId, agent.id) ?? undefined
 
+  const pending = input.pendingReactions
+  const reactionsSoFar: NpcReaction[] = [...(input.npcReactions ?? [])]
+
   const ctx: ToolContext = {
     agentName: agent.name,
     agentId: agent.id,
@@ -719,7 +736,17 @@ function buildAgentTurn(
     worldName: world?.name,
     worldId: world?.id,
     longTermMemoryIndex: config?.longTermMemoryIndex ?? {},
-    npcReactions: input.npcReactions,
+    // The tools share one array with the awaiter below, so a `narration` written
+    // after `await_reactions` records the reactions and one written before it
+    // records that there were none yet.
+    npcReactions: reactionsSoFar,
+    awaitNpcReactions: pending
+      ? async (): Promise<NpcReaction[]> => {
+          const settled = await pending.reactions
+          reactionsSoFar.splice(0, reactionsSoFar.length, ...settled)
+          return reactionsSoFar
+        }
+      : undefined,
     getDb: () => db,
   }
 
@@ -761,6 +788,7 @@ function buildAgentTurn(
       playerAction: input.userMessage,
       agentName: agent.name,
       npcReactions: input.npcReactions,
+      pendingReactionNames: pending?.names,
     })
   } else if (input.skipContext) {
     message = input.userMessage

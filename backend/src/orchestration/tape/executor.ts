@@ -3,6 +3,7 @@ import {
   type AgentReaction,
   type CellResult,
   type ExecutionResult,
+  type PendingReactions,
   type TurnCell,
   type TurnTape,
 } from './models'
@@ -19,6 +20,12 @@ export interface RespondArgs {
   hidden: boolean
   /** From earlier cells; only the Action Manager cell receives these. */
   npcReactions?: AgentReaction[]
+  /**
+   * A deferred cell that is still running. The Action Manager is started next to
+   * the NPCs rather than after them, so it gets a promise instead of an array
+   * and decides for itself when to wait on it.
+   */
+  pendingReactions?: PendingReactions
   signal?: AbortSignal
 }
 
@@ -63,6 +70,12 @@ export class TapeExecutor {
     let wasPaused = false
     let reachedLimit = false
 
+    // At most one deferred cell is in flight; the gameplay tape has exactly one,
+    // and a second would leave the cells after it unable to say which promise
+    // they were handed.
+    let deferred: { cell: TurnCell; result: Promise<CellResult> } | null = null
+    let pending: PendingReactions | undefined
+
     while (!tape.isExhausted()) {
       const cell = tape.current
       if (!cell) break
@@ -85,7 +98,21 @@ export class TapeExecutor {
         break
       }
 
-      const result = await this.executeCell(cell, opts, collected)
+      if (cell.deferred && !deferred) {
+        // Started, not awaited. The `catch` is what keeps the rejection observed
+        // while the next cell is still writing — an unhandled one would take the
+        // process down long before anybody asked for the reactions.
+        const inFlight = this.executeCell(cell, opts, collected, undefined).catch(
+          (): CellResult => ({ responses: 0, skips: 0, reactions: [] }),
+        )
+        deferred = { cell, result: inFlight }
+        pending = { agentIds: [...cell.agentIds], reactions: inFlight.then((r) => r.reactions) }
+        cellsExecuted++
+        tape.advance()
+        continue
+      }
+
+      const result = await this.executeCell(cell, opts, collected, pending)
       cellsExecuted++
       totalResponses += result.responses
       totalSkips += result.skips
@@ -95,6 +122,20 @@ export class TapeExecutor {
 
       await this.deps.onCellComplete?.(cell)
       tape.advance()
+    }
+
+    // The tape has stopped writing, but the deferred cell may not have stopped
+    // running — and a turn that returns with agents still generating races the
+    // next one for their sessions. Awaited even when the tape was cut short: the
+    // work was already dispatched, and its reactions belong to this result
+    // whether or not the Action Manager ever asked for them.
+    if (deferred) {
+      const result = await deferred.result
+      totalResponses += result.responses
+      totalSkips += result.skips
+      if (deferred.cell.isReaction) collected.push(...result.reactions)
+      if (!deferred.cell.hidden) visibleMessages += result.responses
+      await this.deps.onCellComplete?.(deferred.cell)
     }
 
     return {
@@ -113,10 +154,12 @@ export class TapeExecutor {
     cell: TurnCell,
     opts: ExecuteOptions,
     collected: AgentReaction[],
+    pending: PendingReactions | undefined,
   ): Promise<CellResult> {
     // Only the non-reaction cell gets them; a reaction cell would otherwise see
     // its own siblings' output mid-flight.
     const npcReactions = cell.isReaction ? undefined : collected
+    const pendingReactions = cell.isReaction ? undefined : pending
 
     const run = (agentId: number): Promise<RespondResult> =>
       this.deps.respond({
@@ -124,6 +167,7 @@ export class TapeExecutor {
         userMessage: opts.userMessage,
         hidden: cell.hidden,
         npcReactions,
+        pendingReactions,
         signal: opts.signal,
       })
 
